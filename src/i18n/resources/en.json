@@ -381,7 +381,8 @@
     },
     "bypass-age-restrictions": {
       "description": "Bypass Music Player's age verification",
-      "name": "Bypass Age Restrictions"
+      "name": "Bypass Age Restrictions",
+      "proxy-notice": "When needed, sends video identifiers and playback requests to youtube-proxy.zerody.one and ny.4everproxy.com. Google account credentials are excluded."
     },
     "captions-selector": {
       "description": "Caption selector for {{applicationName}} audio tracks",
@@ -997,6 +998,13 @@
         "visualizer-type": "Visualizer Type"
       },
       "name": "Visualizer"
+    },
+    "adblocker": {
+      "description": "Block all ads and tracking out of the box",
+      "menu": {
+        "blocker": "Blocker"
+      },
+      "name": "Ad Blocker"
     }
   }
 }
