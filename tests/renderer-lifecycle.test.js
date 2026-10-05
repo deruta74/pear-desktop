@@ -242,3 +242,99 @@ test('styles-only plugins can be enabled and disabled', async () => {
   await loader.forceUnloadRendererPlugin('example');
   expect(document.adoptedStyleSheets).toHaveLength(0);
 });
+
+test('bulk unload waits for all starts from an already requested bulk load', async () => {
+  let finishStart;
+  let notifyStart;
+  const startGate = new Promise((resolve) => {
+    finishStart = resolve;
+  });
+  const started = new Promise((resolve) => {
+    notifyStart = resolve;
+  });
+  const result = await createLoader({
+    a: {
+      config: { enabled: true },
+      stylesheets: ['.a {}'],
+      renderer: {
+        async start() {
+          notifyStart();
+          await startGate;
+        },
+        stop() {},
+      },
+    },
+    b: {
+      config: { enabled: true },
+      stylesheets: ['.b {}'],
+      renderer: { start() {}, stop() {} },
+    },
+  });
+  dispose = result.dispose;
+  const loading = result.loader.loadAllRendererPlugins();
+  await started;
+  const unloading = result.loader.unloadAllRendererPlugins();
+  finishStart();
+  await Promise.all([loading, unloading]);
+  expect(Object.keys(result.loader.getAllLoadedRendererPlugins())).toEqual([]);
+  expect(document.adoptedStyleSheets).toHaveLength(0);
+});
+
+test('an enable after bulk unload remains enabled while another plugin stop waits', async () => {
+  let finishStop;
+  let notifyStop;
+  const stopGate = new Promise((resolve) => {
+    finishStop = resolve;
+  });
+  const stopping = new Promise((resolve) => {
+    notifyStop = resolve;
+  });
+  const result = await createLoader({
+    a: {
+      config: { enabled: true },
+      renderer: {
+        start() {},
+        async stop() {
+          notifyStop();
+          await stopGate;
+        },
+      },
+    },
+    b: {
+      config: { enabled: true },
+      stylesheets: ['.b {}'],
+      renderer: { start() {}, stop() {} },
+    },
+  });
+  dispose = result.dispose;
+  await result.loader.loadAllRendererPlugins();
+  const unloading = result.loader.unloadAllRendererPlugins();
+  await stopping;
+  const enabling = result.loader.forceLoadRendererPlugin('b');
+  finishStop();
+  await Promise.all([unloading, enabling]);
+  expect(result.loader.getLoadedRendererPlugin('b')).toBeDefined();
+  expect(document.adoptedStyleSheets).toHaveLength(1);
+});
+
+test('bulk unload requested before registry resolution drains the earlier bulk load', async () => {
+  const result = await createLoader({
+    a: {
+      config: { enabled: true },
+      stylesheets: ['.a {}'],
+      renderer: { start() {}, stop() {} },
+    },
+    b: {
+      config: { enabled: true },
+      stylesheets: ['.b {}'],
+      renderer: { start() {}, stop() {} },
+    },
+  });
+  dispose = result.dispose;
+  await Promise.all([
+    result.loader.loadAllRendererPlugins(),
+    result.loader.unloadAllRendererPlugins(),
+  ]);
+  expect(Object.keys(result.loader.getAllLoadedRendererPlugins())).toEqual([]);
+  expect(document.adoptedStyleSheets).toHaveLength(0);
+});
