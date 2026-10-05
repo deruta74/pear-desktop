@@ -1,16 +1,16 @@
-import { net } from 'electron';
-import * as z from 'zod';
-
 import { t } from '@/i18n';
 import { createBlockerBackend } from '@/providers/blocker-backend';
 import { createBlockerPreload } from '@/providers/blocker-preload';
 import { createPlugin } from '@/utils';
 
-import { blockers } from './types';
+import { createAdblockerRenderer } from './renderer';
+import { blockers, type AdblockerConfig } from './types';
 
-import type { AdblockerConfig } from '@/plugins/adblocker/types';
-
-export type TrackerBlockerConfig = AdblockerConfig;
+const sources = [
+  'https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/filters.txt',
+  'https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/quick-fixes.txt',
+  'https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/unbreak.txt',
+];
 
 const reloadNotice = () =>
   t('plugins.adblocker.reload-notice', {
@@ -18,33 +18,26 @@ const reloadNotice = () =>
       'Changes to With blocklists reload the player page and may interrupt playback.',
   });
 
-const defaultLists = async (): Promise<string[]> => {
-  const response = await net.fetch(
-    'https://raw.githubusercontent.com/organization/tb-list/refs/heads/main/tb.json',
-    { signal: AbortSignal.timeout(15_000) },
-  );
-  if (!response.ok)
-    throw new Error(`Tracker list manifest returned ${response.status}`);
-  return z.object({ tb: z.array(z.string()) }).parse(await response.json()).tb;
-};
-
 export default createPlugin({
-  name: () => t('plugins.do-not-track.name'),
+  name: () => t('plugins.adblocker.name', { defaultValue: 'Ad Blocker' }),
   description: () =>
-    `${t('plugins.do-not-track.description')} ${reloadNotice()}`,
+    `${t('plugins.adblocker.description', {
+      defaultValue:
+        'Block advertisements using player responses, filter lists, or ad speedup.',
+    })} ${reloadNotice()}`,
   restartNeeded: false,
   config: {
-    enabled: false,
+    enabled: true,
     cache: true,
     blocker: blockers.InPlayer,
     additionalBlockLists: [],
     disableDefaultLists: false,
-  } as TrackerBlockerConfig,
+  } as AdblockerConfig,
   menu: async ({ getConfig, setConfig }) => {
     const config = await getConfig();
     return [
       {
-        label: t('plugins.do-not-track.menu.blocker'),
+        label: t('plugins.adblocker.menu.blocker', { defaultValue: 'Blocker' }),
         submenu: [
           ...Object.values(blockers).map((blocker) => ({
             label: blocker,
@@ -60,6 +53,7 @@ export default createPlugin({
       },
     ];
   },
-  backend: createBlockerBackend('do-not-track', defaultLists),
-  preload: createBlockerPreload('do-not-track'),
+  backend: createBlockerBackend('adblocker', () => Promise.resolve(sources)),
+  preload: createBlockerPreload('adblocker'),
+  renderer: createAdblockerRenderer(),
 });

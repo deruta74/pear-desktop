@@ -1004,7 +1004,8 @@
       "menu": {
         "blocker": "Blocker"
       },
-      "name": "Ad Blocker"
+      "name": "Ad Blocker",
+      "reload-notice": "Changes to With blocklists reload the player page and may interrupt playback."
     }
   }
 }
