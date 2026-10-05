@@ -9,6 +9,7 @@ export const createBlockerBackend = (
   defaultLists: () => Promise<string[]>,
 ) => {
   let session: Electron.Session | undefined;
+  let clearDocument: (() => void) | undefined;
   let revision = 0;
   const configure = async (config: AdblockerConfig, expected: number) => {
     const currentSession = session;
@@ -45,24 +46,32 @@ export const createBlockerBackend = (
     async start({ getConfig, window }: BackendContext<AdblockerConfig>) {
       const expected = ++revision;
       const previous = session;
+      const previousDocument = clearDocument;
       const current = window.webContents.session;
       session = current;
       // Bind before any await so a concurrent stop releases this same document.
-      setBlockerDocument(current, owner, window.webContents);
-      if (previous && previous !== current)
-        await setSessionBlockLists(previous, owner, null);
-      if (previous && previous !== current)
-        setBlockerDocument(previous, owner, null);
+      clearDocument = setBlockerDocument(current, owner, window.webContents);
+      try {
+        if (previous && previous !== current)
+          await setSessionBlockLists(previous, owner, null);
+      } finally {
+        previousDocument?.();
+      }
       const config = await getConfig();
       if (expected === revision) await configure(config, expected);
     },
     async stop() {
       revision++;
       const previous = session;
+      const previousDocument = clearDocument;
       session = undefined;
-      if (previous) {
-        await setSessionBlockLists(previous, owner, null);
-        setBlockerDocument(previous, owner, null);
+      clearDocument = undefined;
+      try {
+        if (previous) await setSessionBlockLists(previous, owner, null);
+      } finally {
+        // Cleanup follows CSS teardown, including failed remaining-owner builds.
+        // An older stop releases its own lease, never a restarted binding.
+        previousDocument?.();
       }
     },
     async onConfigChange(config: AdblockerConfig) {
