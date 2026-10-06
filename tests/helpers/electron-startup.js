@@ -13,16 +13,31 @@ const require = createRequire(import.meta.url);
  * @param {string} command
  * @param {string[]} args
  * @param {number} timeout
+ * @param {{ launcher?: import('node:child_process').ChildProcess }} options
  */
-export async function runNativePidQuery(command, args, timeout = 5000) {
+export async function runNativePidQuery(
+  command,
+  args,
+  timeout = 10_000,
+  { launcher } = {},
+) {
+  if (launcher) assertRunning(launcher);
   const started = performance.now();
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  launcher?.once('exit', abort);
+  const execution = executeFile(command, args, {
+    timeout,
+    maxBuffer: 64 * 1024,
+    windowsHide: true,
+    signal: controller.signal,
+  });
   try {
-    return await executeFile(command, args, {
-      timeout,
-      maxBuffer: 64 * 1024,
-      windowsHide: true,
-    });
+    const result = await execution;
+    if (launcher) assertRunning(launcher);
+    return result;
   } catch (error) {
+    if (launcher) assertRunning(launcher);
     if (!(error instanceof Error)) throw error;
     const value = 'code' in error ? error.code : undefined;
     const code =
@@ -46,6 +61,18 @@ export async function runNativePidQuery(command, args, timeout = 5000) {
       `Native Electron PID query failed: code=${code} killed=${killed} signal=${signal} elapsedMs=${Math.round(performance.now() - started)} timeoutMs=${timeout}`,
       { cause: error },
     );
+  } finally {
+    launcher?.off('exit', abort);
+    // Abort terminates the owned query; wait for its exit before yielding the
+    // launcher failure so a dead app cannot leave PowerShell running.
+    if (
+      controller.signal.aborted &&
+      execution.child.exitCode === null &&
+      execution.child.signalCode === null
+    )
+      await once(execution.child, 'exit', {
+        signal: AbortSignal.timeout(1000),
+      });
   }
 }
 
@@ -119,7 +146,8 @@ export async function nativeStartupPid(child) {
         '-Command',
         `Get-CimInstance Win32_Process -Filter 'ParentProcessId = ${launcherPid}' | Select-Object ProcessId, ExecutablePath | ConvertTo-Json -Compress`,
       ],
-      5000,
+      10_000,
+      { launcher: child },
     );
     const records = /** @type {unknown} */ (
       stdout.trim() ? JSON.parse(stdout) : []
