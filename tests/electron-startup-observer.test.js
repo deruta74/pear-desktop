@@ -6,7 +6,9 @@ import { test, expect, _electron as electron } from '@playwright/test';
 
 import {
   assertStartupFacts,
+  nativeStartupPid,
   refreshStartupFacts,
+  terminateStartupProcess,
   waitForStartupFacts,
 } from './helpers/electron-startup.js';
 
@@ -17,7 +19,7 @@ const observer = path.resolve(
 
 test.describe('test-only Electron startup observer', () => {
   /**
-   * @param {{ wrongProfile?: boolean, visible?: boolean, preload?: boolean, exit?: boolean, delayedShow?: boolean }} options
+   * @param {{ wrongProfile?: boolean, visible?: boolean, preload?: boolean, exit?: boolean, delayedShow?: boolean, missingWatchFilename?: boolean }} options
    * @param {(fixture: { application: import('@playwright/test').ElectronApplication, child: import('node:child_process').ChildProcess, profile: string, factsPath: string, actionPath: string, actionDone: string }) => Promise<void>} check
    */
   async function withFixture(options, check) {
@@ -35,6 +37,11 @@ test.describe('test-only Electron startup observer', () => {
       await mkdir(profile);
       await mkdir(wrongProfile);
       const entry = path.join(directory, 'main.cjs');
+      const watcherPreload = path.join(directory, 'watcher.cjs');
+      await writeFile(
+        watcherPreload,
+        "const fs = require('node:fs'); const watch = fs.watch; fs.watch = (directory, callback) => watch(directory, (event) => callback(event, null));",
+      );
       await writeFile(
         entry,
         `
@@ -70,6 +77,9 @@ test.describe('test-only Electron startup observer', () => {
       );
       application = await electron.launch({
         args: [
+          ...(options.missingWatchFilename
+            ? ['--require', watcherPreload]
+            : []),
           ...(options.preload === false ? [] : ['--require', observer]),
           entry,
           `--user-data-dir=${profile}`,
@@ -97,7 +107,7 @@ test.describe('test-only Electron startup observer', () => {
         )
           await application.close();
       } finally {
-        await rm(directory, { recursive: true, force: true });
+        await rm(directory, { recursive: true, force: true, maxRetries: 5 });
       }
     }
   }
@@ -106,7 +116,7 @@ test.describe('test-only Electron startup observer', () => {
     await withFixture({}, async ({ child, profile, factsPath }) => {
       const facts = await waitForStartupFacts(child, factsPath, 2000);
       await assertStartupFacts(child, facts, profile);
-      expect(facts.pid).toBe(child.pid);
+      expect(facts.pid).toBe(await nativeStartupPid(child));
       expect(facts.visibleWindow).toBe(true);
     });
   });
@@ -175,7 +185,7 @@ test.describe('test-only Electron startup observer', () => {
 
   test('abrupt process termination remains a failure and permits owned cleanup', async () => {
     await withFixture({ visible: false }, async ({ child, factsPath }) => {
-      child.kill('SIGKILL');
+      await terminateStartupProcess(child);
       await expect(waitForStartupFacts(child, factsPath, 2000)).rejects.toThrow(
         /exited/,
       );
@@ -206,6 +216,17 @@ test.describe('test-only Electron startup observer', () => {
         await expect(
           refreshStartupFacts(child, factsPath, 200),
         ).rejects.toThrow(/No refreshed startup facts acknowledgement/);
+      },
+    );
+  });
+
+  test('refresh acknowledges the exact owned request when directory events omit filenames', async () => {
+    await withFixture(
+      { missingWatchFilename: true },
+      async ({ child, profile, factsPath }) => {
+        await waitForStartupFacts(child, factsPath, 2000);
+        const facts = await refreshStartupFacts(child, factsPath, 500);
+        await assertStartupFacts(child, facts, profile);
       },
     );
   });

@@ -57,7 +57,7 @@ test('Pear Desktop App - With default settings, app is launched and visible', as
       if (app && child?.exitCode === null && child.signalCode === null)
         await app.close();
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { recursive: true, force: true, maxRetries: 5 });
     }
   }
 });
