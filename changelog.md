@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v3.12.1](https://github.com/deruta74/pear-desktop/compare/v3.12.0...v3.12.1)
+
+> 6 October 2026
+
+- fix(plugin): release renderer styles on disable [#1](https://github.com/deruta74/pear-desktop/pull/1)
+- feature(plugin): restore removed 3.11 plugins [#2](https://github.com/deruta74/pear-desktop/pull/2)
+- perf(renderer): reduce JSON namespace allocations [#3](https://github.com/deruta74/pear-desktop/pull/3)
+- fix(lyrics): restore Korean romanization [#4](https://github.com/deruta74/pear-desktop/pull/4)
+- fix(api): backfill current song and release subscriptions [#5](https://github.com/deruta74/pear-desktop/pull/5)
+- fix(downloader): keep background errors nonmodal [#6](https://github.com/deruta74/pear-desktop/pull/6)
+- fix(api-server): refresh volume state across player startup [#7](https://github.com/deruta74/pear-desktop/pull/7)
+- perf(synced-lyrics): defer pinyin and guard late text updates [#8](https://github.com/deruta74/pear-desktop/pull/8)
+- fix(api-server): refresh repeat state across player startup [#9](https://github.com/deruta74/pear-desktop/pull/9)
+- chore(release): prepare v3.12.1 packages and fork update routing.
+
+Age bypass remains disabled by default and experimental; anonymous age-restricted playback is unavailable.
+
 #### [v3.12.0](https://github.com/pear-devs/pear-desktop/compare/v3.12.0...v3.12.0)
 
 #### [v3.12.0](https://github.com/pear-devs/pear-desktop/compare/v3.11.4...v3.12.0)
