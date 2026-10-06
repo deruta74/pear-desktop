@@ -44,12 +44,19 @@ export const backend = createBackend<BackendType, APIServerConfig>({
       { replayCurrent: true },
     );
 
+    ctx.ipc.on('peard:volume-changed', (newVolumeState: VolumeState) => {
+      if (revision === this.startRevision) this.volumeState = newVolumeState;
+    });
+    const setupVolume = () => {
+      if (revision === this.startRevision)
+        ctx.ipc.send('peard:setup-volume-changed-listener');
+    };
     ctx.ipc.on('peard:player-api-loaded', () => {
       ctx.ipc.send('peard:setup-seeked-listener');
       ctx.ipc.send('peard:setup-time-changed-listener');
       ctx.ipc.send('peard:setup-repeat-changed-listener');
       ctx.ipc.send('peard:setup-like-changed-listener');
-      ctx.ipc.send('peard:setup-volume-changed-listener');
+      setupVolume();
       ctx.ipc.send('peard:setup-shuffle-changed-listener');
     });
 
@@ -58,11 +65,7 @@ export const backend = createBackend<BackendType, APIServerConfig>({
       (mode: RepeatMode) => (this.currentRepeatMode = mode),
     );
 
-    ctx.ipc.on(
-      'peard:volume-changed',
-      (newVolumeState: VolumeState) => (this.volumeState = newVolumeState),
-    );
-
+    setupVolume();
     this.run(config);
   },
   stop() {
