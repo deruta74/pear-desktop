@@ -1,3 +1,9 @@
+import {
+  beginAdSpeedupOverride,
+  endAdSpeedupOverride,
+  getUnforcedPlaybackRate,
+} from '@/plugins/utils/renderer/playback-rate-owner';
+
 export const createAdSpeedup = (doc: Document = document) => {
   let observer: MutationObserver | undefined;
   let current: HTMLVideoElement | null = null;
@@ -5,9 +11,14 @@ export const createAdSpeedup = (doc: Document = document) => {
   const restore = () => {
     if (current && previous) {
       // A later explicit user/plugin change takes precedence over our override.
-      if (current.playbackRate === 16)
-        current.playbackRate = previous.playbackRate;
+      const restoring = current.playbackRate === 16;
+      if (restoring)
+        current.playbackRate = getUnforcedPlaybackRate(
+          current,
+          previous.playbackRate,
+        );
       if (current.muted) current.muted = previous.muted;
+      endAdSpeedupOverride(current, restoring);
     }
     current = null;
     previous = undefined;
@@ -24,6 +35,7 @@ export const createAdSpeedup = (doc: Document = document) => {
     if (!previous) {
       current = video;
       previous = { playbackRate: video.playbackRate, muted: video.muted };
+      beginAdSpeedupOverride(video, previous.playbackRate);
       video.playbackRate = 16;
       video.muted = true;
     }
