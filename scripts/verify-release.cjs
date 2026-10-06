@@ -15,7 +15,11 @@ if (mode === 'stage') {
   fs.mkdirSync(destination, { recursive: true });
   for (const file of fs.readdirSync(directory)) {
     if (extensions.test(file) && !file.startsWith('builder-') && fs.statSync(path.join(directory, file)).isFile()) {
-      fs.copyFileSync(path.join(directory, file), path.join(destination, file));
+      // GitHub update metadata uses electron-builder's safeArtifactName.
+      const safeName = file.replace(/ /g, '-');
+      const target = path.join(destination, safeName);
+      if (fs.existsSync(target)) fail(`Asset name collision: ${safeName}`);
+      fs.copyFileSync(path.join(directory, file), target);
     }
   }
 } else if (mode === 'verify') {
@@ -35,6 +39,7 @@ if (mode === 'stage') {
     `youtube-music_${version}_amd64.snap`, `youtube-music_${version}_arm64.deb`,
     `youtube-music_${version}_armv7l.deb`,
     `YouTube-Music-${version}-mac.zip`, `YouTube-Music-${version}-arm64-mac.zip`,
+    `YouTube-Music-${version}-mac.zip.blockmap`, `YouTube-Music-${version}-arm64-mac.zip.blockmap`,
   ];
   for (const file of expected) {
     const full = path.join(directory, file);
