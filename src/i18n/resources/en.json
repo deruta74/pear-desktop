@@ -380,8 +380,10 @@
       "name": "Blur Navigation Bar"
     },
     "bypass-age-restrictions": {
+      "compatibility-notice": "Experimental: current YouTube changes can prevent unlocking, and the legacy proxy may be unavailable. Sign-in may still be required.",
       "description": "Bypass Music Player's age verification",
-      "name": "Bypass Age Restrictions"
+      "name": "Bypass Age Restrictions",
+      "proxy-notice": "When needed, sends video identifiers and playback requests to youtube-proxy.zerody.one and ny.4everproxy.com. Google account credentials are excluded."
     },
     "captions-selector": {
       "description": "Caption selector for {{applicationName}} audio tracks",
@@ -997,6 +999,17 @@
         "visualizer-type": "Visualizer Type"
       },
       "name": "Visualizer"
+    },
+    "adblocker": {
+      "applied": "No pending page changes",
+      "apply-document": "Apply page changes and reload; recommendations may refresh",
+      "apply-notice": "Network blocking updates without a reload. Playback is preserved where possible; pending page changes can be applied manually.",
+      "description": "Block all ads and tracking out of the box",
+      "menu": {
+        "blocker": "Blocker"
+      },
+      "name": "Ad Blocker",
+      "reload-notice": "Changes to With blocklists reload the player page and may interrupt playback."
     }
   }
 }

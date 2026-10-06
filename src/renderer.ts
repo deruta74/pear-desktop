@@ -69,28 +69,72 @@ async function onApiLoaded() {
     );
 
   window.ipcRenderer.on('peard:previous-video', () => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     document
       .querySelector<HTMLElement>('.previous-button.ytmusic-player-bar')
       ?.click();
   });
   window.ipcRenderer.on('peard:next-video', () => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     document
       .querySelector<HTMLElement>('.next-button.ytmusic-player-bar')
       ?.click();
   });
   window.ipcRenderer.on('peard:play', (_) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     api?.playVideo();
   });
   window.ipcRenderer.on('peard:pause', (_) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     api?.pauseVideo();
   });
   window.ipcRenderer.on('peard:toggle-play', (_) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     if (api?.getPlayerState() === 2) api?.playVideo();
     else api?.pauseVideo();
   });
-  window.ipcRenderer.on('peard:seek-to', (_, t: number) => api!.seekTo(t));
-  window.ipcRenderer.on('peard:seek-by', (_, t: number) => api!.seekBy(t));
+  window.ipcRenderer.on('peard:seek-to', (_, t: number) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
+    api!.seekTo(t);
+  });
+  window.ipcRenderer.on('peard:seek-by', (_, t: number) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
+    api!.seekBy(t);
+  });
   window.ipcRenderer.on('peard:shuffle', () => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     document
       .querySelector<HTMLElement & { queue: { shuffle: () => void } }>(
         'ytmusic-player-bar',
@@ -122,6 +166,11 @@ async function onApiLoaded() {
     },
   );
   window.ipcRenderer.on('peard:switch-repeat', (_, repeat = 1) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     for (let i = 0; i < repeat; i++) {
       document
         .querySelector<HTMLElement & { onRepeatButtonClick: () => void }>(
@@ -131,6 +180,11 @@ async function onApiLoaded() {
     }
   });
   window.ipcRenderer.on('peard:update-volume', (_, volume: number) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     document
       .querySelector<HTMLElement & { updateVolume: (volume: number) => void }>(
         'ytmusic-player-bar',
@@ -172,6 +226,11 @@ async function onApiLoaded() {
   );
 
   window.ipcRenderer.on('peard:toggle-mute', (_) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     document
       .querySelector<HTMLElement & { onVolumeClick: () => void }>(
         'ytmusic-player-bar',
@@ -191,6 +250,11 @@ async function onApiLoaded() {
   window.ipcRenderer.on(
     'peard:add-to-queue',
     (_, videoId: string, queueInsertPosition: string) => {
+      (
+        window as unknown as {
+          blockerSceneGuard?: { cancelFromUser: () => void };
+        }
+      ).blockerSceneGuard?.cancelFromUser();
       const queue = document.querySelector<QueueElement>('#queue');
       const app = document.querySelector<MusicPlayerAppElement>('ytmusic-app');
       if (!app) return;
@@ -246,6 +310,11 @@ async function onApiLoaded() {
   window.ipcRenderer.on(
     'peard:move-in-queue',
     (_, fromIndex: number, toIndex: number) => {
+      (
+        window as unknown as {
+          blockerSceneGuard?: { cancelFromUser: () => void };
+        }
+      ).blockerSceneGuard?.cancelFromUser();
       const queue = document.querySelector<QueueElement>('#queue');
       queue?.dispatch({
         type: 'MOVE_ITEM',
@@ -257,6 +326,11 @@ async function onApiLoaded() {
     },
   );
   window.ipcRenderer.on('peard:remove-from-queue', (_, index: number) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     const queue = document.querySelector<QueueElement>('#queue');
     queue?.dispatch({
       type: 'REMOVE_ITEM',
@@ -264,6 +338,11 @@ async function onApiLoaded() {
     });
   });
   window.ipcRenderer.on('peard:set-queue-index', (_, index: number) => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     const queue = document.querySelector<QueueElement>('#queue');
     queue?.dispatch({
       type: 'SET_INDEX',
@@ -271,6 +350,11 @@ async function onApiLoaded() {
     });
   });
   window.ipcRenderer.on('peard:clear-queue', () => {
+    (
+      window as unknown as {
+        blockerSceneGuard?: { cancelFromUser: () => void };
+      }
+    ).blockerSceneGuard?.cancelFromUser();
     const queue = document.querySelector<QueueElement>('#queue');
     queue?.queue.store.store.dispatch({
       type: 'SET_PLAYER_PAGE_INFO',
@@ -358,7 +442,15 @@ async function onApiLoaded() {
 
   // Navigate to "Starting page"
   const startingPage: string = window.mainConfig.get('options.startingPage');
-  if (startingPage && startingPages[startingPage]) {
+  if (
+    startingPage &&
+    startingPages[startingPage] &&
+    !(
+      window as unknown as {
+        blockerSceneGuard?: { restorationDocument: () => boolean };
+      }
+    ).blockerSceneGuard?.restorationDocument()
+  ) {
     document
       .querySelector<MusicPlayerAppElement>('ytmusic-app')
       ?.navigate(startingPages[startingPage]);

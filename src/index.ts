@@ -42,6 +42,7 @@ import musicPlayerCss from '@/music-player.css?inline';
 import { defaultAuthProxyConfig } from '@/plugins/auth-proxy-adapter/config';
 import { fileExists, injectCSS, injectCSSAsFile } from '@/plugins/utils/main';
 import { restart, setupAppControls } from '@/providers/app-controls';
+import { installBlockerSceneBridge } from '@/providers/blocker-scene-main';
 import {
   APP_PROTOCOL,
   handleProtocol,
@@ -63,6 +64,8 @@ unhandled({
 // Prevent window being garbage collected
 let mainWindow: Electron.BrowserWindow | null;
 electronUpdater.autoUpdater.autoDownload = false;
+
+installBlockerSceneBridge();
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
