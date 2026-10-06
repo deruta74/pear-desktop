@@ -13,13 +13,16 @@ const extensions = /\.(AppImage|dmg|blockmap|freebsd|7z|gz|flatpak|rpm|exe|deb|s
 
 if (mode === 'stage') {
   fs.mkdirSync(destination, { recursive: true });
-  for (const file of fs.readdirSync(directory)) {
-    if (extensions.test(file) && !file.startsWith('builder-') && fs.statSync(path.join(directory, file)).isFile()) {
+  // Newer electron-builder versions place NSIS web output in its own folder.
+  // Never recurse into unpacked app directories.
+  const folders = [directory, path.join(directory, 'nsis-web')].filter(folder => fs.existsSync(folder));
+  for (const folder of folders) for (const file of fs.readdirSync(folder)) {
+    if (extensions.test(file) && !file.startsWith('builder-') && fs.lstatSync(path.join(folder, file)).isFile()) {
       // GitHub update metadata uses electron-builder's safeArtifactName.
       const safeName = file.replace(/ /g, '-');
       const target = path.join(destination, safeName);
       if (fs.existsSync(target)) fail(`Asset name collision: ${safeName}`);
-      fs.copyFileSync(path.join(directory, file), target);
+      fs.copyFileSync(path.join(folder, file), target);
     }
   }
 } else if (mode === 'verify') {

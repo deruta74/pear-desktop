@@ -59,6 +59,25 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         shell: bash
         run: pnpm exec electron-builder --"$PLATFORM" -p never -c.snap.publish=github
+      - name: Flatten NSIS web output for tagged helpers
+        # Compatibility with signed tags whose helper only scans pack's root.
+        # Move only NSIS web's regular output files; never unpacked app files.
+        # A future tag with the updated helper also works after this move.
+        if: matrix.platform == 'win'
+        shell: bash
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const directory = path.join('pack', 'nsis-web');
+          if (fs.existsSync(directory)) for (const name of fs.readdirSync(directory)) {
+            const source = path.join(directory, name);
+            if (!fs.lstatSync(source).isFile()) continue;
+            const destination = path.join('pack', name);
+            if (fs.existsSync(destination)) throw new Error(`NSIS output collision: ${name}`);
+            fs.renameSync(source, destination);
+          }
+          JS
       - name: Stage distributables only
         run: node scripts/verify-release.cjs stage pack release-assets
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
