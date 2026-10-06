@@ -9,6 +9,46 @@ import { promisify } from 'node:util';
 const executeFile = promisify(execFile);
 const require = createRequire(import.meta.url);
 
+/**
+ * @param {string} command
+ * @param {string[]} args
+ * @param {number} timeout
+ */
+export async function runNativePidQuery(command, args, timeout = 5000) {
+  const started = performance.now();
+  try {
+    return await executeFile(command, args, {
+      timeout,
+      maxBuffer: 64 * 1024,
+      windowsHide: true,
+    });
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    const value = 'code' in error ? error.code : undefined;
+    const code =
+      value === null
+        ? 'null'
+        : typeof value === 'number' && Number.isSafeInteger(value)
+          ? String(value)
+          : typeof value === 'string' && /^[A-Z0-9_]{1,32}$/.test(value)
+            ? value
+            : 'unknown';
+    const killed = 'killed' in error && error.killed === true;
+    const signalValue = 'signal' in error ? error.signal : undefined;
+    const signal =
+      signalValue === null
+        ? 'null'
+        : typeof signalValue === 'string' &&
+            /^SIG[A-Z0-9]{1,16}$/.test(signalValue)
+          ? signalValue
+          : 'unknown';
+    throw new Error(
+      `Native Electron PID query failed: code=${code} killed=${killed} signal=${signal} elapsedMs=${Math.round(performance.now() - started)} timeoutMs=${timeout}`,
+      { cause: error },
+    );
+  }
+}
+
 /** @typedef {{ pid: number, userData: string, visibleWindow: boolean }} StartupFacts */
 
 /** @param {import('node:child_process').ChildProcess} child */
@@ -71,7 +111,7 @@ export async function nativeStartupPid(child) {
   if (process.platform === 'win32') {
     // Playwright 1.61 launches through cmd.exe on Windows. Query its direct
     // children independently of observer facts; never fall back to a claimed PID.
-    const { stdout } = await executeFile(
+    const { stdout } = await runNativePidQuery(
       'powershell.exe',
       [
         '-NoProfile',
@@ -79,7 +119,7 @@ export async function nativeStartupPid(child) {
         '-Command',
         `Get-CimInstance Win32_Process -Filter 'ParentProcessId = ${launcherPid}' | Select-Object ProcessId, ExecutablePath | ConvertTo-Json -Compress`,
       ],
-      { timeout: 5000, maxBuffer: 64 * 1024, windowsHide: true },
+      5000,
     );
     const records = /** @type {unknown} */ (
       stdout.trim() ? JSON.parse(stdout) : []

@@ -4,6 +4,40 @@ import { test, expect } from '@playwright/test';
 
 import * as startup from './helpers/electron-startup.js';
 
+test('quiet native query timeout retains killed, signal and deadline metadata in its message', async () => {
+  expect(typeof startup.runNativePidQuery).toBe('function');
+  await expect(
+    startup.runNativePidQuery(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      100,
+    ),
+  ).rejects.toThrow(
+    /code=null.*killed=true.*signal=SIGTERM.*elapsedMs=\d+.*timeoutMs=100/,
+  );
+});
+
+test('quiet native query nonzero exit remains distinct from a timeout', async () => {
+  expect(typeof startup.runNativePidQuery).toBe('function');
+  await expect(
+    startup.runNativePidQuery(
+      process.execPath,
+      ['-e', 'process.exit(7)'],
+      1000,
+    ),
+  ).rejects.toThrow(/code=7.*killed=false.*signal=null.*timeoutMs=1000/);
+});
+
+test('successful native query preserves its exact output', async () => {
+  expect(typeof startup.runNativePidQuery).toBe('function');
+  const result = await startup.runNativePidQuery(
+    process.execPath,
+    ['-e', "process.stdout.write('[]')"],
+    1000,
+  );
+  expect(result.stdout).toBe('[]');
+});
+
 test('native identity selects the actual executable from independently queried launcher children', async () => {
   expect(typeof startup.selectNativeStartupPid).toBe('function');
   expect(
