@@ -11,6 +11,9 @@
         "unload-failed": "Failed to unload plugin \"{{pluginName}}\"",
         "unloaded": "Plugin \"{{pluginName}}\" unloaded"
       }
+    },
+    "player-panel": {
+      "cog-label": "Player Actions"
     }
   },
   "language": {
@@ -1014,6 +1017,41 @@
       },
       "name": "Ad Blocker",
       "reload-notice": "Changes to With blocklists reload the player page and may interrupt playback."
+    },
+    "player-actions": {
+      "description": "Slowed + Reverb and section looping in one panel.",
+      "name": "Player Actions"
+    },
+    "slowed-reverb": {
+      "panel": {
+        "active": "Active",
+        "reset": "Reset",
+        "reverb": "Reverb",
+        "speed": "Speed",
+        "title": "Slowed + Reverb"
+      }
+    },
+    "section-repeat": {
+      "panel": {
+        "active": "Repeat",
+        "clear": "Clear",
+        "from": "From",
+        "now": "Now",
+        "save": "Save",
+        "set-from-now": "Set From to the current time",
+        "set-to-now": "Set To to the current time",
+        "status-invalid": "From must be earlier than To",
+        "status-loop": "Looping {{start}} → {{end}}",
+        "status-need-start": "Set a From or To time to start looping",
+        "status-off": "Repeat is off",
+        "status-saved": "Saved for this song",
+        "status-save-failed": "Could not save this section. Try again.",
+        "status-saved-removed": "Saved section removed",
+        "status-to-end": "Looping {{start}} → end of song",
+        "title": "Section Repeat",
+        "to": "To",
+        "to-placeholder": "end of song"
+      }
     }
   }
 }
