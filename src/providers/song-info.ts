@@ -181,15 +181,41 @@ export type SongInfoCallback = (
   event: SongInfoEvent,
 ) => void;
 const callbacks: Set<SongInfoCallback> = new Set();
+let readCurrentSongInfo: (() => SongInfo | null) | undefined;
 
 // This function will allow plugins to register callback that will be triggered when data changes
-export const registerCallback = (callback: SongInfoCallback) => {
+export const registerCallback = (
+  callback: SongInfoCallback,
+  { replayCurrent = false }: { replayCurrent?: boolean } = {},
+): (() => void) => {
+  const alreadyRegistered = callbacks.has(callback);
   callbacks.add(callback);
+  try {
+    if (replayCurrent) {
+      const current = readCurrentSongInfo?.();
+      if (current) callback(current, SongInfoEvent.VideoSrcChanged);
+    }
+  } catch (error) {
+    if (!alreadyRegistered) callbacks.delete(callback);
+    throw error;
+  }
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    callbacks.delete(callback);
+  };
 };
 
 const registerProvider = (win: BrowserWindow) => {
   const dataMutex = new Mutex();
   let songInfo: SongInfo | null = null;
+  // Read the existing provider cache, rather than maintaining a second song.
+  const readSongInfo = () => (win.isDestroyed() ? null : songInfo);
+  readCurrentSongInfo = readSongInfo;
+  win.once('closed', () => {
+    if (readCurrentSongInfo === readSongInfo) readCurrentSongInfo = undefined;
+  });
 
   // This will be called when the song-info-front finds a new request with song data
   ipcMain.on('peard:video-src-changed', async (_, data: GetPlayerResponse) => {
