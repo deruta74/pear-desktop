@@ -7,6 +7,7 @@ import {
 import is from 'electron-is';
 
 import { loadI18n, setLanguage } from '@/i18n';
+import { installBlockerSceneGuard } from '@/providers/blocker-scene-preload';
 
 import * as config from './config';
 import {
@@ -17,6 +18,7 @@ import {
 
 // @ts-expect-error dummy
 globalThis.customElements = { define() {} };
+installBlockerSceneGuard();
 
 new MutationObserver((mutations, observer) => {
   for (const mutation of mutations) {
@@ -52,29 +54,34 @@ ipcRenderer.on('plugin:enable', async (_, id: string) => {
 
 contextBridge.exposeInMainWorld('mainConfig', config);
 contextBridge.exposeInMainWorld('electronIs', is);
+const pageIpcChannel = (channel: string): string => {
+  if (typeof channel !== 'string' || channel.startsWith('peard:blocker-scene-'))
+    throw new Error('Reserved internal IPC channel');
+  return channel;
+};
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on: (
     channel: string,
     listener: (event: IpcRendererEvent, ...args: unknown[]) => void,
-  ) => ipcRenderer.on(channel, listener),
+  ) => ipcRenderer.on(pageIpcChannel(channel), listener),
   off: (channel: string, listener: (...args: unknown[]) => void) =>
-    ipcRenderer.off(channel, listener),
+    ipcRenderer.off(pageIpcChannel(channel), listener),
   once: (
     channel: string,
     listener: (event: IpcRendererEvent, ...args: unknown[]) => void,
-  ) => ipcRenderer.once(channel, listener),
+  ) => ipcRenderer.once(pageIpcChannel(channel), listener),
   send: (channel: string, ...args: unknown[]) =>
-    ipcRenderer.send(channel, ...args),
+    ipcRenderer.send(pageIpcChannel(channel), ...args),
   removeListener: (channel: string, listener: (...args: unknown[]) => void) =>
-    ipcRenderer.removeListener(channel, listener),
+    ipcRenderer.removeListener(pageIpcChannel(channel), listener),
   removeAllListeners: (channel: string) =>
-    ipcRenderer.removeAllListeners(channel),
+    ipcRenderer.removeAllListeners(pageIpcChannel(channel)),
   invoke: async (channel: string, ...args: unknown[]): Promise<unknown> =>
-    ipcRenderer.invoke(channel, ...args),
+    ipcRenderer.invoke(pageIpcChannel(channel), ...args),
   sendSync: (channel: string, ...args: unknown[]): unknown =>
-    ipcRenderer.sendSync(channel, ...args),
+    ipcRenderer.sendSync(pageIpcChannel(channel), ...args),
   sendToHost: (channel: string, ...args: unknown[]) =>
-    ipcRenderer.sendToHost(channel, ...args),
+    ipcRenderer.sendToHost(pageIpcChannel(channel), ...args),
 });
 contextBridge.exposeInMainWorld('reload', () =>
   ipcRenderer.send('peard:reload'),

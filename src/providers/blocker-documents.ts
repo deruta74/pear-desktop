@@ -4,6 +4,19 @@ interface DocumentBinding {
 
 const documents = new WeakMap<Electron.Session, Map<string, DocumentBinding>>();
 const pending = new WeakMap<Electron.Session, Set<Electron.WebContents>>();
+const versions = new WeakMap<Electron.WebContents, number>();
+let sceneApply:
+  | ((contents: Electron.WebContents, valid: () => boolean) => void)
+  | undefined;
+let sceneCancel: ((contents: Electron.WebContents) => void) | undefined;
+
+export const installBlockerDocumentSceneAdapter = (
+  apply: (contents: Electron.WebContents, valid: () => boolean) => void,
+  cancel: (contents: Electron.WebContents) => void,
+): void => {
+  sceneApply = apply;
+  sceneCancel = cancel;
+};
 
 /** Bind only windows explicitly supplied by the application's plugin backend. */
 export const setBlockerDocument = (
@@ -17,6 +30,13 @@ export const setBlockerDocument = (
     return () => {};
   }
   // A new binding is a distinct lease even when WebContents is reused.
+  const previous = entries.get(owner)?.contents;
+  if (previous && previous !== contents) {
+    versions.set(previous, (versions.get(previous) ?? 0) + 1);
+    sceneCancel?.(previous);
+  }
+  versions.set(contents, (versions.get(contents) ?? 0) + 1);
+  sceneCancel?.(contents);
   const binding = { contents };
   entries.set(owner, binding);
   documents.set(session, entries);
@@ -47,7 +67,16 @@ export const reloadBlockerDocuments = (session: Electron.Session): void => {
       const url = contents.getURL();
       if (!url || url === 'about:blank' || url.startsWith('devtools://'))
         continue;
-      contents.reload();
+      const version = versions.get(contents);
+      if (sceneApply)
+        sceneApply(
+          contents,
+          () =>
+            versions.get(contents) === version &&
+            !contents.isDestroyed() &&
+            contents.session === session,
+        );
+      else contents.reload();
     }
   });
 };

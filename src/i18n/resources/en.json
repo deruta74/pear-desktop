@@ -1001,6 +1001,9 @@
       "name": "Visualizer"
     },
     "adblocker": {
+      "applied": "No pending page changes",
+      "apply-document": "Apply page changes and reload; recommendations may refresh",
+      "apply-notice": "Network blocking updates without a reload. Playback is preserved where possible; pending page changes can be applied manually.",
       "description": "Block all ads and tracking out of the box",
       "menu": {
         "blocker": "Blocker"

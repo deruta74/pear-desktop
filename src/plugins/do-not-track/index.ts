@@ -4,6 +4,12 @@ import * as z from 'zod';
 import { t } from '@/i18n';
 import { createBlockerBackend } from '@/providers/blocker-backend';
 import { createBlockerPreload } from '@/providers/blocker-preload';
+import {
+  applyPendingBlockerDocument,
+  getBlockerDocumentStatus,
+  isBlockerDocumentApplying,
+  setBlockerDocumentMenuRefresh,
+} from '@/providers/blocker-scene-main';
 import { createPlugin } from '@/utils';
 
 import { blockers } from './types';
@@ -13,9 +19,9 @@ import type { AdblockerConfig } from '@/plugins/adblocker/types';
 export type TrackerBlockerConfig = AdblockerConfig;
 
 const reloadNotice = () =>
-  t('plugins.adblocker.reload-notice', {
+  t('plugins.adblocker.apply-notice', {
     defaultValue:
-      'Changes to With blocklists reload the player page and may interrupt playback.',
+      'Network filters apply immediately. Supported playback is preserved automatically; unsupported scenes show pending document changes.',
   });
 
 const defaultLists = async (): Promise<string[]> => {
@@ -40,8 +46,10 @@ export default createPlugin({
     additionalBlockLists: [],
     disableDefaultLists: false,
   } as TrackerBlockerConfig,
-  menu: async ({ getConfig, setConfig }) => {
+  menu: async ({ getConfig, setConfig, window, refresh }) => {
     const config = await getConfig();
+    setBlockerDocumentMenuRefresh(window.webContents, 'do-not-track', refresh);
+    const status = getBlockerDocumentStatus(window.webContents);
     return [
       {
         label: t('plugins.do-not-track.menu.blocker'),
@@ -56,6 +64,29 @@ export default createPlugin({
           })),
           { type: 'separator' as const },
           { label: reloadNotice(), enabled: false },
+          {
+            label:
+              status.reason ??
+              t('plugins.adblocker.applied', {
+                defaultValue: 'Document effects are applied',
+              }),
+            enabled: false,
+          },
+          {
+            label: t('plugins.adblocker.apply-document', {
+              defaultValue:
+                'Apply document changes — reload; generated recommendations can refresh',
+            }),
+            enabled:
+              !isBlockerDocumentApplying(window.webContents) &&
+              (status.kind === 'pending' ||
+                status.kind === 'failed' ||
+                status.kind === 'cancelled'),
+            click: async () => {
+              await applyPendingBlockerDocument(window.webContents);
+              await refresh();
+            },
+          },
         ],
       },
     ];

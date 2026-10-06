@@ -7,6 +7,7 @@ import { app, net } from 'electron';
 
 import { reloadBlockerDocuments } from './blocker-documents';
 import { createOwnedBlocker } from './blocker-ownership';
+import { installBlockerSceneBridge } from './blocker-scene-main';
 import { scopeBlockingSession } from './blocker-scoped-session';
 
 const sessions = new WeakMap<
@@ -14,6 +15,7 @@ const sessions = new WeakMap<
   ReturnType<typeof createOwnedBlocker>
 >();
 const cachePreferences = new WeakMap<Electron.Session, Map<string, boolean>>();
+installBlockerSceneBridge();
 
 export const setSessionBlockLists = async (
   session: Electron.Session,
