@@ -12,7 +12,7 @@ async function fixture(page: Page, interpolationTime = 1000, buffer = 2) {
   await page.setContent(
     '<div id="layout" player-page-open></div><div id="player-page"></div><div id="song-video"><div class="player-wrapper"><div class="html5-video-container"><video width="4" height="4"></video></div></div></div>',
   );
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as any;
     let serial = 0;
     w.timers = new Map();
@@ -34,13 +34,25 @@ async function fixture(page: Page, interpolationTime = 1000, buffer = 2) {
     };
     w.cancelAnimationFrame = (id: number) => w.frames.delete(id);
     w.nativeRead = CanvasRenderingContext2D.prototype.getImageData;
-    w.source = document.createElement('canvas');
-    w.source.width = 4;
-    w.source.height = 4;
+    // Immutable raster inputs avoid startup context loss in an off-DOM source
+    // canvas. The production target still blends through its native 2D context.
+    w.sourceFrames = new Map<string, ImageBitmap>();
+    for (const [color, rgba] of [
+      ['rgb(255,0,0)', [255, 0, 0, 255]],
+      ['rgb(0,0,255)', [0, 0, 255, 255]],
+      ['rgb(0,255,0)', [0, 255, 0, 255]],
+    ] as const) {
+      const pixels = new Uint8ClampedArray(
+        Array.from({ length: 16 }, () => [...rgba]).flat(),
+      );
+      w.sourceFrames.set(
+        color,
+        await createImageBitmap(new ImageData(pixels, 4, 4)),
+      );
+    }
     w.color = (color: string) => {
-      const ctx = w.source.getContext('2d');
-      ctx.fillStyle = color;
-      ctx.fillRect(0, 0, 4, 4);
+      w.source = w.sourceFrames.get(color);
+      if (!w.source) throw new Error(`Unknown fixture frame: ${color}`);
     };
     w.color('rgb(255,0,0)');
     const nativeDraw = CanvasRenderingContext2D.prototype.drawImage;
