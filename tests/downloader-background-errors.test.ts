@@ -19,7 +19,15 @@ const requireRoot = createRequire(path.join(root, 'package.json'));
 const requireVite = createRequire(requireRoot.resolve('vite'));
 const url = 'https://music.youtube.com/watch?v=fixture-download';
 
-async function fixture() {
+function expectBadgeCleanup(badges: number[], platform = process.platform) {
+  if (platform === 'darwin' || platform === 'linux')
+    expect(badges.at(-1)).toBe(0);
+  else expect(badges).toEqual([]);
+}
+
+async function fixture({
+  badgePlatform,
+}: { badgePlatform?: NodeJS.Platform } = {}) {
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pear-download-error-test-'),
   );
@@ -69,6 +77,8 @@ export const Innertube={create:async()=>({session:{context:{client:{}}},music:{g
       {
         name: 'controlled-download-native-boundaries',
         async resolveId(id: string) {
+          if (id === 'electron-is' && badgePlatform)
+            return '\0fixture-platform';
           if (id === 'filenamify') return '\0fixture-filenamify';
           if (id === 'electron') return '\0fixture-native';
           if (id === 'youtubei.js') return '\0fixture-youtube';
@@ -98,6 +108,8 @@ export const Innertube={create:async()=>({session:{context:{client:{}}},music:{g
             };
         },
         load(id: string) {
+          if (id === '\0fixture-platform')
+            return `const platform=${JSON.stringify(badgePlatform)};export default {linux:()=>platform==='linux',macOS:()=>platform==='darwin'};`;
           if (
             id === downloader &&
             process.env.PEAR_DOWNLOADER_ERROR_BASELINE === '1'
@@ -205,7 +217,7 @@ test('focused explicit failure retains detailed dialog and clears progress/badge
     });
     expect(f.state.notifications).toEqual([]);
     expect(f.state.progress.at(-1)).toBe(-1);
-    expect(f.state.badges.at(-1)).toBe(0);
+    expectBadgeCleanup(f.state.badges);
     expect(f.state.focus).toEqual([]);
   } finally {
     await f.close();
@@ -260,7 +272,7 @@ for (const mode of [
       expect(f.state.focus).toEqual([]);
       expect(f.feedback()).toContain('fixture media failed');
       expect(f.state.progress.at(-1)).toBe(-1);
-      expect(f.state.badges.at(-1)).toBe(0);
+      expectBadgeCleanup(f.state.badges);
       if (mode === 'unsupported') expect(f.state.notifications).toEqual([]);
     } finally {
       await f.close();
@@ -280,7 +292,7 @@ test('failure after window destruction logs and cleans the global badge without 
     expect(f.state.deadCalls).toEqual([]);
     expect(f.state.dialogs).toEqual([]);
     expect(f.state.notifications).toEqual([]);
-    expect(f.state.badges.at(-1)).toBe(0);
+    expectBadgeCleanup(f.state.badges);
     expect(f.state.logs.join('\n')).toContain('fixture cause');
   } finally {
     await f.close();
@@ -421,7 +433,7 @@ test('foreground dialog rejection retains readable fallback without another moda
     expect(f.state.notifications).toEqual([]);
     expect(f.state.focus).toEqual([]);
     expect(f.state.progress.at(-1)).toBe(-1);
-    expect(f.state.badges.at(-1)).toBe(0);
+    expectBadgeCleanup(f.state.badges);
   } finally {
     await f.close();
   }
@@ -436,7 +448,7 @@ for (const rejection of ['fixture scalar failure', null]) {
       await expect(f.source.downloadSong(url)).resolves.toBeUndefined();
       expect(f.feedback()).toContain(String(rejection));
       expect(f.state.progress.at(-1)).toBe(-1);
-      expect(f.state.badges.at(-1)).toBe(0);
+      expectBadgeCleanup(f.state.badges);
       expect(f.state.dialogs).toEqual([]);
       expect(f.state.focus).toEqual([]);
     } finally {
@@ -514,5 +526,21 @@ test('a new standalone ID download clears a previous operation error', async () 
     expect(f.feedback()).not.toContain('previous operation failed');
   } finally {
     await f.close();
+  }
+});
+
+test('badge cleanup follows macOS, Linux and Windows platform support', async () => {
+  for (const badgePlatform of ['darwin', 'linux', 'win32'] as const) {
+    const f = await fixture({ badgePlatform });
+    try {
+      await f.source.downloadSong(url);
+      expectBadgeCleanup(f.state.badges, badgePlatform);
+      expect(f.state.progress.at(-1)).toBe(-1);
+      expect(f.state.dialogs).toEqual([]);
+      expect(f.state.focus).toEqual([]);
+      expect(f.feedback()).toContain('fixture media failed');
+    } finally {
+      await f.close();
+    }
   }
 });
