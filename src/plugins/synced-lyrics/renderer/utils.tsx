@@ -6,7 +6,6 @@ import { translate as translateHanja } from 'hanja/lib/translate.js';
 import Kuroshiro from 'kuroshiro';
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji';
 import lazyVar from 'lazy-var';
-import { pinyin } from 'pinyin-pro';
 import { render } from 'solid-js/web';
 import { detect } from 'tinyld';
 
@@ -187,7 +186,8 @@ export const romanizeJapanese = async (line: string) =>
 export const romanizeHangul = (line: string) =>
   esHangulRomanize(translateHanja(line, 'SUBSTITUTION'));
 
-export const romanizeChinese = (line: string) => {
+export const romanizeChinese = async (line: string) => {
+  const { pinyin } = await import('pinyin-pro');
   return line.replaceAll(/[\u4E00-\u9FFF]+/g, (match) => {
     return pinyin(match, { separator: ' ' });
   });
@@ -255,7 +255,7 @@ export const romanize = async (line: string) => {
   // fallback
   if (hasJapanese([line])) line = await romanizeJapanese(line);
   if (hasKorean([line])) line = romanizeHangul(line);
-  if (hasChinese([line])) line = romanizeChinese(line);
+  if (hasChinese([line])) line = await romanizeChinese(line);
   if (hasThai([line])) line = romanizeThai(line);
   if (hasBengali([line])) line = romanizeBengali(line);
   if (hasHindi([line])) line = romanizeHindi(line);
