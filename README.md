@@ -160,6 +160,7 @@ pnpm start
 pnpm lint
 pnpm typecheck
 pnpm format:check
+pnpm exec playwright install --with-deps chromium
 pnpm test
 ```
 

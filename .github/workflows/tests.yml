@@ -1,0 +1,50 @@
+name: Regression tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        with:
+          version: 11
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install test browser and OS libraries
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install virtual display
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y xvfb
+      - run: pnpm build
+      - name: Run Linux tests in a virtual display
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test
+      - name: Run macOS and Windows tests
+        if: runner.os != 'Linux'
+        run: pnpm test
+      - name: Release staging tests
+        run: node --test scripts/verify-release.test.cjs
