@@ -2,7 +2,7 @@ import { romanize as romanizeThaiFrag } from '@dehoist/romanize-thai';
 import Sanscript from '@indic-transliteration/sanscript';
 import { sify, tify } from 'chinese-conv';
 import { romanize as esHangulRomanize } from 'es-hangul';
-import hanja from 'hanja';
+import { translate as translateHanja } from 'hanja/lib/translate.js';
 import Kuroshiro from 'kuroshiro';
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji';
 import lazyVar from 'lazy-var';
@@ -185,7 +185,7 @@ export const romanizeJapanese = async (line: string) =>
   }) ?? line;
 
 export const romanizeHangul = (line: string) =>
-  esHangulRomanize(hanja.translate(line, 'SUBSTITUTION'));
+  esHangulRomanize(translateHanja(line, 'SUBSTITUTION'));
 
 export const romanizeChinese = (line: string) => {
   return line.replaceAll(/[\u4E00-\u9FFF]+/g, (match) => {
