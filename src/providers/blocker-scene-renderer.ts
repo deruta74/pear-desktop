@@ -304,6 +304,8 @@ export async function blockerSceneRenderer(
       scene.seconds,
       Math.max(0, media()!.duration - 0.05),
     );
+    // Stop autoplay's clock before the seek-settlement wait can advance it.
+    media()!.pause();
     if (player()?.seekTo) player()!.seekTo(target);
     else media()!.currentTime = target;
     await wait(
