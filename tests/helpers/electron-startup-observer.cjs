@@ -4,10 +4,9 @@ const {
   existsSync,
   renameSync,
   unlinkSync,
-  watch,
+  watchFile,
   writeFileSync,
 } = require('node:fs');
-const { basename, dirname } = require('node:path');
 
 const { app, BrowserWindow } = require('electron');
 
@@ -47,8 +46,8 @@ app.whenReady().then(() => capture());
 // A request after public page readiness samples current native state. Removing
 // it acknowledges that the atomic facts publication has completed.
 const requestPath = `${factsPath}.request`;
-watch(dirname(factsPath), (_event, filename) => {
-  if (String(filename) !== basename(requestPath) || !existsSync(requestPath))
-    return;
+// Poll the exact owned path: directory watch events can omit a filename.
+watchFile(requestPath, { interval: 20 }, () => {
+  if (!existsSync(requestPath)) return;
   if (capture(true)) unlinkSync(requestPath);
 });
