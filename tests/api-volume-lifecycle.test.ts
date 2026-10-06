@@ -211,7 +211,10 @@ test('late API enable reports the ready player snapshot before any subsequent ev
       f.source.fixtureState.sent
         .filter((x: unknown[]) => x[0]?.toString().startsWith('peard:setup-'))
         .map((x: unknown[]) => x[0]),
-    ).toEqual(['peard:setup-volume-changed-listener']);
+    ).toEqual([
+      'peard:setup-repeat-changed-listener',
+      'peard:setup-volume-changed-listener',
+    ]);
   } finally {
     await f.close();
   }
