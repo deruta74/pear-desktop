@@ -209,16 +209,18 @@ async function onApiLoaded() {
     }
   });
   window.ipcRenderer.on('peard:update-volume', (_, volume: number) => {
+    if (!api || !Number.isFinite(volume)) return;
+    const clampedVolume = Math.max(0, Math.min(100, volume));
     (
       window as unknown as {
         blockerSceneGuard?: { cancelFromUser: () => void };
       }
     ).blockerSceneGuard?.cancelFromUser();
-    document
-      .querySelector<HTMLElement & { updateVolume: (volume: number) => void }>(
-        'ytmusic-player-bar',
-      )
-      ?.updateVolume(volume);
+    api.setVolume(clampedVolume);
+    for (const selector of ['#volume-slider', '#expand-volume-slider']) {
+      const slider = document.querySelector<HTMLInputElement>(selector);
+      if (slider) slider.value = String(clampedVolume);
+    }
   });
 
   const isFullscreen = () => {

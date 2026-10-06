@@ -78,7 +78,7 @@ export const getSongControls = (win: BrowserWindow) => {
     setVolume: (volume: ArgsType<number>) => {
       const volumeNumber = parseNumberFromArgsType(volume);
       if (volumeNumber !== null) {
-        win.webContents.send('peard:update-volume', volume);
+        win.webContents.send('peard:update-volume', volumeNumber);
       }
     },
     setFullscreen: (isFullscreen: ArgsType<boolean>) => {
