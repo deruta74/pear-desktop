@@ -15,12 +15,13 @@ export default createPlugin({
   },
   renderer: {
     buttonContainer: document.createElement('div'),
+    dispose: null as (() => void) | null,
     start() {
       if (!this.buttonContainer) {
         this.buttonContainer = document.createElement('div');
       }
 
-      render(
+      this.dispose = render(
         () => (
           <>
             <mdui-tooltip
@@ -69,6 +70,9 @@ export default createPlugin({
       menu?.prepend(this.buttonContainer);
     },
     stop() {
+      this.dispose?.();
+      this.dispose = null;
+      this.buttonContainer.replaceChildren();
       this.buttonContainer.remove();
     },
   },

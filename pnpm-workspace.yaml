@@ -7,6 +7,7 @@ allowBuilds:
   unrs-resolver: true
   utf-8-validate: true
 overrides:
+  seroval: 1.6.3
   vite: 8.1.0
   node-gyp: 13.0.0
   xml2js: 0.6.2
