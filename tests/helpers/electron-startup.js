@@ -9,6 +9,73 @@ import { promisify } from 'node:util';
 const executeFile = promisify(execFile);
 const require = createRequire(import.meta.url);
 
+/**
+ * @param {string} command
+ * @param {string[]} args
+ * @param {number} timeout
+ * @param {{ launcher?: import('node:child_process').ChildProcess }} options
+ */
+export async function runNativePidQuery(
+  command,
+  args,
+  timeout = 10_000,
+  { launcher } = {},
+) {
+  if (launcher) assertRunning(launcher);
+  const started = performance.now();
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  launcher?.once('exit', abort);
+  const execution = executeFile(command, args, {
+    timeout,
+    maxBuffer: 64 * 1024,
+    windowsHide: true,
+    signal: controller.signal,
+  });
+  try {
+    const result = await execution;
+    if (launcher) assertRunning(launcher);
+    return result;
+  } catch (error) {
+    if (launcher) assertRunning(launcher);
+    if (!(error instanceof Error)) throw error;
+    const value = 'code' in error ? error.code : undefined;
+    const code =
+      value === null
+        ? 'null'
+        : typeof value === 'number' && Number.isSafeInteger(value)
+          ? String(value)
+          : typeof value === 'string' && /^[A-Z0-9_]{1,32}$/.test(value)
+            ? value
+            : 'unknown';
+    const killed = 'killed' in error && error.killed === true;
+    const signalValue = 'signal' in error ? error.signal : undefined;
+    const signal =
+      signalValue === null
+        ? 'null'
+        : typeof signalValue === 'string' &&
+            /^SIG[A-Z0-9]{1,16}$/.test(signalValue)
+          ? signalValue
+          : 'unknown';
+    throw new Error(
+      `Native Electron PID query failed: code=${code} killed=${killed} signal=${signal} elapsedMs=${Math.round(performance.now() - started)} timeoutMs=${timeout}`,
+      { cause: error },
+    );
+  } finally {
+    launcher?.off('exit', abort);
+    // Abort terminates the owned query; wait for its exit before yielding the
+    // launcher failure so a dead app cannot leave PowerShell running.
+    if (
+      controller.signal.aborted &&
+      execution.child.exitCode === null &&
+      execution.child.signalCode === null
+    )
+      await once(execution.child, 'exit', {
+        signal: AbortSignal.timeout(1000),
+      });
+  }
+}
+
 /** @typedef {{ pid: number, userData: string, visibleWindow: boolean }} StartupFacts */
 
 /** @param {import('node:child_process').ChildProcess} child */
@@ -71,7 +138,7 @@ export async function nativeStartupPid(child) {
   if (process.platform === 'win32') {
     // Playwright 1.61 launches through cmd.exe on Windows. Query its direct
     // children independently of observer facts; never fall back to a claimed PID.
-    const { stdout } = await executeFile(
+    const { stdout } = await runNativePidQuery(
       'powershell.exe',
       [
         '-NoProfile',
@@ -79,7 +146,8 @@ export async function nativeStartupPid(child) {
         '-Command',
         `Get-CimInstance Win32_Process -Filter 'ParentProcessId = ${launcherPid}' | Select-Object ProcessId, ExecutablePath | ConvertTo-Json -Compress`,
       ],
-      { timeout: 5000, maxBuffer: 64 * 1024, windowsHide: true },
+      10_000,
+      { launcher: child },
     );
     const records = /** @type {unknown} */ (
       stdout.trim() ? JSON.parse(stdout) : []
