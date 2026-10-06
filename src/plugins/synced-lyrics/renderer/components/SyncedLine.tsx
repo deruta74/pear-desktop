@@ -1,4 +1,11 @@
-import { createEffect, For, Show, createSignal, createMemo } from 'solid-js';
+import {
+  createEffect,
+  For,
+  Show,
+  createSignal,
+  createMemo,
+  onCleanup,
+} from 'solid-js';
 import { type VirtualizerHandle } from 'virtua/solid';
 
 import { type LineLyrics } from '@/plugins/synced-lyrics/types';
@@ -96,11 +103,20 @@ export const SyncedLine = (props: SyncedLineProps) => {
   const [romanization, setRomanization] = createSignal('');
   createEffect(() => {
     const input = canonicalize(text());
-    if (!config()?.romanization) return;
-
-    romanize(input).then((result) => {
-      setRomanization(canonicalize(result));
+    const enabled = config()?.romanization;
+    let active = true;
+    onCleanup(() => {
+      active = false;
     });
+    if (!enabled) return;
+
+    romanize(input)
+      .then((result) => {
+        if (active) setRomanization(canonicalize(result));
+      })
+      .catch(() => {
+        if (active) setRomanization(input);
+      });
   });
 
   return (
