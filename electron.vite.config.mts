@@ -112,6 +112,10 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     root: './src/',
+    json: {
+      namedExports: false,
+      stringify: true,
+    },
     build: {
       lib: {
         entry: 'src/index.html',
