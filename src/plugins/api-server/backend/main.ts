@@ -33,6 +33,7 @@ export const backend = createBackend<BackendType, APIServerConfig>({
     this.unsubscribeSongInfo?.();
     this.unsubscribeSongInfo = undefined;
     this.songInfo = undefined;
+    this.currentRepeatMode = undefined;
     const config = await ctx.getConfig();
     if (revision !== this.startRevision) return;
 
@@ -51,20 +52,23 @@ export const backend = createBackend<BackendType, APIServerConfig>({
       if (revision === this.startRevision)
         ctx.ipc.send('peard:setup-volume-changed-listener');
     };
+    ctx.ipc.on('peard:repeat-changed', (mode: RepeatMode) => {
+      if (revision === this.startRevision) this.currentRepeatMode = mode;
+    });
+    const setupRepeat = () => {
+      if (revision === this.startRevision)
+        ctx.ipc.send('peard:setup-repeat-changed-listener');
+    };
     ctx.ipc.on('peard:player-api-loaded', () => {
       ctx.ipc.send('peard:setup-seeked-listener');
       ctx.ipc.send('peard:setup-time-changed-listener');
-      ctx.ipc.send('peard:setup-repeat-changed-listener');
+      setupRepeat();
       ctx.ipc.send('peard:setup-like-changed-listener');
       setupVolume();
       ctx.ipc.send('peard:setup-shuffle-changed-listener');
     });
 
-    ctx.ipc.on(
-      'peard:repeat-changed',
-      (mode: RepeatMode) => (this.currentRepeatMode = mode),
-    );
-
+    setupRepeat();
     setupVolume();
     this.run(config);
   },

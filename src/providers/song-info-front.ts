@@ -49,37 +49,36 @@ export const setupTimeChangedListener = singleton(() => {
   }
 });
 
-export const setupRepeatChangedListener = singleton(() => {
-  const repeatObserver = new MutationObserver((mutations) => {
-    // provided by App
-    window.ipcRenderer.send(
-      'peard:repeat-changed',
-      (
-        mutations[0].target as Node & {
-          __dataHost: {
-            getState: () => GetState;
-          };
-        }
-      ).__dataHost.getState().queue.repeatMode,
-    );
-  });
-  repeatObserver.observe(document.querySelector('#right-controls .repeat')!, {
-    attributeFilter: ['title'],
-  });
+const getRepeatBar = () =>
+  document.querySelector<
+    HTMLElement & { getState?: () => GetState | null | undefined }
+  >('ytmusic-player-bar');
 
-  // Emit the initial value as well; as it's persistent between launches.
-  // provided by App
-  window.ipcRenderer.send(
-    'peard:repeat-changed',
-    document
-      .querySelector<
-        HTMLElement & {
-          getState: () => GetState;
-        }
-      >('ytmusic-player-bar')
-      ?.getState().queue.repeatMode,
-  );
-});
+const reportRepeat = () => {
+  const mode = getRepeatBar()?.getState?.()?.queue?.repeatMode;
+  if (mode === 'NONE' || mode === 'ONE' || mode === 'ALL')
+    window.ipcRenderer.send('peard:repeat-changed', mode);
+};
+
+let repeatObserver: MutationObserver | undefined;
+
+export const setupRepeatChangedListener = () => {
+  if (!repeatObserver) {
+    repeatObserver = new MutationObserver((mutations) => {
+      const control = getRepeatBar()?.querySelector('#right-controls .repeat');
+      if (control && mutations.some((mutation) => mutation.target === control))
+        reportRepeat();
+    });
+    // Only title attributes are observed; current-bar identity handles SPA
+    // replacement without child-list scanning or holding an old control.
+    repeatObserver.observe(document, {
+      attributes: true,
+      attributeFilter: ['title'],
+      subtree: true,
+    });
+  }
+  reportRepeat();
+};
 
 const mapLikeStatus = (status: string | null): LikeType =>
   Object.values(LikeType).includes(status as LikeType)
