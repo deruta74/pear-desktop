@@ -114,20 +114,32 @@ export const setupLikeChangedListener = singleton(() => {
   }
 });
 
-export const setupVolumeChangedListener = singleton((api: MusicPlayer) => {
-  document.querySelector('video')?.addEventListener('volumechange', () => {
-    window.ipcRenderer.send('peard:volume-changed', {
-      state: api.getVolume(),
-      isMuted: api.isMuted(),
-    });
-  });
+let volumeApi: MusicPlayer | undefined;
 
-  // Emit the initial value as well; as it's persistent between launches.
+const reportVolume = () => {
+  if (!volumeApi) return;
   window.ipcRenderer.send('peard:volume-changed', {
-    state: api.getVolume(),
-    isMuted: api.isMuted(),
+    state: volumeApi.getVolume(),
+    isMuted: volumeApi.isMuted(),
   });
+};
+
+const registerVolumeCapture = singleton(() => {
+  // Media events do not bubble; capture also covers inserted/replaced videos.
+  document.addEventListener(
+    'volumechange',
+    (event) => {
+      if (event.target === document.querySelector('video')) reportVolume();
+    },
+    true,
+  );
 });
+
+export const setupVolumeChangedListener = (api: MusicPlayer) => {
+  volumeApi = api;
+  registerVolumeCapture();
+  reportVolume();
+};
 
 export const setupShuffleChangedListener = singleton(() => {
   const playerBar = document.querySelector('ytmusic-player-bar');
