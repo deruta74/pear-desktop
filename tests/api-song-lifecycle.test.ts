@@ -77,7 +77,9 @@ export const dialog={showMessageBox:async()=>({response:1})};
             !id.startsWith('\0')
           ) {
             return {
-              id: id.startsWith('node:') ? id : requireRoot.resolve(id),
+              id: id.startsWith('node:')
+                ? id
+                : requireRoot.resolve(id).replaceAll('\\', '/'),
               external: true,
             };
           }

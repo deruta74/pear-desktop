@@ -91,7 +91,9 @@ export const Innertube={create:async()=>({session:{context:{client:{}}},music:{g
             !id.startsWith('\0')
           )
             return {
-              id: id.startsWith('node:') ? id : requireRoot.resolve(id),
+              id: id.startsWith('node:')
+                ? id
+                : requireRoot.resolve(id).replaceAll('\\', '/'),
               external: true,
             };
         },
@@ -380,7 +382,10 @@ test('actual download button renders error markup as plain text', async () => {
           name: 'actual-solid-runtime',
           resolveId(id: string) {
             if (!id.startsWith('.') && !path.isAbsolute(id))
-              return { id: requireRoot.resolve(id), external: true };
+              return {
+                id: requireRoot.resolve(id).replaceAll('\\', '/'),
+                external: true,
+              };
           },
         },
       ],

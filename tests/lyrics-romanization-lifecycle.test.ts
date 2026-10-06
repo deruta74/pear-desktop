@@ -12,14 +12,12 @@ import { i18nImporter } from '../vite-plugins/i18n-importer.mts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const requireRoot = createRequire(path.join(root, 'package.json'));
-const components = path.join(
-  root,
-  'src/plugins/synced-lyrics/renderer/components',
-);
-const actualUtils = path.join(
-  root,
-  'src/plugins/synced-lyrics/renderer/utils.tsx',
-);
+const components = path
+  .join(root, 'src/plugins/synced-lyrics/renderer/components')
+  .replaceAll('\\', '/');
+const actualUtils = path
+  .join(root, 'src/plugins/synced-lyrics/renderer/utils.tsx')
+  .replaceAll('\\', '/');
 let scratch: string;
 let code: string;
 
@@ -56,6 +54,7 @@ export function romanize(input){let resolve,reject;const promise=new Promise((ye
         name: 'actual-solid-conversion-boundaries',
         enforce: 'pre',
         resolveId(id, importer) {
+          importer = importer?.replaceAll('\\', '/');
           if (id === 'virtual:i18n') return '\0lyrics-owner-i18n';
           if (id === 'solid-js') return '\0solid-owner-spy';
           if (id === 'solid-js/web')

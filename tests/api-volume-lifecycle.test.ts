@@ -84,7 +84,9 @@ export const dialog={};export const nativeImage={};export const net={fetch:()=>{
             !id.startsWith('\0')
           )
             return {
-              id: id.startsWith('node:') ? id : requireRoot.resolve(id),
+              id: id.startsWith('node:')
+                ? id
+                : requireRoot.resolve(id).replaceAll('\\', '/'),
               external: true,
             };
         },
