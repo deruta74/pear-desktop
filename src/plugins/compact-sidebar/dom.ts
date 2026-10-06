@@ -2,15 +2,21 @@ const MINI_GUIDE_SELECTOR = '#mini-guide';
 const APP_LAYOUT_SELECTOR = 'ytmusic-app-layout';
 
 const getCompactState = (document: Document): boolean | null => {
+  const nativeCollapsed =
+    document.querySelector('ytmusic-app')?.hasAttribute('guide-collapsed') ??
+    false;
   const miniGuide = document.querySelector<HTMLElement>(MINI_GUIDE_SELECTOR);
-  if (!miniGuide) return null;
+  if (!miniGuide) return nativeCollapsed ? true : null;
 
   const style = document.defaultView?.getComputedStyle(miniGuide);
-  return !(
-    miniGuide.hidden ||
-    miniGuide.getAttribute('aria-hidden') === 'true' ||
-    miniGuide.style.display === 'none' ||
-    style?.display === 'none'
+  return (
+    nativeCollapsed ||
+    !(
+      miniGuide.hidden ||
+      miniGuide.getAttribute('aria-hidden') === 'true' ||
+      miniGuide.style.display === 'none' ||
+      style?.display === 'none'
+    )
   );
 };
 
@@ -26,7 +32,7 @@ const findNativeToggle = (document: Document, compact: boolean) => {
   const actionPattern = compact ? /collapse|hide|mini guide/ : /expand|show/;
   const targetPattern = /navigation|sidebar|guide|menu/;
 
-  return (
+  const labelledToggle =
     Array.from(
       layout.querySelectorAll<HTMLElement>(
         'button[aria-label], [role="button"][aria-label], button[title]',
@@ -37,6 +43,34 @@ const findNativeToggle = (document: Document, compact: boolean) => {
           .trim()
           .toLowerCase();
       return actionPattern.test(label) && targetPattern.test(label);
+    }) ?? null;
+  if (labelledToggle) return labelledToggle;
+
+  // Music's native nav control uses an inner "Guide" label without
+  // aria-controls. The guide panel has a duplicate ID for its Close button.
+  return (
+    Array.from(
+      layout.querySelectorAll<HTMLElement>(
+        'ytmusic-nav-bar yt-icon-button#guide-button',
+      ),
+    ).find((button) => {
+      for (
+        let current: HTMLElement | null = button;
+        current;
+        current = current.parentElement
+      ) {
+        const style = document.defaultView?.getComputedStyle(current);
+        if (
+          current.hidden ||
+          current.getAttribute('aria-hidden') === 'true' ||
+          style?.display === 'none' ||
+          style?.visibility === 'hidden' ||
+          style?.visibility === 'collapse'
+        )
+          return false;
+      }
+      const rect = button.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
     }) ?? null
   );
 };
@@ -46,6 +80,7 @@ export const createCompactSidebarController = (document: Document) => {
   let started = false;
   let initialCompact: boolean | undefined;
   let attemptedToggles = new WeakSet<HTMLElement>();
+  let lastCompact: boolean | undefined;
 
   const enforceCompact = () => {
     if (!started) return;
@@ -53,10 +88,11 @@ export const createCompactSidebarController = (document: Document) => {
     if (compact === null) return;
 
     if (initialCompact === undefined) initialCompact = compact;
-    if (compact) {
+    if (compact !== lastCompact) {
       attemptedToggles = new WeakSet();
-      return;
+      lastCompact = compact;
     }
+    if (compact) return;
 
     const toggle = findNativeToggle(document, true);
     if (toggle && !attemptedToggles.has(toggle)) {
@@ -84,7 +120,9 @@ export const createCompactSidebarController = (document: Document) => {
             'aria-hidden',
             'aria-label',
             'class',
+            'guide-collapsed',
             'hidden',
+            'mini-guide-visible',
             'style',
             'title',
           ],
@@ -109,6 +147,7 @@ export const createCompactSidebarController = (document: Document) => {
 
       initialCompact = undefined;
       attemptedToggles = new WeakSet();
+      lastCompact = undefined;
     },
   };
 };
