@@ -29,12 +29,20 @@ import type { MiddlewareHandler } from 'hono';
 
 export const backend = createBackend<BackendType, APIServerConfig>({
   async start(ctx) {
+    const revision = (this.startRevision = (this.startRevision ?? 0) + 1);
+    this.unsubscribeSongInfo?.();
+    this.unsubscribeSongInfo = undefined;
+    this.songInfo = undefined;
     const config = await ctx.getConfig();
+    if (revision !== this.startRevision) return;
 
     this.init(ctx);
-    registerCallback((songInfo) => {
-      this.songInfo = songInfo;
-    });
+    this.unsubscribeSongInfo = registerCallback(
+      (songInfo) => {
+        if (revision === this.startRevision) this.songInfo = songInfo;
+      },
+      { replayCurrent: true },
+    );
 
     ctx.ipc.on('peard:player-api-loaded', () => {
       ctx.ipc.send('peard:setup-seeked-listener');
@@ -58,6 +66,10 @@ export const backend = createBackend<BackendType, APIServerConfig>({
     this.run(config);
   },
   stop() {
+    this.startRevision = (this.startRevision ?? 0) + 1;
+    this.unsubscribeSongInfo?.();
+    this.unsubscribeSongInfo = undefined;
+    this.songInfo = undefined;
     this.end();
   },
   onConfigChange(config) {

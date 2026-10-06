@@ -12,6 +12,8 @@ export type BackendType = {
   server?: ReturnType<typeof serve>;
   oldConfig?: APIServerConfig;
   songInfo?: SongInfo;
+  startRevision?: number;
+  unsubscribeSongInfo?: () => void;
   currentRepeatMode?: RepeatMode;
   volumeState?: VolumeState;
 
