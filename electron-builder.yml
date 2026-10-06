@@ -20,6 +20,10 @@ mac:
       arch:
         - x64
         - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
   icon: assets/generated/icons/mac/icon.icon
   compression: maximum
 win:
@@ -120,3 +124,9 @@ snap:
         interface: mpris
 directories:
   output: ./pack/
+
+publish:
+  provider: github
+  owner: deruta74
+  repo: pear-desktop
+  releaseType: draft
