@@ -1,24 +1,28 @@
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 import { test, expect } from '@playwright/test';
 import { Window } from 'happy-dom';
+import { ts } from 'ts-morph';
 
 const moduleUrl = (source) =>
   `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 
 // Load the production lifecycle code with an isolated virtual plugin registry.
 // No Electron process or real user profile is involved in these tests.
-async function createLoader(plugins) {
+async function createLoader(plugins, registryOverride) {
   const key = `rendererLifecycle_${crypto.randomUUID()}`;
   globalThis[key] = plugins;
   const i18nUrl = moduleUrl('export const t = (key) => key;');
   const utilsSource = stripTypeScriptTypes(
     await readFile(new URL('../src/utils/index.ts', import.meta.url), 'utf8'),
   ).replace("'@/i18n'", JSON.stringify(i18nUrl));
-  const registryUrl = moduleUrl(
-    `export const rendererPlugins = async () => globalThis[${JSON.stringify(key)}];`,
-  );
+  const registryUrl =
+    registryOverride ??
+    moduleUrl(
+      `export const rendererPlugins = async () => globalThis[${JSON.stringify(key)}];`,
+    );
   const loaderSource = stripTypeScriptTypes(
     await readFile(
       new URL('../src/loader/renderer.ts', import.meta.url),
@@ -62,6 +66,94 @@ async function setup(renderer, stylesheets = ['.plugin { color: red; }']) {
   dispose = result.dispose;
   return result.loader;
 }
+
+// Keep the real virtual registry's context filter in the path: a CSS-only
+// definition without renderer: {} otherwise appears in menus but never loads.
+async function createVolumeSliderRegistry() {
+  const i18nUrl = moduleUrl('export const t = (key) => key;');
+  const utilsSource = stripTypeScriptTypes(
+    await readFile(new URL('../src/utils/index.ts', import.meta.url), 'utf8'),
+  ).replace("'@/i18n'", JSON.stringify(i18nUrl));
+  const css = await readFile(
+    new URL(
+      '../src/plugins/always-show-volume-slider/style.css',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const pluginSource = stripTypeScriptTypes(
+    await readFile(
+      new URL(
+        '../src/plugins/always-show-volume-slider/index.ts',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  )
+    .replace("'@/i18n'", JSON.stringify(i18nUrl))
+    .replace("'@/utils'", JSON.stringify(moduleUrl(utilsSource)))
+    .replace(
+      "'./style.css?inline'",
+      JSON.stringify(moduleUrl(`export default ${JSON.stringify(css)};`)),
+    );
+  const actualPluginUrl = moduleUrl(
+    pluginSource + '\nexport const pluginStub = {};',
+  );
+  const platformSource = ts.transpileModule(
+    await readFile(new URL('../src/types/plugins.ts', import.meta.url), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.ESNext } },
+  ).outputText;
+  const generatorSource = stripTypeScriptTypes(
+    await readFile(
+      new URL('../vite-plugins/plugin-importer.mts', import.meta.url),
+      'utf8',
+    ),
+  )
+    .replace("'glob'", JSON.stringify(import.meta.resolve('glob')))
+    .replace("'ts-morph'", JSON.stringify(import.meta.resolve('ts-morph')))
+    .replace(
+      "'../src/types/plugins'",
+      JSON.stringify(moduleUrl(platformSource)),
+    )
+    .replace(
+      'dirname(fileURLToPath(import.meta.url))',
+      JSON.stringify(
+        fileURLToPath(new URL('../vite-plugins', import.meta.url)),
+      ),
+    );
+  const { pluginVirtualModuleGenerator } = await import(
+    moduleUrl(generatorSource)
+  );
+  const emptyPluginUrl = moduleUrl(
+    'export default {}; export const pluginStub = {};',
+  );
+  const registrySource = pluginVirtualModuleGenerator('renderer').replace(
+    /from "([^"]+)";/g,
+    (_match, path) =>
+      `from ${JSON.stringify(
+        path.endsWith('/always-show-volume-slider/index.ts')
+          ? actualPluginUrl
+          : emptyPluginUrl,
+      )};`,
+  );
+  return moduleUrl(registrySource);
+}
+
+test('volume slider reaches the actual renderer registry and styles cleanly unload', async () => {
+  const registryUrl = await createVolumeSliderRegistry();
+  const result = await createLoader({}, registryUrl);
+  dispose = result.dispose;
+  const unrelated = new CSSStyleSheet();
+  unrelated.replaceSync('.unrelated { color: blue; }');
+  document.adoptedStyleSheets = [unrelated];
+  for (let i = 0; i < 3; i++) {
+    await result.loader.forceLoadRendererPlugin('always-show-volume-slider');
+    expect(document.adoptedStyleSheets).toHaveLength(2);
+    expect(document.adoptedStyleSheets[0]).toBe(unrelated);
+    await result.loader.forceUnloadRendererPlugin('always-show-volume-slider');
+    expect(document.adoptedStyleSheets).toEqual([unrelated]);
+  }
+});
 
 test('50 enable/disable cycles keep plugin styles bounded and preserve unrelated sheets', async () => {
   const loader = await setup({ start() {}, stop() {} });
