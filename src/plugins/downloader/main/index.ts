@@ -4,7 +4,13 @@ import { join } from 'node:path';
 
 import { Mutex } from 'async-mutex';
 import { BG, type BgConfig } from 'bgutils-js';
-import { app, type BrowserWindow, dialog, ipcMain } from 'electron';
+import {
+  app,
+  type BrowserWindow,
+  dialog,
+  ipcMain,
+  Notification,
+} from 'electron';
 import is from 'electron-is';
 import filenamify from 'filenamify';
 import lazyVar from 'lazy-var';
@@ -33,7 +39,9 @@ import {
 
 import {
   cropMaxWidth,
+  clearErrorFeedback,
   getFolder,
+  sendErrorFeedback,
   sendFeedback as sendFeedback_,
   setBadge,
 } from './utils';
@@ -78,6 +86,7 @@ Platform.shim.eval = (
 let yt: Innertube;
 let win: BrowserWindow;
 let playingUrl: string;
+let lastErrorNotification: Notification | undefined;
 
 const isPremium = async () => {
   // If signed out, it is understood as non-premium
@@ -102,11 +111,9 @@ const isPremium = async () => {
   )) as boolean;
 };
 
-const sendError = (error: Error, source?: string) => {
-  win.setProgressBar(-1); // Close progress bar
-  setBadge(0); // Close badge
-  sendFeedback_(win); // Reset feedback
-
+const sendError = (rejection: unknown, source?: string) => {
+  const error =
+    rejection instanceof Error ? rejection : new Error(String(rejection));
   const songNameMessage = source ? `\nin ${source}` : '';
   const cause = error.cause
     ? `\n\n${
@@ -118,13 +125,66 @@ const sendError = (error: Error, source?: string) => {
 
   console.error(message);
   console.trace(error);
-  dialog.showMessageBox(win, {
-    type: 'info',
-    buttons: [t('plugins.downloader.backend.dialog.error.buttons.ok')],
-    title: t('plugins.downloader.backend.dialog.error.title'),
-    message: t('plugins.downloader.backend.dialog.error.message'),
-    detail: message,
-  });
+  try {
+    setBadge(0);
+  } catch (badgeError) {
+    console.warn('Could not clear downloader badge', badgeError);
+  }
+  const targetWindow = win;
+  if (targetWindow.isDestroyed()) return;
+  targetWindow.setProgressBar(-1);
+  const title = t('plugins.downloader.backend.dialog.error.title');
+  const compact =
+    `${t('plugins.downloader.backend.dialog.error.message')}: ${error.message}`
+      .replace(/\s+/g, ' ')
+      .trim();
+  let feedback = compact;
+  if (compact.length > 200) {
+    feedback = '';
+    const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    for (const { segment } of segments.segment(compact)) {
+      if (feedback.length + segment.length > 199) break;
+      feedback += segment;
+    }
+    feedback += '…';
+  }
+  if (targetWindow.isFocused()) {
+    clearErrorFeedback(targetWindow);
+    const failedDialog = (dialogError: unknown) => {
+      console.warn('Could not show downloader error dialog', dialogError);
+      sendErrorFeedback(targetWindow, feedback);
+    };
+    try {
+      dialog
+        .showMessageBox(targetWindow, {
+          type: 'info',
+          buttons: [t('plugins.downloader.backend.dialog.error.buttons.ok')],
+          title,
+          message: t('plugins.downloader.backend.dialog.error.message'),
+          detail: message,
+        })
+        .catch(failedDialog);
+    } catch (dialogError) {
+      failedDialog(dialogError);
+    }
+    return;
+  }
+  sendErrorFeedback(targetWindow, feedback);
+  try {
+    if (!Notification.isSupported()) return;
+    lastErrorNotification?.close();
+    lastErrorNotification = new Notification({
+      title,
+      body: feedback,
+      silent: true,
+    });
+    lastErrorNotification.on('failed', (_, notificationError) => {
+      console.warn('Could not show downloader notification', notificationError);
+    });
+    lastErrorNotification.show();
+  } catch (notificationError) {
+    console.warn('Could not show downloader notification', notificationError);
+  }
 };
 
 export const getCookieFromWindow = async (win: BrowserWindow) => {
@@ -230,12 +290,13 @@ export const onConfigChange = (newConfig: DownloaderPluginConfig) => {
 
 export async function downloadSong(
   url: string,
-  playlistFolder?: string ,
-  trackId?: string ,
+  playlistFolder?: string,
+  trackId?: string,
   increasePlaylistProgress: (value: number) => void = () => {},
 ) {
   let resolvedName;
   try {
+    clearErrorFeedback(win);
     await downloadSongUnsafe(
       false,
       url,
@@ -251,12 +312,29 @@ export async function downloadSong(
 
 export async function downloadSongFromId(
   id: string,
-  playlistFolder?: string ,
-  trackId?: string ,
+  playlistFolder?: string,
+  trackId?: string,
   increasePlaylistProgress: (value: number) => void = () => {},
+) {
+  return downloadSongFromIdInOperation(
+    id,
+    playlistFolder,
+    trackId,
+    increasePlaylistProgress,
+    true,
+  );
+}
+
+async function downloadSongFromIdInOperation(
+  id: string,
+  playlistFolder?: string,
+  trackId?: string,
+  increasePlaylistProgress: (value: number) => void = () => {},
+  startOperation = false,
 ) {
   let resolvedName;
   try {
+    if (startOperation) clearErrorFeedback(win);
     await downloadSongUnsafe(
       true,
       id,
@@ -329,8 +407,8 @@ async function downloadSongUnsafe(
   isId: boolean,
   idOrUrl: string,
   setName: (name: string) => void,
-  playlistFolder?: string ,
-  trackId?: string ,
+  playlistFolder?: string,
+  trackId?: string,
   increasePlaylistProgress: (value: number) => void = () => {},
 ) {
   const sendFeedback = (message: unknown, progress?: number) => {
@@ -632,6 +710,7 @@ async function writeID3(
 }
 
 export async function downloadPlaylist(givenUrl?: string | URL) {
+  clearErrorFeedback(win);
   try {
     givenUrl = new URL(givenUrl ?? '');
   } catch {
@@ -714,7 +793,7 @@ export async function downloadPlaylist(givenUrl?: string | URL) {
     sendFeedback(
       t('plugins.downloader.backend.feedback.playlist-has-only-one-song'),
     );
-    await downloadSongFromId(items.at(0)!.id!);
+    await downloadSongFromIdInOperation(items.at(0)!.id!);
     return;
   }
 
@@ -793,7 +872,7 @@ export async function downloadPlaylist(givenUrl?: string | URL) {
         }),
       );
       const trackId = isAlbum ? counter : undefined;
-      await downloadSongFromId(
+      await downloadSongFromIdInOperation(
         song.id!,
         playlistFolder,
         trackId?.toString(),
