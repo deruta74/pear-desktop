@@ -197,6 +197,17 @@ ipcMain.handle('peard:get-main-plugin-names', async () =>
 const initHook = async (win: BrowserWindow) => {
   const allPluginStubs = await allPlugins();
 
+  const apiServerConfig = allPluginStubs['api-server']?.config as
+    | (PluginConfig & { secret?: string })
+    | undefined;
+  const savedApiServerConfig = config.get('plugins.api-server') as
+    | (PluginConfig & { secret?: string })
+    | undefined;
+  if (apiServerConfig && savedApiServerConfig?.secret === undefined) {
+    const newConfig = { secret: apiServerConfig.secret };
+    config.setPartial('plugins.api-server', newConfig, apiServerConfig);
+  }
+
   ipcMain.handle(
     'peard:get-config',
     (_, id: string) =>
