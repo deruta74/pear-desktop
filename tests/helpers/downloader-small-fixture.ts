@@ -11,6 +11,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import {
+  downloaderFixturePolicy,
+  normalizeDownloaderFixtureId,
+} from './downloader-fixture-policy';
+
 import type { DownloaderPluginConfig } from '../../src/plugins/downloader';
 import type { Preset } from '../../src/plugins/downloader/types';
 import type { BackendContext } from '../../src/types/contexts';
@@ -85,6 +90,7 @@ export async function downloaderFixture() {
   await mkdir(downloads);
   const main = path.join(root, 'src/plugins/downloader/main/index.ts');
   const songInfo = path.join(root, 'src/providers/song-info.ts');
+  const policy = downloaderFixturePolicy(main, songInfo);
   const entry = path.join(directory, 'entry.ts');
   await writeFile(
     entry,
@@ -139,7 +145,7 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
     // Config/store startup is not part of these operations. Keeping the actual
     // song helpers while discarding their unused config readers avoids profiles.
     treeshake: {
-      moduleSideEffects: (id: string) => !id.includes('/src/config/'),
+      moduleSideEffects: policy.moduleSideEffects,
     },
     plugins: [
       {
@@ -157,7 +163,7 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
             for (const suffix of ['.ts', '/index.ts', '.tsx']) {
               try {
                 await access(target + suffix);
-                return target + suffix;
+                return normalizeDownloaderFixtureId(target + suffix);
               } catch {
                 /* next suffix */
               }
@@ -171,7 +177,7 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
             return {
               id: id.startsWith('node:')
                 ? id
-                : requireRoot.resolve(id).replaceAll('\\', '/'),
+                : normalizeDownloaderFixtureId(requireRoot.resolve(id)),
               external: true,
             };
         },
@@ -188,12 +194,12 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
             return `import en from ${JSON.stringify(path.join(root, 'src/i18n/resources/en.json'))};export const languageResources=async()=>({en:{translation:en}});`;
         },
         transform(code: string, id: string) {
-          if (id === songInfo)
+          if (policy.isSongInfo(id))
             return {
               code: `${code}\nexport {callbacks as fixtureCallbacks};`,
               map: null,
             };
-          if (id === main)
+          if (policy.isMain(id))
             return {
               code: `import {state as __state} from 'electron';const console={error:(v)=>__state.logs.push(String(v)),warn:(v)=>__state.logs.push(String(v)),trace:(v)=>__state.logs.push(String(v)),info:()=>{},log:()=>{}};\n${code}`,
               map: null,
@@ -205,9 +211,10 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
   const output = path.join(directory, 'actual.cjs');
   await build.write({ file: output, format: 'cjs', codeSplitting: false });
   await build.close();
-  if (/require\(["']electron-store["']\)/.test(await readFile(output, 'utf8')))
-    throw new Error('Fixture must not load a profile configuration store');
-  const source = requireRoot(output) as FixtureSource;
+  const source = policy.evaluate(
+    await readFile(output, 'utf8'),
+    () => requireRoot(output) as FixtureSource,
+  );
   await source.loadI18n();
   const previousCwd = process.cwd();
   process.chdir(directory);
