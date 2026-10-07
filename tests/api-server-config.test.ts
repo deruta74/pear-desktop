@@ -1,10 +1,7 @@
-import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { promisify } from 'node:util';
 
 import { expect, test } from '@playwright/test';
 import Conf from 'conf';
@@ -16,6 +13,31 @@ import {
 
 const root = path.resolve('.');
 const requireRoot = createRequire(path.join(root, 'package.json'));
+
+type FixtureRolldown = {
+  rolldown: (options: {
+    input: string;
+    platform: 'node';
+    plugins?: {
+      name: string;
+      resolveId(id: string): { id: string; external: true } | undefined;
+    }[];
+  }) => Promise<{
+    write(options: { file: string; format: 'cjs' | 'es' }): Promise<void>;
+    close(): Promise<void>;
+  }>;
+};
+
+async function loadRolldown() {
+  const requireVite = createRequire(requireRoot.resolve('vite'));
+  const rolldownUrl = pathToFileURL(requireVite.resolve('rolldown')).href;
+  const loadedRolldown: unknown = await import(rolldownUrl);
+  return loadedRolldown as FixtureRolldown;
+}
+
+async function makeTestDirectory(prefix: string) {
+  return mkdtemp(path.join(root, 'tests', prefix));
+}
 
 async function buildActualInitHook(directory: string) {
   const indexSource = await readFile(path.join(root, 'src/index.ts'), 'utf8');
@@ -44,14 +66,9 @@ async function buildActualInitHook(directory: string) {
   );
   await writeFile(
     path.join(directory, 'store.ts'),
-    `import Conf from 'conf';
-const events = [];
-export const fixtureEvents = events;
-export const store = new Conf({cwd: ${JSON.stringify(directory)}, configName: 'config'});
-const set = store.set.bind(store);
-store.set = (...args) => { events.push('set'); return set(...args); };
-const onDidAnyChange = store.onDidAnyChange.bind(store);
-store.onDidAnyChange = (...args) => { events.push('watch'); return onDidAnyChange(...args); };
+    `const fixture = globalThis.__pearApiServerConfigFixture;
+export const fixtureEvents = fixture.events;
+export const store = fixture.store;
 `,
   );
   const apiConfigPath = path.join(root, 'src/plugins/api-server/config.ts');
@@ -74,23 +91,7 @@ export { fixtureEvents, handlers, defaultAPIServerConfig };
 `,
   );
 
-  const requireVite = createRequire(requireRoot.resolve('vite'));
-  type FixtureRolldown = {
-    rolldown: (options: {
-      input: string;
-      platform: 'node';
-      plugins: {
-        name: string;
-        resolveId(id: string): { id: string; external: true } | undefined;
-      }[];
-    }) => Promise<{
-      write(options: { file: string; format: 'cjs' }): Promise<void>;
-      close(): Promise<void>;
-    }>;
-  };
-  const rolldownUrl = pathToFileURL(requireVite.resolve('rolldown')).href;
-  const loadedRolldown: unknown = await import(rolldownUrl);
-  const rolldownModule = loadedRolldown as FixtureRolldown;
+  const rolldownModule = await loadRolldown();
   const bundle = await rolldownModule.rolldown({
     input: path.join(directory, 'entry.ts'),
     platform: 'node',
@@ -103,7 +104,7 @@ export { fixtureEvents, handlers, defaultAPIServerConfig };
             !path.isAbsolute(id) &&
             !id.startsWith('\0')
           ) {
-            return { id: requireRoot.resolve(id), external: true };
+            return { id, external: true };
           }
         },
       },
@@ -112,19 +113,42 @@ export { fixtureEvents, handlers, defaultAPIServerConfig };
   const output = path.join(directory, 'actual-init-hook.cjs');
   await bundle.write({ file: output, format: 'cjs' });
   await bundle.close();
-  return requireRoot(output) as {
-    initHook: (win: unknown) => Promise<void>;
-    fixtureEvents: string[];
-    handlers: Record<string, (...args: unknown[]) => unknown>;
-    defaultAPIServerConfig: APIServerConfig;
+  const fixtureEvents: string[] = [];
+  const store = new Conf({ cwd: directory, configName: 'config' });
+  const originalSet = store.set.bind(store);
+  Reflect.set(store, 'set', (...args: unknown[]) => {
+    fixtureEvents.push('set');
+    Reflect.apply(originalSet, store, args);
+  });
+  const originalWatch = store.onDidAnyChange.bind(store);
+  Reflect.set(store, 'onDidAnyChange', (...args: unknown[]) => {
+    fixtureEvents.push('watch');
+    Reflect.apply(originalWatch, store, args);
+  });
+  const globals = globalThis as typeof globalThis & {
+    __pearApiServerConfigFixture?: { store: Conf; events: string[] };
   };
+  const previousFixture = globals.__pearApiServerConfigFixture;
+  globals.__pearApiServerConfigFixture = { store, events: fixtureEvents };
+  try {
+    return requireRoot(output) as {
+      initHook: (win: unknown) => Promise<void>;
+      fixtureEvents: string[];
+      handlers: Record<string, (...args: unknown[]) => unknown>;
+      defaultAPIServerConfig: APIServerConfig;
+    };
+  } finally {
+    if (previousFixture === undefined)
+      delete globals.__pearApiServerConfigFixture;
+    else globals.__pearApiServerConfigFixture = previousFixture;
+  }
 }
 
 test('API server defaults bind locally and use a persistent strong secret', async () => {
   expect(defaultAPIServerConfig.hostname).toBe('127.0.0.1');
   expect(defaultAPIServerConfig.secret).toMatch(/^[a-f0-9]{64}$/);
 
-  const directory = await mkdtemp(path.join(tmpdir(), 'pear-api-config-'));
+  const directory = await makeTestDirectory('.pear-api-config-');
   try {
     const source = await buildActualInitHook(directory);
     await source.initHook({ webContents: { send: () => {} } });
@@ -141,7 +165,7 @@ test('API server defaults bind locally and use a persistent strong secret', asyn
 });
 
 test('saved API server settings survive default materialization and reopen', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'pear-api-saved-'));
+  const directory = await makeTestDirectory('.pear-api-saved-');
   const saved = {
     hostname: '192.0.2.44',
     secret: 'existing-secret',
@@ -168,7 +192,7 @@ test('saved API server settings survive default materialization and reopen', asy
 });
 
 test('missing secret materialization preserves every saved API setting', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'pear-api-partial-'));
+  const directory = await makeTestDirectory('.pear-api-partial-');
   const saved = {
     enabled: true,
     hostname: '192.0.2.44',
@@ -197,34 +221,25 @@ test('missing secret materialization preserves every saved API setting', async (
 });
 
 test('new profiles receive distinct API server secrets', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'pear-api-module-'));
+  const directory = await makeTestDirectory('.pear-api-module-');
   try {
-    await promisify(execFile)(
-      'pnpm',
-      [
-        'exec',
-        'tsc',
-        '--ignoreConfig',
-        '--target',
-        'ES2022',
-        '--module',
-        'ESNext',
-        '--skipLibCheck',
-        '--outDir',
-        directory,
-        path.resolve('src/plugins/api-server/config.ts'),
-      ],
-      { cwd: path.resolve('.') },
-    );
-    const compiled = path.join(directory, 'config.js');
-    await writeFile(path.join(directory, 'package.json'), '{"type":"module"}');
+    const compiled = path.join(directory, 'config.mjs');
+    const bundle = await (
+      await loadRolldown()
+    ).rolldown({
+      input: path.join(root, 'src/plugins/api-server/config.ts'),
+      platform: 'node',
+    });
+    await bundle.write({ file: compiled, format: 'es' });
+    await bundle.close();
+    const moduleUrl = pathToFileURL(compiled).href;
     const originalNow = Date.now;
     try {
       Date.now = () => 0;
-      const first = (await import(`${compiled}?profile=one`)) as {
+      const first = (await import(`${moduleUrl}?profile=one`)) as {
         defaultAPIServerConfig: APIServerConfig;
       };
-      const second = (await import(`${compiled}?profile=two`)) as {
+      const second = (await import(`${moduleUrl}?profile=two`)) as {
         defaultAPIServerConfig: APIServerConfig;
       };
 
