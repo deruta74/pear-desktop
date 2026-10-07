@@ -9,8 +9,6 @@ import lazyVar from 'lazy-var';
 import { render } from 'solid-js/web';
 import { detect } from 'tinyld';
 
-import { waitForElement } from '@/utils/wait-for-element';
-
 import { LyricsRenderer, setIsVisible } from './renderer';
 
 export const selectors = {
@@ -21,23 +19,71 @@ export const selectors = {
   },
 };
 
+let uiController = new AbortController();
+let uiActive = false;
+let container: HTMLDivElement | undefined;
+let disposeView: (() => void) | undefined;
+
+export const waitForLyricsElement = <T extends Element>(
+  selector: string,
+  signal: AbortSignal,
+): Promise<T | null> => {
+  if (signal.aborted) return Promise.resolve(null);
+  const existing = document.querySelector<T>(selector);
+  if (existing) return Promise.resolve(existing);
+  return new Promise((resolve) => {
+    const finish = (element: T | null) => {
+      observer.disconnect();
+      signal.removeEventListener('abort', abort);
+      resolve(element);
+    };
+    const abort = () => finish(null);
+    const observer = new MutationObserver(() => {
+      const element = document.querySelector<T>(selector);
+      if (element) finish(element);
+    });
+    signal.addEventListener('abort', abort, { once: true });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  });
+};
+
+export const disposeLyricsView = () => {
+  uiActive = false;
+  uiController.abort();
+  disposeView?.();
+  disposeView = undefined;
+  container?.remove();
+  container = undefined;
+  setIsVisible(false);
+};
+export const startLyricsView = () => {
+  disposeLyricsView();
+  uiController = new AbortController();
+  uiActive = true;
+};
+
 export const tabStates: Record<string, () => void> = {
   true: async () => {
+    if (!uiActive) return;
     setIsVisible(true);
-
-    let container = document.querySelector('#synced-lyrics-container');
-    if (container) return;
-
-    const tabRenderer = await waitForElement<HTMLElement>(
+    if (container?.isConnected) return;
+    const signal = uiController.signal;
+    const tabRenderer = await waitForLyricsElement<HTMLElement>(
       selectors.body.tabRenderer,
+      signal,
     );
-
+    if (!tabRenderer || signal.aborted || !uiActive || container?.isConnected)
+      return;
+    disposeView?.();
     container = Object.assign(document.createElement('div'), {
       id: 'synced-lyrics-container',
     });
 
     tabRenderer.appendChild(container);
-    render(() => <LyricsRenderer />, container);
+    disposeView = render(() => <LyricsRenderer />, container);
   },
   false: () => {
     setIsVisible(false);

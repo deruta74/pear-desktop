@@ -18,6 +18,7 @@ test('the actual page IPC bridge cannot claim, cancel, observe or remove private
   let page: Record<string, Function> | undefined;
   const methods = [
     'on',
+    'subscribe',
     'off',
     'once',
     'send',

@@ -60,6 +60,15 @@ const pageIpcChannel = (channel: string): string => {
   return channel;
 };
 contextBridge.exposeInMainWorld('ipcRenderer', {
+  subscribe: (channel: string, listener: (...args: unknown[]) => void) => {
+    const ownedChannel = pageIpcChannel(channel);
+    const handler = (_event: IpcRendererEvent, ...args: unknown[]) =>
+      listener(...args);
+    ipcRenderer.on(ownedChannel, handler);
+    return () => {
+      ipcRenderer.removeListener(ownedChannel, handler);
+    };
+  },
   on: (
     channel: string,
     listener: (event: IpcRendererEvent, ...args: unknown[]) => void,
