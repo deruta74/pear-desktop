@@ -87,7 +87,23 @@ test('safe actual source fixture retains callback export and real downloader ope
 test('actual compiler direct and alias imports share the same song-info callback Set', async () => {
   const f = await downloaderFixture();
   try {
-    expect(f.source.aliasFixtureCallbacks).toBe(f.source.fixtureCallbacks);
+    expect(
+      f.source.aliasFixtureCallbacks,
+      `Actual Rolldown module graph on ${process.platform}: ${JSON.stringify({
+        modules: f.moduleGraph,
+        aliasResolutions: f.aliasResolutions,
+      })}`,
+    ).toBe(f.source.fixtureCallbacks);
+    expect(
+      f.moduleGraph.some((module) =>
+        module.exports.includes('fixtureCallbacks'),
+      ),
+    ).toBe(true);
+    expect(
+      f.aliasResolutions.some(
+        (resolution) => resolution.source === '@/providers/song-info',
+      ),
+    ).toBe(true);
     const context = f.createContext('single-module-identity');
     await f.source.downloader.onMainLoad(context);
     expect(f.source.aliasFixtureCallbacks.size).toBe(1);

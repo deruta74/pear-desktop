@@ -78,6 +78,16 @@ interface BuildApi {
     close: () => Promise<void>;
   }>;
 }
+interface FixtureModuleInfo {
+  id: string;
+  importers: string[];
+  importedIds: string[];
+  exports: string[];
+}
+interface FixtureGraphContext {
+  getModuleIds: () => IterableIterator<string>;
+  getModuleInfo: (id: string) => FixtureModuleInfo | null;
+}
 
 const root = path.resolve(import.meta.dirname, '../..');
 const requireRoot = createRequire(path.join(root, 'package.json'));
@@ -97,6 +107,12 @@ export async function downloaderFixture() {
   );
   const policy = downloaderFixturePolicy(main, songInfo);
   const entry = path.join(directory, 'entry.ts');
+  const moduleGraph: FixtureModuleInfo[] = [];
+  const aliasResolutions: {
+    source: string;
+    importer: string | undefined;
+    resolvedId: string;
+  }[] = [];
   await writeFile(
     entry,
     `
@@ -156,7 +172,7 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
     plugins: [
       {
         name: 'owned-downloader-network-ffmpeg-native',
-        async resolveId(id: string) {
+        async resolveId(id: string, importer: string | undefined) {
           if (id === 'electron') return '\0owned-native';
           if (id === 'youtubei.js') return '\0owned-youtube';
           if (id === '@ffmpeg.wasm/main') return '\0owned-ffmpeg';
@@ -169,7 +185,15 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
             for (const suffix of ['.ts', '/index.ts', '.tsx']) {
               try {
                 await access(target + suffix);
-                return normalizeDownloaderFixtureId(target + suffix);
+                const resolvedId = normalizeDownloaderFixtureId(
+                  target + suffix,
+                );
+                if (
+                  policy.isSongInfo(resolvedId) ||
+                  resolvedId.includes('/src/plugins/downloader/')
+                )
+                  aliasResolutions.push({ source: id, importer, resolvedId });
+                return resolvedId;
               } catch {
                 /* next suffix */
               }
@@ -210,6 +234,25 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
               code: `import {state as __state} from 'electron';const console={error:(v)=>__state.logs.push(String(v)),warn:(v)=>__state.logs.push(String(v)),trace:(v)=>__state.logs.push(String(v)),info:()=>{},log:()=>{}};\n${code}`,
               map: null,
             };
+        },
+        generateBundle(this: FixtureGraphContext) {
+          for (const id of this.getModuleIds()) {
+            const normalizedId = normalizeDownloaderFixtureId(id);
+            if (
+              normalizedId !== normalizeDownloaderFixtureId(entry) &&
+              !policy.isSongInfo(id) &&
+              !normalizedId.includes('/src/plugins/downloader/')
+            )
+              continue;
+            const info = this.getModuleInfo(id);
+            if (info)
+              moduleGraph.push({
+                id: info.id,
+                importers: [...info.importers],
+                importedIds: [...info.importedIds],
+                exports: [...info.exports],
+              });
+          }
         },
       },
     ],
@@ -264,6 +307,8 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
     config,
     directory,
     output,
+    moduleGraph,
+    aliasResolutions,
     downloads,
     createContext,
     flush: () => new Promise<void>((resolve) => setImmediate(resolve)),
