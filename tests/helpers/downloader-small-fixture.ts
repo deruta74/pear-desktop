@@ -185,12 +185,12 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
             for (const suffix of ['.ts', '/index.ts', '.tsx']) {
               try {
                 await access(target + suffix);
-                const resolvedId = normalizeDownloaderFixtureId(
-                  target + suffix,
-                );
+                const resolvedId = path.normalize(target + suffix);
                 if (
                   policy.isSongInfo(resolvedId) ||
-                  resolvedId.includes('/src/plugins/downloader/')
+                  normalizeDownloaderFixtureId(resolvedId).includes(
+                    '/src/plugins/downloader/',
+                  )
                 )
                   aliasResolutions.push({ source: id, importer, resolvedId });
                 return resolvedId;
