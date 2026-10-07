@@ -284,7 +284,11 @@ test('failure after window destruction logs and cleans the global badge without 
   const f = await fixture();
   try {
     f.state.infoMode = 'deferred';
+    const infoReady = new Promise<void>((resolve) => {
+      f.state.infoReady = resolve;
+    });
     const pending = f.source.downloadSong(url);
+    await infoReady;
     expect(f.state.requests).toEqual(['fixture-download']);
     f.state.destroyed = true;
     f.state.rejectInfo(f.state.rejection);
@@ -311,7 +315,11 @@ test('blank/status cleanup preserves an error until the next deliberate operatio
     f.source.sendFeedback(f.window, 'late cleanup status');
     expect(f.feedback()).toBe(error);
     f.state.infoMode = 'deferred';
+    const infoReady = new Promise<void>((resolve) => {
+      f.state.infoReady = resolve;
+    });
     const next = f.source.downloadSong(url);
+    await infoReady;
     expect(f.feedback()).toBe(
       'plugins.downloader.backend.feedback.downloading',
     );
@@ -515,7 +523,11 @@ test('a new standalone ID download clears a previous operation error', async () 
     f.state.notificationMode = 'unsupported';
     f.source.fixtureSendError(new Error('previous operation failed'), url);
     f.state.infoMode = 'deferred';
+    const infoReady = new Promise<void>((resolve) => {
+      f.state.infoReady = resolve;
+    });
     const pending = f.source.downloadSongFromId('new-operation');
+    await infoReady;
     expect(f.feedback()).toBe(
       'plugins.downloader.backend.feedback.downloading',
     );

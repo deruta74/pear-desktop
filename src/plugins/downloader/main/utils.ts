@@ -4,7 +4,7 @@ import is from 'electron-is';
 const pendingErrors = new WeakMap<BrowserWindow, string>();
 
 export const getFolder = (customFolder?: string) =>
-  customFolder ?? app.getPath('downloads');
+  customFolder || app.getPath('downloads');
 
 export const sendFeedback = (win: BrowserWindow, message?: unknown) => {
   if (win.isDestroyed() || win.webContents.isDestroyed()) return;
