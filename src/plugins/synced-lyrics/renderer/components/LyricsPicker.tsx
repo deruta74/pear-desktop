@@ -8,14 +8,12 @@ import { IconStar } from '@mdui/icons/star.js';
 import { IconWarning } from '@mdui/icons/warning.js';
 import {
   createEffect,
-  createMemo,
   createSignal,
   For,
   Index,
   Match,
   onCleanup,
   onMount,
-  runWithOwner,
   type Setter,
   Show,
   Switch,
@@ -32,7 +30,6 @@ import {
   type ProviderState,
 } from '../../providers';
 import { _ytAPI } from '../index';
-import { reactiveOwner } from '../reactive-root';
 import { config } from '../renderer';
 import { currentLyrics, lyricsStore, setLyricsStore } from '../store';
 
@@ -42,9 +39,7 @@ const LocalStorageSchema = z.object({
   provider: ProviderNameSchema,
 });
 
-export const providerIdx = runWithOwner(reactiveOwner, () =>
-  createMemo(() => providerNames.indexOf(lyricsStore.provider)),
-)!;
+export const providerIdx = () => providerNames.indexOf(lyricsStore.provider);
 
 const shouldSwitchProvider = (providerData: ProviderState) => {
   if (providerData.state === 'error') return true;
@@ -81,6 +76,8 @@ const pickBestProvider = () => {
 
 const [hasManuallySwitchedProvider, setHasManuallySwitchedProvider] =
   createSignal(false);
+export const resetLyricsPickerSelection = () =>
+  setHasManuallySwitchedProvider(false);
 
 export const LyricsPicker = (props: {
   setStickRef: Setter<HTMLElement | null>;
@@ -133,8 +130,12 @@ export const LyricsPicker = (props: {
 
   const videoDataChangeHandler = (
     name: string,
-    { videoId }: PlayerAPIEvents['videodatachange']['value'],
+    value: PlayerAPIEvents['videodatachange']['value'] | null | undefined,
   ) => {
+    const videoId =
+      typeof value?.videoId === 'string' && value.videoId
+        ? value.videoId
+        : null;
     setVideoId(videoId);
 
     if (name !== 'dataloaded') return;
@@ -143,8 +144,9 @@ export const LyricsPicker = (props: {
 
   // prettier-ignore
   {
-    onMount(() => _ytAPI?.addEventListener('videodatachange', videoDataChangeHandler));
-    onCleanup(() => _ytAPI?.removeEventListener('videodatachange', videoDataChangeHandler));
+    const api = _ytAPI;
+    onMount(() => api?.addEventListener('videodatachange', videoDataChangeHandler));
+    onCleanup(() => api?.removeEventListener('videodatachange', videoDataChangeHandler));
   }
 
   createEffect(() => {

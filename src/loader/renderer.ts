@@ -35,6 +35,11 @@ export const createContext = <Config extends PluginConfig>(
         listener(...args);
       });
     },
+    subscribe: (event: string, listener: CallableFunction) =>
+      window.ipcRenderer.subscribe(event, (...args: unknown[]) => {
+        // oxlint-disable-next-line typescript/no-unsafe-call
+        listener(...args);
+      }),
     removeAllListeners: (event: string) => {
       window.ipcRenderer.removeAllListeners(event);
     },
