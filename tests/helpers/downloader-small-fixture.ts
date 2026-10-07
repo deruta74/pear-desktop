@@ -65,6 +65,7 @@ interface FixtureSource {
   DefaultPresetList: Record<string, Preset>;
   getFolder: (folder?: string) => string;
   fixtureCallbacks: Set<unknown>;
+  aliasFixtureCallbacks: Set<unknown>;
   loadI18n: () => Promise<unknown>;
   state: FixtureState;
   FixtureWindow: new (name: string) => BrowserWindow;
@@ -88,18 +89,23 @@ export async function downloaderFixture() {
   );
   const downloads = path.join(directory, 'Downloads');
   await mkdir(downloads);
-  const main = path.join(root, 'src/plugins/downloader/main/index.ts');
-  const songInfo = path.join(root, 'src/providers/song-info.ts');
+  const main = normalizeDownloaderFixtureId(
+    path.join(root, 'src/plugins/downloader/main/index.ts'),
+  );
+  const songInfo = normalizeDownloaderFixtureId(
+    path.join(root, 'src/providers/song-info.ts'),
+  );
   const policy = downloaderFixturePolicy(main, songInfo);
   const entry = path.join(directory, 'entry.ts');
   await writeFile(
     entry,
     `
 export * as downloader from ${JSON.stringify(main)};
-export {DefaultPresetList} from ${JSON.stringify(path.join(root, 'src/plugins/downloader/types.ts'))};
-export {getFolder} from ${JSON.stringify(path.join(root, 'src/plugins/downloader/main/utils.ts'))};
+export {DefaultPresetList} from ${JSON.stringify(normalizeDownloaderFixtureId(path.join(root, 'src/plugins/downloader/types.ts')))};
+export {getFolder} from ${JSON.stringify(normalizeDownloaderFixtureId(path.join(root, 'src/plugins/downloader/main/utils.ts')))};
 export {fixtureCallbacks,SongInfoEvent} from ${JSON.stringify(songInfo)};
-export {loadI18n} from ${JSON.stringify(path.join(root, 'src/i18n/index.ts'))};
+export {fixtureCallbacks as aliasFixtureCallbacks} from '@/providers/song-info';
+export {loadI18n} from ${JSON.stringify(normalizeDownloaderFixtureId(path.join(root, 'src/i18n/index.ts')))};
 export {state,FixtureWindow,ipcMain,app} from 'electron';
 `,
   );

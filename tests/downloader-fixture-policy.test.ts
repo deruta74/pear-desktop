@@ -83,3 +83,19 @@ test('safe actual source fixture retains callback export and real downloader ope
     await f.close();
   }
 });
+
+test('actual compiler direct and alias imports share the same song-info callback Set', async () => {
+  const f = await downloaderFixture();
+  try {
+    expect(f.source.aliasFixtureCallbacks).toBe(f.source.fixtureCallbacks);
+    const context = f.createContext('single-module-identity');
+    await f.source.downloader.onMainLoad(context);
+    expect(f.source.aliasFixtureCallbacks.size).toBe(1);
+    expect(f.source.fixtureCallbacks.size).toBe(1);
+    f.source.downloader.onMainStop?.(context);
+    expect(f.source.aliasFixtureCallbacks.size).toBe(0);
+    expect(f.source.fixtureCallbacks.size).toBe(0);
+  } finally {
+    await f.close();
+  }
+});
