@@ -21,6 +21,10 @@ async function fixture(plugins: Record<string, any>) {
     traces,
     contexts,
     window: {
+      addEventListener: dom.addEventListener.bind(dom),
+      removeEventListener: dom.removeEventListener.bind(dom),
+      setTimeout: dom.setTimeout.bind(dom),
+      clearTimeout: dom.clearTimeout.bind(dom),
       electronIs: {
         osx: () => false,
         windows: () => false,
@@ -42,9 +46,18 @@ async function fixture(plugins: Record<string, any>) {
   const actual = stripTypeScriptTypes(raw)
     .replace(/^import[\s\S]*?;\n/gm, '')
     .replace('initObserver().then(preload).then(main);', 'export { main };');
+  const repeatProvider = stripTypeScriptTypes(
+    await readFile(
+      new URL('../src/providers/repeat-preference.ts', import.meta.url),
+      'utf8',
+    ),
+  )
+    .replace(/^import[\s\S]*?;\n/gm, '')
+    .replace(/^export /gm, '');
   const boundaries = `
 const fixture=globalThis[${JSON.stringify(key)}];
 const {window}=fixture; const document=fixture.dom.document;
+const {Element,CustomEvent}=fixture.dom;
 const setTheme=()=>{}; const registerWindowDefaultTrustedTypePolicy=()=>{};
 const i18t=(key,options)=>({key,options}); const LoggerPrefix='[YTMusic]';
 const console={error:(...args)=>fixture.errors.push(args),trace:err=>fixture.traces.push(err)};
@@ -57,13 +70,14 @@ const forceUnloadRendererPlugin=async()=>{};
 class AudioContext {destination={};createMediaElementSource(){return {connect(){}}}}
 `;
   const source = await import(
-    `data:text/javascript;base64,${Buffer.from(boundaries + actual).toString('base64')}`
+    `data:text/javascript;base64,${Buffer.from(boundaries + repeatProvider + actual).toString('base64')}`
   );
   return {
     ...state,
     source,
     player: dom.document.querySelector('#movie_player'),
     close: async () => {
+      dom.dispatchEvent(new dom.Event('pagehide'));
       delete (globalThis as any)[key];
       await dom.happyDOM.close();
     },
