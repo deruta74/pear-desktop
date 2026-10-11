@@ -431,6 +431,7 @@
       "name": "Compact Sidebar"
     },
     "crossfade": {
+      "route-unavailable": "Crossfade is unavailable for this stream because auxiliary audio could not be routed. Regular playback continues.",
       "description": "Crossfade between songs",
       "menu": {
         "advanced": "Advanced"
@@ -587,6 +588,33 @@
       }
     },
     "equalizer": {
+      "editor": {
+        "audio-error": "This audio response could not be applied. Reduce overlapping boosts or Q; the previous sound is retained.",
+        "save-error": "Settings could not be saved. Changes remain active; make another edit to retry.",
+        "title": "Equalizer",
+        "close": "Close",
+        "layout": "Bands",
+        "custom": "Custom",
+        "bypass": "Bypass equalizer",
+        "reset": "Reset gains",
+        "use-custom": "Use as Custom",
+        "preamp": "Preamp (dB)",
+        "gain": "Gain (dB)",
+        "frequency": "Frequency (Hz)",
+        "q": "Q / bandwidth",
+        "remove-band": "Remove band",
+        "add-band": "Add band",
+        "preset": "Preset",
+        "preset-name": "Preset name",
+        "choose-preset": "Choose a preset",
+        "flat": "Flat",
+        "save": "Save preset",
+        "update": "Update preset",
+        "delete": "Delete preset",
+        "headroom": "Positive boosts can clip. Reduce preamp for headroom. Shelf filters do not use Q.",
+        "unsupported": "These stored settings need a supported version and at most 64 valid bands. Original data is preserved; editing and EQ are bypassed.",
+        "nyquist": "Some bands exceed this audio context frequency range and are inactive. Their settings are preserved."
+      },
       "description": "Adds an equalizer to the player",
       "menu": {
         "presets": {

@@ -68,9 +68,12 @@ async function fixture(mode = 'ALL') {
       'initObserver().then(preload).then(main);',
       'export {onApiLoaded};',
     );
-  const boundaries = `const fixture=globalThis[${JSON.stringify(key)}];const window=fixture.dom;const document=window.document;const Element=window.Element;const HTMLElement=window.HTMLElement;const Event=window.Event;const CustomEvent=window.CustomEvent;const setTheme=()=>{};const registerWindowDefaultTrustedTypePolicy=()=>{};const LoggerPrefix='fixture';const i18t=x=>x;const getAllLoadedRendererPlugins=()=>({});const startingPages={};class AudioContext{destination={};createMediaElementSource(){return{connect(){}}}};`;
+  const audioProvider = stripTypeScriptTypes(
+    await readFile(new URL('../src/providers/renderer-audio.ts', import.meta.url), 'utf8'),
+  ).replace(/^export /gm, '');
+  const boundaries = `const fixture=globalThis[${JSON.stringify(key)}];const window=fixture.dom;const document=window.document;const Element=window.Element;const HTMLElement=window.HTMLElement;const Event=window.Event;const CustomEvent=window.CustomEvent;const setTheme=()=>{};const registerWindowDefaultTrustedTypePolicy=()=>{};const LoggerPrefix='fixture';const i18t=x=>x;const getAllLoadedRendererPlugins=()=>({});const startingPages={};class AudioContext extends window.EventTarget{destination={};createGain(){return {gain:{value:1},connect(){},disconnect(){}}}createMediaElementSource(element){return{mediaElement:element,connect(){},disconnect(){}}}};`;
   const source = await import(
-    `data:text/javascript;base64,${Buffer.from(boundaries + helper + actual).toString('base64')}`
+    `data:text/javascript;base64,${Buffer.from(boundaries + audioProvider + helper + actual).toString('base64')}`
   );
   await source.onApiLoaded();
   return {

@@ -1,9 +1,11 @@
 import i18next from 'i18next';
 import { setTheme } from 'mdui/functions/setTheme.js';
+
+import { loadI18n, setLanguage, t as i18t } from '@/i18n';
 import 'mdui/mdui.css';
 import 'mdui';
 
-import { loadI18n, setLanguage, t as i18t } from '@/i18n';
+import { initializeAudioGraph } from '@/providers/renderer-audio';
 import { LoggerPrefix } from '@/utils';
 import {
   defaultTrustedTypePolicy,
@@ -432,7 +434,7 @@ async function onApiLoaded() {
   const video = document.querySelector('video')!;
   const audioContext = new AudioContext();
   const audioSource = audioContext.createMediaElementSource(video);
-  audioSource.connect(audioContext.destination);
+  const audioGraph = initializeAudioGraph(audioContext, audioSource);
 
   for (const [id, plugin] of Object.entries(getAllLoadedRendererPlugins())) {
     if (typeof plugin.renderer !== 'function') {
@@ -452,6 +454,7 @@ async function onApiLoaded() {
         detail: {
           audioContext,
           audioSource,
+          audioGraph,
         },
       }),
     );

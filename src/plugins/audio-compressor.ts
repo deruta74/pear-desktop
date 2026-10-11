@@ -1,133 +1,59 @@
 import { t } from '@/i18n';
-import { type MusicPlayer } from '@/types/music-player';
+import {
+  getCurrentAudioGraph,
+  graphFromAnnouncement,
+  type RendererAudioGraph,
+} from '@/providers/renderer-audio';
 import { createPlugin } from '@/utils';
 
-const lazySafeTry = (...fns: (() => void)[]) => {
-  for (const fn of fns) {
-    try {
-      fn();
-    } catch {}
-  }
-};
+let graph: RendererAudioGraph | null = null;
+let compressor: DynamicsCompressorNode | null = null;
+let release: (() => void) | null = null;
 
-const createCompressorNode = (
-  audioContext: AudioContext,
-): DynamicsCompressorNode => {
-  const compressor = audioContext.createDynamicsCompressor();
-
-  compressor.threshold.value = -50;
-  compressor.ratio.value = 12;
-  compressor.knee.value = 40;
-  compressor.attack.value = 0;
-  compressor.release.value = 0.25;
-
-  return compressor;
-};
-
-class Storage {
-  lastSource: MediaElementAudioSourceNode | null = null;
-  lastContext: AudioContext | null = null;
-  lastCompressor: DynamicsCompressorNode | null = null;
-
-  connected: WeakMap<MediaElementAudioSourceNode, DynamicsCompressorNode> =
-    new WeakMap();
-
-  connectToCompressor = (
-    source: MediaElementAudioSourceNode | null = null,
-    audioContext: AudioContext | null = null,
-    compressor: DynamicsCompressorNode | null = null,
-  ): boolean => {
-    if (!(source && audioContext && compressor)) return false;
-
-    const current = this.connected.get(source);
-    if (current === compressor) return false;
-
-    this.lastSource = source;
-    this.lastContext = audioContext;
-    this.lastCompressor = compressor;
-
-    if (current) {
-      lazySafeTry(
-        () => source.disconnect(current),
-        () => current.disconnect(audioContext.destination),
-      );
-    } else {
-      lazySafeTry(() => source.disconnect(audioContext.destination));
-    }
-
-    try {
-      source.connect(compressor);
-      compressor.connect(audioContext.destination);
-      this.connected.set(source, compressor);
-      return true;
-    } catch (error) {
-      console.error('connectToCompressor failed', error);
-      return false;
-    }
-  };
-
-  disconnectCompressor = (): boolean => {
-    const source = this.lastSource;
-    const audioContext = this.lastContext;
-    if (!(source && audioContext)) return false;
-    const current = this.connected.get(source);
-    if (!current) return false;
-
-    lazySafeTry(
-      () => source.connect(audioContext.destination),
-      () => source.disconnect(current),
-      () => current.disconnect(audioContext.destination),
-    );
-    this.connected.delete(source);
-    return true;
-  };
+function detach() {
+  release?.();
+  release = null;
+  compressor?.disconnect();
+  compressor = null;
+  graph = null;
 }
-
-const storage = new Storage();
-
-const audioCanPlayHandler = ({
-  detail: { audioSource, audioContext },
-}: CustomEvent<Compressor>) => {
-  storage.connectToCompressor(
-    audioSource,
-    audioContext,
-    createCompressorNode(audioContext),
-  );
-};
-
-const ensureAudioContextLoad = (playerApi: MusicPlayer) => {
-  if (playerApi.getPlayerState() !== 1 || storage.lastContext) return;
-
-  playerApi.loadVideoById(
-    playerApi.getPlayerResponse().videoDetails.videoId,
-    playerApi.getCurrentTime(),
-    playerApi.getUserPlaybackQualityPreference(),
-  );
-};
+function attach(next: RendererAudioGraph | null) {
+  if (!next || next === graph) return;
+  detach();
+  const node = next.audioContext.createDynamicsCompressor();
+  node.threshold.value = -50;
+  node.ratio.value = 12;
+  node.knee.value = 40;
+  node.attack.value = 0;
+  node.release.value = 0.25;
+  try {
+    release = next.insertDry(node, node);
+    graph = next;
+    compressor = node;
+  } catch (error) {
+    node.disconnect();
+    console.error('[audio-compressor] Could not attach dry insert', error);
+  }
+}
+const handler = ({ detail }: CustomEvent<Compressor>) =>
+  attach(graphFromAnnouncement(detail));
 
 export default createPlugin({
   name: () => t('plugins.audio-compressor.name'),
   description: () => t('plugins.audio-compressor.description'),
-
   renderer: {
-    onPlayerApiReady(playerApi) {
-      ensureAudioContextLoad(playerApi);
+    onPlayerApiReady() {
+      attach(getCurrentAudioGraph());
     },
-
     start() {
-      document.addEventListener('peard:audio-can-play', audioCanPlayHandler, {
+      document.addEventListener('peard:audio-can-play', handler, {
         passive: true,
       });
-      storage.connectToCompressor(
-        storage.lastSource,
-        storage.lastContext,
-        storage.lastCompressor,
-      );
+      attach(getCurrentAudioGraph());
     },
-
     stop() {
-      document.removeEventListener('peard:audio-can-play', audioCanPlayHandler);
-      storage.disconnectCompressor();
+      document.removeEventListener('peard:audio-can-play', handler);
+      detach();
     },
   },
 });
