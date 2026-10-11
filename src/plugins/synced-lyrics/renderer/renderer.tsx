@@ -24,6 +24,8 @@ import { currentLyrics } from './store';
 import { selectors } from './utils';
 import { withInstrumentalGaps } from './word-timing';
 
+import { lyricsDisplayTime, romanizationRatio } from '../tools';
+
 import type { LineLyrics, SyncedLyricsPluginConfig } from '../types';
 
 export const [isVisible, setIsVisible] = createSignal<boolean>(false);
@@ -45,6 +47,9 @@ export const startLyricsEffects = () =>
           : 'var(--ytmusic-body-line-height)',
         '--lyrics-width': config()?.lineEffect === 'scale' ? '83%' : '100%',
         '--lyrics-padding': fancy ? '2rem' : '0',
+        '--lyrics-romanization-ratio': String(
+          romanizationRatio(config()?.romanizationSizePercent),
+        ),
       };
       const previous = Object.keys(styles).map((key) => [
         key,
@@ -221,7 +226,7 @@ export const LyricsRenderer = () => {
     ('previous' | 'current' | 'upcoming')[]
   >([]);
   createEffect(() => {
-    const time = currentTime();
+    const time = lyricsDisplayTime(currentTime(), config()?.timingOffsetMs);
     const lines = displayLines();
     if (!lines) return setStatuses([]);
 

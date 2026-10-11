@@ -1080,6 +1080,18 @@
         "duration-mismatch": "⚠️ - The lyrics may be out of sync due to a duration mismatch.",
         "inexact": "⚠️ - The lyrics for this song may not be exact",
         "instrumental": "⚠️ - This is an instrumental song"
+      },
+      "tools": {
+        "export": "Export lyrics…",
+        "plain-text": "Plain text",
+        "saved": "Lyrics saved",
+        "invalid": "These lyrics cannot be exported",
+        "error": "Could not save lyrics",
+        "offset": "Lyrics timing offset (ms)…",
+        "offset-help": "Positive values show lyrics later; negative values show them earlier.",
+        "romanization-size": "Romanization size",
+        "enhanced-lrc": "Export real word timing in enhanced LRC",
+        "enhanced-lrc-help": "Use source word timestamps when available; other lines retain line timing."
       }
     },
     "taskbar-mediacontrol": {

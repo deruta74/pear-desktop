@@ -12,6 +12,7 @@ import { t } from '@/i18n';
 import { type LineLyrics } from '@/plugins/synced-lyrics/types';
 
 import { _ytAPI } from '..';
+import { lyricsDisplayTime, lyricsSeekTime } from '../../tools';
 import { config, currentTime } from '../renderer';
 import {
   canonicalize,
@@ -28,7 +29,10 @@ interface SyncedLineProps {
   status: 'upcoming' | 'current' | 'previous';
 }
 
-const seek = (line: LineLyrics) => _ytAPI?.seekTo((line.timeInMs + 10) / 1000);
+const displayTime = () =>
+  lyricsDisplayTime(currentTime(), config()?.timingOffsetMs);
+const seek = (line: LineLyrics) =>
+  _ytAPI?.seekTo(lyricsSeekTime(line.timeInMs, config()?.timingOffsetMs));
 const keySeek = (event: KeyboardEvent, line: LineLyrics) => {
   if (event.key !== 'Enter' && event.key !== ' ') return;
   event.preventDefault();
@@ -49,7 +53,7 @@ const EmptyLine = (props: SyncedLineProps) => {
   const text = createMemo(() => {
     const progress = Math.max(
       0,
-      Math.min(1, (currentTime() - props.line.timeInMs) / props.line.duration),
+      Math.min(1, (displayTime() - props.line.timeInMs) / props.line.duration),
     );
     const index = Number.isFinite(progress)
       ? Math.floor((states().length - 1) * progress)
@@ -143,7 +147,7 @@ export const SyncedLine = (props: SyncedLineProps) => {
                 <For each={words()}>
                   {(word) => (
                     <span
-                      class={`lyrics-word ${props.status === 'current' && currentTime() >= word.timeInMs ? 'sung' : 'upcoming'}`}
+                      class={`lyrics-word ${props.status === 'current' && displayTime() >= word.timeInMs ? 'sung' : 'upcoming'}`}
                     >
                       {word.word}
                     </span>
