@@ -464,6 +464,16 @@
           "label": "Choose the output media device to be used",
           "title": "Select Output Device"
         }
+      },
+      "system-default": "System default",
+      "unnamed-device": "Audio output {{number}} (name unavailable)",
+      "persistence-failed": "Could not save the audio-output device list. Disable and re-enable the plugin to retry.",
+      "status": {
+        "unsupported": "This runtime does not support this audio-output operation.",
+        "permission": "The system denied audio-output access. Grant access in system settings, then disable and re-enable this plugin. Microphone permission is not requested.",
+        "limited": "The system has hidden some device names or outputs. Available outputs are listed without requesting microphone permission.",
+        "unavailable": "The selected output is unavailable. System default is used until it becomes available again.",
+        "failed": "The audio output could not be changed or refreshed. Disable and re-enable the plugin to retry."
       }
     },
     "disable-autoplay": {
