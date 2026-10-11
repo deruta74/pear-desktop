@@ -3,6 +3,7 @@ import path from 'node:path';
 import url from 'node:url';
 
 import ErrorHtmlAsset from '@assets/error.html?asset';
+import musicPlayerIcon from '@assets/icon.png?asset&asarUnpack';
 import {
   enhanceWebRequest,
   type BetterSession,
@@ -192,6 +193,15 @@ if (process.platform === 'win32') {
 } else if (process.platform === 'darwin') {
   icon = 'assets/generated/icons/mac/icon.icns';
 }
+
+app.setAboutPanelOptions({
+  applicationName: APPLICATION_NAME,
+  applicationVersion: app.getVersion(),
+  version: app.getVersion(),
+  iconPath: musicPlayerIcon,
+  copyright: 'Pear Desktop contributors; fork maintained by deruta74',
+  website: 'https://github.com/deruta74/pear-desktop',
+});
 
 function onClosed() {
   // Dereference the window

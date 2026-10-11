@@ -19,6 +19,7 @@ import {
   loadAllRendererPlugins,
 } from './loader/renderer';
 import { startingPages } from './providers/extracted-data';
+import { createRepeatPreference } from './providers/repeat-preference';
 import { setupSongInfo } from './providers/song-info-front';
 
 import type { MusicPlayer } from '@/types/music-player';
@@ -31,6 +32,7 @@ import type { SearchBoxElement } from '@/types/search-box-element';
 setTheme('dark');
 
 let api: (Element & MusicPlayer) | null = null;
+let repeatPreference: ReturnType<typeof createRepeatPreference> | undefined;
 let isPluginLoaded = false;
 let isApiLoaded = false;
 let firstDataLoaded = false;
@@ -77,6 +79,8 @@ async function callOnPlayerApiReady(
 }
 
 async function onApiLoaded() {
+  repeatPreference?.dispose();
+  repeatPreference = createRepeatPreference();
   // Workaround for macOS traffic lights
   {
     let osType = 'Unknown';
@@ -207,6 +211,7 @@ async function onApiLoaded() {
         )
         ?.onRepeatButtonClick();
     }
+    repeatPreference?.rememberUserChange();
   });
   window.ipcRenderer.on('peard:update-volume', (_, volume: number) => {
     if (!api || !Number.isFinite(volume)) return;
