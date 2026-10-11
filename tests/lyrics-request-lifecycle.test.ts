@@ -424,6 +424,11 @@ test('stopped DOM wait cannot attach a header observer or mount delayed lyrics',
     await settle();
     f.state.renderer.stop();
     expect(f.activeObservers.size).toBe(0);
+    expect(
+      f.window.document.documentElement.style.getPropertyValue(
+        '--lyrics-font-size',
+      ),
+    ).toBe('');
     expect(f.intervals.size).toBe(0);
     f.mountDom(true);
     f.tick();
@@ -540,9 +545,9 @@ test('reenabling recreates config effects and a stopped lyrics-body wait cannot 
     await settle();
     expect(
       f.window.document.documentElement.style.getPropertyValue(
-        '--lyrics-active-offset',
+        '--lyrics-font-size',
       ),
-    ).toBe('5%');
+    ).toBe('clamp(1.4rem, 1.1vmax, 3rem)');
   } finally {
     await f.close();
   }

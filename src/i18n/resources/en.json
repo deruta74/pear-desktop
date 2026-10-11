@@ -845,6 +845,7 @@
       "name": "SponsorBlock"
     },
     "synced-lyrics": {
+      "instrumental-break": "Instrumental",
       "description": "Provides synced lyrics to songs, using providers like LRClib.",
       "errors": {
         "fetch": "⚠️\tAn error occurred while fetching the lyrics.\n\tPlease try again later.",
@@ -868,19 +869,19 @@
           "submenu": {
             "fancy": {
               "label": "Fancy",
-              "tooltip": "Use large, app-like effects on the current line"
+              "tooltip": "Large stable lyrics with real word highlighting"
             },
             "focus": {
               "label": "Focus",
-              "tooltip": "Make only the current line white"
+              "tooltip": "Highlight the current line without resizing text"
             },
             "offset": {
-              "label": "Offset",
-              "tooltip": "Offset on the right the current line"
+              "label": "Standard",
+              "tooltip": "Standard stable lyrics"
             },
             "scale": {
-              "label": "Scale",
-              "tooltip": "Scale the current line"
+              "label": "Compact",
+              "tooltip": "Compact stable lyrics"
             }
           },
           "tooltip": "Choose the effect to apply to the current line"
