@@ -53,7 +53,9 @@
 
   & .text-lyrics > .romaji {
     color: var(--ytmusic-text-secondary) !important;
-    font-size: calc(var(--lyrics-font-size) * 0.7) !important;
+    font-size: calc(
+      var(--lyrics-font-size) * var(--lyrics-romanization-ratio, 0.7)
+    ) !important;
     font-style: italic !important;
   }
 }
@@ -95,7 +97,9 @@
 
   & > .romaji {
     color: var(--ytmusic-text-secondary) !important;
-    font-size: calc(var(--lyrics-font-size) * 0.7) !important;
+    font-size: calc(
+      var(--lyrics-font-size) * var(--lyrics-romanization-ratio, 0.7)
+    ) !important;
     font-style: italic !important;
   }
 }
@@ -265,4 +269,27 @@ div:has(> .lyrics-picker) {
 .lyrics-picker mdui-icon-check-circle,
 .lyrics-picker mdui-icon-warning {
   font-size: 24px;
+}
+
+.lyrics-export {
+  color: var(--ytmusic-text-primary);
+  background: transparent;
+  border: 1px solid var(--ytmusic-text-secondary);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.lyrics-export:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.lyrics-export:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.lyrics-export-status {
+  font-size: 0.8em;
+  color: var(--ytmusic-text-secondary);
 }

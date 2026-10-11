@@ -44,7 +44,7 @@ test.beforeAll(async () => {
   const entry = path.join(scratch, 'entry.tsx');
   await writeFile(
     entry,
-    `import{render}from'solid-js/web';import{LyricsRenderer,currentTime,setCurrentTime,setIsVisible,setConfig,startLyricsEffects}from ${JSON.stringify(renderer)};import{renderer as plugin}from ${JSON.stringify(lifecycle)};import{LRCLib}from ${JSON.stringify(provider)};import{setLyrics}from'fixture-state';const settings={enabled:true,lineEffect:'fancy',romanization:false,convertChineseCharacter:'disabled',defaultTextString:'',showTimeCodes:false};window.mount=(lines)=>{setConfig(settings);startLyricsEffects();setLyrics({state:'done',data:{lines}});setIsVisible(true);const dispose=render(()=> <LyricsRenderer/>,document.querySelector('#lyrics-tab'));window.fixture={setTime:setCurrentTime,time:currentTime,setVisible:setIsVisible,setLines:lines=>setLyrics({state:'done',data:{lines}}),dispose,plugin};setCurrentTime(0)};window.searchProvider=async data=>{window.fetch=async()=>new Response(JSON.stringify(data),{status:200});return new LRCLib().search({title:'Song',artist:'Artist',album:'Album',songDuration:10,videoId:'A'})};window.nativeClock=async()=>{const video=document.createElement('video');document.body.append(video);const header=new Uint8Array(44+44100*40*2);const view=new DataView(header.buffer);const ascii=(offset,value)=>[...value].forEach((c,i)=>header[offset+i]=c.charCodeAt(0));ascii(0,'RIFF');view.setUint32(4,header.length-8,true);ascii(8,'WAVE');ascii(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,44100,true);view.setUint32(28,88200,true);view.setUint16(32,2,true);view.setUint16(34,16,true);ascii(36,'data');view.setUint32(40,header.length-44,true);const url=URL.createObjectURL(new Blob([header],{type:'audio/wav'}));video.src=url;await new Promise((yes,no)=>{video.onloadedmetadata=yes;video.onerror=no});const events=new EventTarget();const api={getCurrentTime:()=>video.currentTime,getVideoData:()=>({video_id:'A'}),getPlayerResponse:()=>({videoDetails:{videoId:'A'}}),addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events),seekTo:t=>video.currentTime=t};await plugin.start({getConfig:async()=>settings,ipc:{invoke:async()=>{},subscribe:()=>()=>{}}});await plugin.onPlayerApiReady(api);window.fixture.video=video;window.fixture.disposeClock=()=>{plugin.stop();video.pause();video.remove();URL.revokeObjectURL(url)};return video.duration};`,
+    `import{render}from'solid-js/web';import{LyricsRenderer,currentTime,setCurrentTime,setIsVisible,setConfig,startLyricsEffects}from ${JSON.stringify(renderer)};import{renderer as plugin}from ${JSON.stringify(lifecycle)};import{LRCLib}from ${JSON.stringify(provider)};import{setLyrics}from'fixture-state';const settings={enabled:true,lineEffect:'fancy',romanization:false,convertChineseCharacter:'disabled',defaultTextString:'',showTimeCodes:false};window.mount=(lines)=>{setConfig(settings);startLyricsEffects();setLyrics({state:'done',data:{lines}});setIsVisible(true);const dispose=render(()=> <LyricsRenderer/>,document.querySelector('#lyrics-tab'));window.fixture={setConfig,setTime:setCurrentTime,time:currentTime,setVisible:setIsVisible,setLines:lines=>setLyrics({state:'done',data:{lines}}),dispose,plugin};setCurrentTime(0)};window.searchProvider=async data=>{window.fetch=async()=>new Response(JSON.stringify(data),{status:200});return new LRCLib().search({title:'Song',artist:'Artist',album:'Album',songDuration:10,videoId:'A'})};window.nativeClock=async()=>{const video=document.createElement('video');document.body.append(video);const header=new Uint8Array(44+44100*40*2);const view=new DataView(header.buffer);const ascii=(offset,value)=>[...value].forEach((c,i)=>header[offset+i]=c.charCodeAt(0));ascii(0,'RIFF');view.setUint32(4,header.length-8,true);ascii(8,'WAVE');ascii(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,44100,true);view.setUint32(28,88200,true);view.setUint16(32,2,true);view.setUint16(34,16,true);ascii(36,'data');view.setUint32(40,header.length-44,true);const url=URL.createObjectURL(new Blob([header],{type:'audio/wav'}));video.src=url;await new Promise((yes,no)=>{video.onloadedmetadata=yes;video.onerror=no});const events=new EventTarget();const api={getCurrentTime:()=>video.currentTime,getVideoData:()=>({video_id:'A'}),getPlayerResponse:()=>({videoDetails:{videoId:'A'}}),addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events),seekTo:t=>video.currentTime=t};await plugin.start({getConfig:async()=>settings,ipc:{invoke:async()=>{},subscribe:()=>()=>{}}});await plugin.onPlayerApiReady(api);window.fixture.video=video;window.fixture.disposeClock=()=>{plugin.stop();video.pause();video.remove();URL.revokeObjectURL(url)};return video.duration};`,
   );
   const result = await build({
     root,
@@ -568,4 +568,47 @@ test('real virtualized list centers measured rows, retargets mid-motion, resizes
       ),
     });
   }
+});
+
+test('saved timing offset moves line and word clocks together and keyboard seek reverses it', async ({
+  page,
+}) => {
+  await mount(page, [timed]);
+  await page.evaluate(() => (window as any).nativeClock());
+  await page.evaluate(() => {
+    const f = (window as any).fixture;
+    f.setConfig({
+      enabled: true,
+      lineEffect: 'fancy',
+      romanization: false,
+      defaultTextString: '',
+      showTimeCodes: false,
+      timingOffsetMs: 500,
+      romanizationSizePercent: 50,
+    });
+    f.video.currentTime = 1.2;
+    f.setTime(1200);
+  });
+  await expect(page.locator('.synced-line.upcoming')).toHaveCount(1);
+  await expect(page.locator('.lyrics-word.sung')).toHaveCount(0);
+  await page.evaluate(() => {
+    const f = (window as any).fixture;
+    f.video.currentTime = 1.6;
+    f.setTime(1600);
+  });
+  await expect(page.locator('.synced-line.current')).toHaveCount(1);
+  await expect(page.locator('.lyrics-word.sung')).toHaveCount(1);
+  const active = page.locator('.synced-line.current');
+  await active.focus();
+  await page.keyboard.press('Enter');
+  expect(
+    await page.evaluate(() => (window as any).fixture.video.currentTime),
+  ).toBe(1.51);
+  expect(
+    await page.evaluate(() =>
+      document.documentElement.style.getPropertyValue(
+        '--lyrics-romanization-ratio',
+      ),
+    ),
+  ).toBe('0.5');
 });
