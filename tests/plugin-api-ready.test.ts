@@ -38,6 +38,16 @@ async function fixture(plugins: Record<string, any>) {
       },
     },
   };
+  const graphSource = stripTypeScriptTypes(
+    await readFile(
+      new URL('../src/providers/renderer-audio.ts', import.meta.url),
+      'utf8',
+    ),
+  ).replace(/^import[\s\S]*?;\n/gm, '');
+  const graph = await import(
+    `data:text/javascript;base64,${Buffer.from(graphSource).toString('base64')}`
+  );
+  (state as any).initializeAudioGraph = graph.initializeAudioGraph;
   (globalThis as any)[key] = state;
   const raw = await readFile(
     new URL('../src/renderer.ts', import.meta.url),
@@ -58,6 +68,7 @@ async function fixture(plugins: Record<string, any>) {
 const fixture=globalThis[${JSON.stringify(key)}];
 const {window}=fixture; const document=fixture.dom.document;
 const {Element,CustomEvent}=fixture.dom;
+const initializeAudioGraph=fixture.initializeAudioGraph;
 const setTheme=()=>{}; const registerWindowDefaultTrustedTypePolicy=()=>{};
 const i18t=(key,options)=>({key,options}); const LoggerPrefix='[YTMusic]';
 const console={error:(...args)=>fixture.errors.push(args),trace:err=>fixture.traces.push(err)};
@@ -67,7 +78,7 @@ const getAllLoadedRendererPlugins=()=>fixture.plugins;
 const getLoadedRendererPlugin=id=>fixture.plugins[id];
 const loadAllRendererPlugins=async()=>{}; const forceLoadRendererPlugin=async()=>{};
 const forceUnloadRendererPlugin=async()=>{};
-class AudioContext {destination={};createMediaElementSource(){return {connect(){}}}}
+class AudioContext {destination={};addEventListener(){}removeEventListener(){}createGain(){return {gain:{value:1},connect(){},disconnect(){}}}createMediaElementSource(){return {connect(){},disconnect(){}}}}
 `;
   const source = await import(
     `data:text/javascript;base64,${Buffer.from(boundaries + repeatProvider + actual).toString('base64')}`

@@ -11,6 +11,7 @@ import {
   registerPlayerPanelSection,
   unregisterPlayerPanelSection,
 } from '@/plugins/utils/renderer/player-panel';
+import { graphFromAnnouncement } from '@/providers/renderer-audio';
 
 import { getLatestAudioDetail, type AudioCanPlayDetail } from './audio-graph';
 import {
@@ -436,13 +437,12 @@ export function createSlowedReverbController(): SlowedReverbController {
       this.teardownAudio();
       try {
         this.wetGain = audioContext.createGain();
-        // Additive only: the base audioSource -> destination path is never
-        // disconnected and never duplicated here; our wet tail runs in
-        // parallel with it: audioSource -> dattorroNode -> wetGain ->
-        // destination. At defaults (intensity 0) the worklet outputs
-        // silence, so enabling changes no loudness.
+        // Wet reverb joins the renderer master mix so EQ/output sink cover it.
+        // Raw analyser taps and the compressor's dry insert remain untouched.
         this.wetGain.gain.value = 1;
-        this.wetGain.connect(audioContext.destination);
+        this.wetGain.connect(
+          graphFromAnnouncement({ audioContext, audioSource }).masterInput,
+        );
         this.wiredSource = audioSource;
       } catch (error) {
         console.error('[slowed-reverb] wiring failed', error);
@@ -815,7 +815,7 @@ export function createSlowedReverbController(): SlowedReverbController {
       // Invalidate any in-flight ensureWorklet() so it never connects
       // post-teardown.
       this.workletEpoch += 1;
-      // Never touch audioSource -> destination; only detach our own wet tap.
+      // Never touch the renderer dry route; only detach our own wet tap.
       const source = this.wiredSource ?? this.audioSource;
       try {
         if (source && this.reverbNode) source.disconnect(this.reverbNode);

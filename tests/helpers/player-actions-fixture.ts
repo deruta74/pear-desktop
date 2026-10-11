@@ -159,7 +159,7 @@ export async function playerActionsFixture({ nativeTimers = false } = {}) {
   const entry = path.join(directory, 'entry.ts');
   await writeFile(
     entry,
-    `export {default as plugin} from ${JSON.stringify(path.join(root, 'src/plugins/player-actions/index.ts'))};export {createSectionRepeatController} from ${JSON.stringify(path.join(root, 'src/plugins/player-actions/section-repeat/controller.ts'))};export {createSlowedReverbController} from ${JSON.stringify(path.join(root, 'src/plugins/player-actions/slowed-reverb/controller.ts'))};export * from '@/plugins/utils/renderer/player-panel';export * from '@/plugins/utils/renderer/playback-rate-owner';export {createAdSpeedup} from ${JSON.stringify(path.join(root, 'src/plugins/adblocker/ad-speedup.ts'))};export * as playbackSpeed from ${JSON.stringify(path.join(root, 'src/plugins/playback-speed/renderer.tsx'))};`,
+    `export {default as plugin} from ${JSON.stringify(path.join(root, 'src/plugins/player-actions/index.ts'))};export {createSectionRepeatController} from ${JSON.stringify(path.join(root, 'src/plugins/player-actions/section-repeat/controller.ts'))};export {createSlowedReverbController} from ${JSON.stringify(path.join(root, 'src/plugins/player-actions/slowed-reverb/controller.ts'))};export * from '@/providers/renderer-audio';export * from '@/plugins/utils/renderer/player-panel';export * from '@/plugins/utils/renderer/playback-rate-owner';export {createAdSpeedup} from ${JSON.stringify(path.join(root, 'src/plugins/adblocker/ad-speedup.ts'))};export * as playbackSpeed from ${JSON.stringify(path.join(root, 'src/plugins/playback-speed/renderer.tsx'))};`,
   );
   const output = path.join(directory, 'actual.cjs');
   await build({
@@ -280,6 +280,8 @@ export async function playerActionsFixture({ nativeTimers = false } = {}) {
       id,
       destination: { id: 'destination-' + id },
       state: 'running',
+      addEventListener() {},
+      removeEventListener() {},
       createGain: () => new Node(context, 'gain'),
       audioWorklet: {
         addModule: (url: string) => {
@@ -295,7 +297,8 @@ export async function playerActionsFixture({ nativeTimers = false } = {}) {
     audioSource.connect(context.destination);
     const unrelated = new Node(context, 'unrelated');
     audioSource.connect(unrelated);
-    return { audioContext: context, audioSource, unrelated };
+    const audioGraph = source.initializeAudioGraph(context, audioSource);
+    return { audioContext: context, audioSource, unrelated, audioGraph };
   };
   return {
     dom,
