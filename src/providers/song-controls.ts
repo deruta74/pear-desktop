@@ -8,9 +8,10 @@ type ArgsType<T> = T | string[] | undefined;
 
 const parseNumberFromArgsType = (args: ArgsType<number>) => {
   if (typeof args === 'number') {
-    return args;
+    return Number.isFinite(args) ? args : null;
   } else if (Array.isArray(args)) {
-    return Number(args[0]);
+    const value = Number(args[0]);
+    return Number.isFinite(value) ? value : null;
   } else {
     return null;
   }
@@ -61,7 +62,7 @@ export const getSongControls = (win: BrowserWindow) => {
     goForward: (seconds: ArgsType<number>) => {
       const secondsNumber = parseNumberFromArgsType(seconds);
       if (secondsNumber !== null) {
-        win.webContents.send('peard:seek-by', seconds);
+        win.webContents.send('peard:seek-by', secondsNumber);
       }
     },
     requestShuffleInformation: () => {
