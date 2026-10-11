@@ -64,6 +64,7 @@ export const net={fetch:async(...args)=>{fixtureState.network.push(args);throw n
 `;
   const youtube = `
 import {fixtureState} from 'electron';
+export {FormatUtils} from 'owned-real-sdk';
 export const Platform={shim:{}};export class UniversalCache{};export const Utils={};export const YTNodes={MusicResponsiveListItem:class{constructor(id){this.id=id;this.author={name:'fixture author'};this.title='fixture title';}}};
 export const Innertube={create:async()=>({session:{context:{client:{}}},music:{getPlaylist:async()=>({header:{title:{text:'Owned fixture playlist'}},items:[new YTNodes.MusicResponsiveListItem('first'),new YTNodes.MusicResponsiveListItem('second')],has_continuation:false}),getInfo:(id)=>{fixtureState.requests.push(id);if(fixtureState.infoMode==='deferred'||(fixtureState.playlistMode&&id==='second'))return new Promise((resolve,reject)=>{fixtureState.resolveInfo=resolve;fixtureState.rejectInfo=reject;fixtureState.infoReady?.();});return Promise.reject(fixtureState.rejection);}}})};
 `;
@@ -77,6 +78,11 @@ export const Innertube={create:async()=>({session:{context:{client:{}}},music:{g
       {
         name: 'controlled-download-native-boundaries',
         async resolveId(id: string) {
+          if (id === 'owned-real-sdk')
+            return {
+              id: requireRoot.resolve('youtubei.js').replaceAll('\\', '/'),
+              external: true,
+            };
           if (id === 'electron-is' && badgePlatform)
             return '\0fixture-platform';
           if (id === 'filenamify') return '\0fixture-filenamify';
@@ -500,7 +506,19 @@ test('a mixed playlist retains its first error through a later successful track 
         duration: 100,
       },
       playability_status: { status: 'OK' },
-      chooseFormat: () => ({ itag: 140, content_length: 0 }),
+      streaming_data: {
+        formats: [],
+        adaptive_formats: [
+          {
+            itag: 140,
+            mime_type: 'audio/mp4; codecs="mp4a.40.2"',
+            has_audio: true,
+            has_video: false,
+            is_original: true,
+            content_length: 3,
+          },
+        ],
+      },
     });
     await pending;
     expect(f.state.requests).toEqual(['first', 'second']);
