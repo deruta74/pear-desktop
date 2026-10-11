@@ -1,6 +1,7 @@
 import { jaroWinkler } from '@skyra/jaro-winkler';
 
 import { LRC } from '../parsers/lrc';
+import { LyricsFile } from '../parsers/lyricsfile';
 import { config } from '../renderer/renderer';
 
 import type { LyricProvider, LyricResult, SearchSongInfo } from '../types';
@@ -151,25 +152,57 @@ export class LRCLib implements LyricProvider {
       return null;
     }
 
-    if (closestResult.instrumental) {
+    if (
+      closestResult.instrumental &&
+      (!Number.isFinite(closestResult.duration) || closestResult.duration <= 0)
+    )
       return null;
-    }
+    if (closestResult.instrumental)
+      return {
+        title: closestResult.trackName,
+        artists: closestResult.artistName.split(/[&,]/g),
+        lines: [
+          {
+            time: '00:00',
+            timeInMs: 0,
+            duration: closestResult.duration * 1000,
+            text: '',
+            words: [],
+            instrumental: true,
+            status: 'upcoming',
+          },
+        ],
+      };
 
     const raw = closestResult.syncedLyrics;
+    const lyricsfile = closestResult.lyricsfile;
     const plain = closestResult.plainLyrics;
-    if (!raw && !plain) {
+    if (!raw && !lyricsfile && !plain) {
       return null;
     }
 
+    // Word timing is optional. Invalid/absent lyricsfile retains the original LRC/plain path.
+    let timedLines: ReturnType<typeof LyricsFile.parse>['lines'] | undefined =
+      undefined;
+    if (typeof lyricsfile === 'string') {
+      try {
+        const parsed = LyricsFile.parse(lyricsfile).lines;
+        if (parsed.length) timedLines = parsed;
+      } catch {
+        /* use LRC */
+      }
+    }
+    if (!timedLines && raw) {
+      const parsed = LRC.parse(raw).lines;
+      if (parsed.length) timedLines = parsed;
+    }
     return {
       title: closestResult.trackName,
       artists: closestResult.artistName.split(/[&,]/g),
-      lines: raw
-        ? LRC.parse(raw).lines.map((l) => ({
-            ...l,
-            status: 'upcoming' as const,
-          }))
-        : undefined,
+      lines: timedLines?.map((l) => ({
+        ...l,
+        status: 'upcoming' as const,
+      })),
       lyrics: plain,
     };
   }
@@ -185,4 +218,5 @@ type LRCLIBSearchResponse = {
   instrumental: boolean;
   plainLyrics: string;
   syncedLyrics: string;
+  lyricsfile?: string | null;
 }[];
