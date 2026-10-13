@@ -9,7 +9,7 @@ const target=path.win32.join(process.env.SystemRoot||'C:\\Windows','System32','W
 const challenge='00000000-0000-4000-8000-000000000001';
 const parentScript=String.raw`$ErrorActionPreference='Stop';[Console]::WriteLine('P0');try{$reader=[IO.StreamReader]::new([Console]::OpenStandardInput(),[Text.UTF8Encoding]::new($false,$true),$false,4096,$true);$r=$reader.ReadLine()|ConvertFrom-Json;[Console]::WriteLine('P1');$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User;$acl=[Security.AccessControl.DirectorySecurity]::new();$acl.SetOwner($sid);$acl.SetAccessRuleProtection($true,$false);foreach($who in @($sid,[Security.Principal.SecurityIdentifier]::new('S-1-5-18'),[Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))){$acl.SetAccessRule([Security.AccessControl.FileSystemAccessRule]::new($who,[Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit',[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow))};[Console]::WriteLine('P2');[IO.Directory]::SetAccessControl($r.directory,$acl);[Console]::WriteLine('P3');exit 0}catch{[Console]::WriteLine('P99');exit 1}`;
 function packed(script){const bytes=gzipSync(Buffer.from(script,'utf8')).toString('base64');return `$ErrorActionPreference='Stop';try{$m=[IO.MemoryStream]::new([Convert]::FromBase64String('${bytes}'));$g=[IO.Compression.GZipStream]::new($m,[IO.Compression.CompressionMode]::Decompress);$r=[IO.StreamReader]::new($g,[Text.Encoding]::UTF8);$s=$r.ReadToEnd();$r.Dispose();&([ScriptBlock]::Create($s))}catch{[Console]::WriteLine('P98');exit 1}`;}
-function execute(name,script,request,prepare=false,relocated=false){
+function execute(name,script,request,prepare=false,relocated=false,captureBinding){
  return new Promise(resolve=>{
  const encoded=Buffer.from(packed(script),'utf16le').toString('base64');const args=['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',encoded];
  let stdout='',stderr='',types=[],phases=[],codes=[],committed=false,timedOut=false,spawnError=0,bindingValid=false,readEmpty=false,began=Date.now(),settled=false;
@@ -17,7 +17,7 @@ function execute(name,script,request,prepare=false,relocated=false){
  const child=spawn(target,args,{windowsHide:true,stdio:['pipe','pipe','pipe'],env});
  const timer=setTimeout(()=>{timedOut=true;child.stdin.destroy();child.kill('SIGKILL')},timeoutMs);
  const finish=exitCode=>{if(settled)return;settled=true;clearTimeout(timer);for(const line of stderr.split(/\r?\n/)){const m=/^N([0-9]{1,2}) ([0-9]{1,5})$/.exec(line);if(m){phases.push('N'+Number(m[1]));codes.push(Number(m[2]))}}resolve({name,timeoutMs,timedOut,spawnError,exitCode:Number.isInteger(exitCode)?exitCode:null,elapsedMs:Date.now()-began,encodedCharacters:encoded.length,phases,codes,types,bindingValid,readEmpty,committed,errorBytes:Buffer.byteLength(stderr)})};
- child.stdout.on('data',chunk=>{stdout+=chunk.toString('utf8');if(stdout.length>1048576){child.kill('SIGKILL');return;}let at;while((at=stdout.indexOf('\n'))>=0){const line=stdout.slice(0,at).trim();stdout=stdout.slice(at+1);if(/^P[0-9]{1,2}$/.test(line)){phases.push(line);continue;}try{const packet=JSON.parse(line);if(!['read','ready','committed','failure'].includes(packet.type))continue;types.push(packet.type);if(packet.type==='read'){readEmpty=packet.contents64===null&&packet.binding===null;bindingValid=typeof packet.binding==='string'&&/^[a-f0-9]{48}:[a-f0-9]{64}$/.test(packet.binding);}if(packet.type==='ready'&&prepare&&!committed){committed=true;child.stdin.end(JSON.stringify({version:1,action:'commit',challenge})+'\n');}if(packet.type==='committed')bindingValid=typeof packet.binding==='string'&&/^[a-f0-9]{48}:[a-f0-9]{64}$/.test(packet.binding);}catch{}}});
+ child.stdout.on('data',chunk=>{stdout+=chunk.toString('utf8');if(stdout.length>1048576){child.kill('SIGKILL');return;}let at;while((at=stdout.indexOf('\n'))>=0){const line=stdout.slice(0,at).trim();stdout=stdout.slice(at+1);if(/^P[0-9]{1,2}$/.test(line)){phases.push(line);continue;}try{const packet=JSON.parse(line);if(!['read','ready','committed','failure'].includes(packet.type))continue;types.push(packet.type);if(packet.type==='read'){readEmpty=packet.contents64===null&&packet.binding===null;bindingValid=typeof packet.binding==='string'&&/^[a-f0-9]{48}:[a-f0-9]{64}$/.test(packet.binding);}if(packet.type==='ready'&&prepare&&!committed){committed=true;child.stdin.end(JSON.stringify({version:1,action:'commit',challenge})+'\n');}if(packet.type==='committed')bindingValid=typeof packet.binding==='string'&&/^[a-f0-9]{48}:[a-f0-9]{64}$/.test(packet.binding);if(bindingValid&&typeof captureBinding==='function')captureBinding(packet.binding);}catch{}}});
  child.stderr.on('data',chunk=>{stderr=(stderr+chunk.toString('utf8')).slice(-4096)});child.on('error',()=>{spawnError=1;finish(null)});child.on('close',finish);child.stdin.on('error',()=>{});
  const frame=JSON.stringify(request)+'\n';if(prepare)child.stdin.write(frame);else child.stdin.end(frame);
  });
@@ -50,19 +50,25 @@ function instrument(worker,raw,renameMode){
  worker=worker.replace('if(!SetFileInformationByHandle(tmp,3,','Console.Error.WriteLine("N17 0");if(!SetFileInformationByHandle(tmp,3,');
 
  worker=worker.replace('IntPtr buffer=Marshal.AllocHGlobal(', 'Console.Error.WriteLine("N50 "+IntPtr.Size);Console.Error.WriteLine("N51 "+Marshal.SizeOf(typeof(Ren)));Console.Error.WriteLine("N52 "+Marshal.OffsetOf(typeof(Ren),"Root"));Console.Error.WriteLine("N53 "+Marshal.OffsetOf(typeof(Ren),"Length"));Console.Error.WriteLine("N54 "+offset);Console.Error.WriteLine("N55 "+name.Length);IntPtr buffer=Marshal.AllocHGlobal(');
- const ntCall='IoStatus io;int status=NtSetInformationFile(tmp,out io,buffer,(uint)(offset+name.Length),10);if(status<0)throw Bad();';
+ let ntCall='IoStatus io;int status=NtSetInformationFile(tmp,out io,buffer,(uint)(offset+name.Length),10);if(status<0)throw Bad();';
+ if(renameMode==='nt-ex-replace'||renameMode==='nt-ex-posix'){
+  worker=worker.replace('struct Ren {public byte Replace;','struct Ren {public uint Flags;');
+  worker=worker.replace('Marshal.WriteByte(buffer,0,1);','Marshal.WriteInt32(buffer,0,'+(renameMode==='nt-ex-posix'?3:1)+');');
+  worker=worker.replace(ntCall,ntCall.replace(',10);',',65);'));
+  ntCall=ntCall.replace(',10);',',65);');
+ }
  if(!worker.includes(ntCall))throw Error('NT candidate rename source mismatch');
  if(renameMode==='win32-control')worker=worker.replace(ntCall,'Console.Error.WriteLine("N17 0");if(!SetFileInformationByHandle(tmp,3,buffer,(uint)(offset+name.Length)))throw Bad();');
  else {
   worker=worker.replace('static Exception Bad()', '[DllImport("ntdll.dll")]static extern uint RtlNtStatusToDosError(int status);static Exception Bad()');
-  worker=worker.replace(ntCall,'Console.Error.WriteLine("N17 0");IoStatus io;int status=NtSetInformationFile(tmp,out io,buffer,(uint)(offset+name.Length),10);Console.Error.WriteLine("N60 "+(status>=0?1:0));uint mapped=status<0?RtlNtStatusToDosError(status):0;Console.Error.WriteLine("N61 "+(mapped<=65535?mapped:0));if(status<0)throw Bad();');
+  worker=worker.replace(ntCall,'Console.Error.WriteLine("N17 0");'+ntCall.replace('if(status<0)throw Bad();','Console.Error.WriteLine("N60 "+(status>=0?1:0));uint mapped=status<0?RtlNtStatusToDosError(status):0;Console.Error.WriteLine("N61 "+(mapped<=65535?mapped:0));if(status<0)throw Bad();'));
  }
  return worker;
 }
 (async()=>{
  if(process.platform!=='win32')throw Error('Windows runner required');
  const source=readFileSync(path.join(process.cwd(),'src','plugins','api-server','backend','windows-private-path.ts'),'utf8');const match=source.match(/const WINDOWS_PRIVATE_WORKER = String\.raw`([\s\S]*?)`\.trim\(\);/);if(!match)throw Error('Fixed worker source missing');
- for(const renameMode of ['win32-control','nt-candidate']){
+ for(const renameMode of ['nt-legacy','nt-ex-replace','nt-ex-posix']){
  const raw=false, label=renameMode;
  const parent=await mkdtemp(path.join(tmpdir(),'pear-grant-native-diag-'));
  try{
@@ -74,7 +80,13 @@ function instrument(worker,raw,renameMode){
  console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('read-empty-'+label,worker,read())));
  const content=Buffer.from('{"version":1,"records":[]}','utf8').toString('base64');
  console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('prepare-commit-'+label,worker,{version:1,operation:'prepare',directory,contents64:content,expected:null},true)));
- console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('readback-'+label,worker,read())));
+ let expected;
+ console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('readback-'+label,worker,read(),false,false,binding=>{expected=binding})));
+ if(expected){
+  const secondContent=Buffer.from('{"version":1,"records":[]}\n','utf8').toString('base64');
+  console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('replace-existing-'+label,worker,{version:1,operation:'prepare',directory,contents64:secondContent,expected},true)));
+  console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('read-after-replace-'+label,worker,read())));
+ }
  }finally{await rm(parent,{recursive:true,force:true})}
  }
 })().catch(()=>{console.error('WINDOWS_NATIVE_DIAG fixed-diagnostic-failure');process.exitCode=1});
