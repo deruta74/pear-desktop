@@ -23,7 +23,9 @@ import {
 const root = path.resolve(import.meta.dirname, '../..');
 
 /** Actual isolated BrowserWindow/Session fixture; every HTTP(S) request is intercepted. */
-export async function scrobblerAuthNative() {
+export async function scrobblerAuthNative(
+  options: { observeDownloads?: boolean } = {},
+) {
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pear-scrobbler-window-'),
   );
@@ -72,14 +74,239 @@ export async function scrobblerAuthNative() {
 const {app,BrowserWindow,session}=require('electron'),fs=require('node:fs'),path=require('node:path');
 const owned=${JSON.stringify(directory)};app.setPath('userData',${JSON.stringify(profile)});fs.mkdirSync(path.join(owned,'downloads'));app.setPath('downloads',path.join(owned,'downloads'));fs.mkdirSync(path.join(owned,'sessionData'));app.setPath('sessionData',path.join(owned,'sessionData'));
 const pages={mode:'normal',pending:[],requests:0};const created=[],handlers=new Map(),readyHandlers=new Map(),shows=new Map(),partitions=[];
-const intercept=async request=>{pages.requests++;globalThis.AuthWindowFixture?.trace('HTTPS request');if(pages.mode==='hold')await new Promise(yes=>pages.pending.push(yes));if(pages.mode==='failure')throw Error('Owned load failure');if(new URL(request.url).pathname==='/download')return new Response('owned download fixture',{headers:{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename=owned.bin'}});return new Response('<html><body>Owned HTTPS login fixture<script>window.onbeforeunload=()=>"hold";<\/script></body></html>',{headers:{'Content-Type':'text/html'}})};
-const permissions=new Map();const permissionChecks=new Map();const clears=[];const configured=new WeakSet();const configure=ses=>{if(configured.has(ses))return;configured.add(ses);const request=ses.setPermissionRequestHandler.bind(ses),check=ses.setPermissionCheckHandler.bind(ses);ses.setPermissionRequestHandler=handler=>{permissions.set(ses,handler);request(handler)};ses.setPermissionCheckHandler=handler=>{permissionChecks.set(ses,handler);check(handler)};for(const method of ['clearStorageData','clearCache']){const native=ses[method].bind(ses);ses[method]=(...args)=>{const promise=native(...args);clears.push({session:ses,method,promise});return promise;};}ses.protocol.handle('https',intercept);ses.protocol.handle('http',intercept);};
+// Opt-in passive witness only. It never replaces, wraps or reorders production listeners.
+const observeDownloads = ${JSON.stringify(options.observeDownloads === true)};
+const downloadStages = [],
+  downloadItems = [],
+  downloadSessions = new WeakMap(),
+  downloadListenerIds = new WeakMap(),
+  downloadObserverFunctions = new Set();
+let nextDownloadSession = 0,
+  nextDownloadListener = 0;
+const fileFacts = () => {
+  const facts = {
+    entries: 0,
+    files: 0,
+    tmpFiles: 0,
+    fixtureFiles: 0,
+    otherEntries: 0,
+    bytes: 0,
+    vanishedAfterRead: 0,
+    statFailures: 0,
+  };
+  const names = fs.readdirSync(path.join(owned, 'downloads'));
+  facts.entries = names.length;
+  for (const name of names) {
+    try {
+      const stat = fs.lstatSync(path.join(owned, 'downloads', name));
+      if (stat.isFile()) {
+        facts.files++;
+        facts.bytes += stat.size;
+        if (name.endsWith('.tmp')) facts.tmpFiles++;
+        else if (name === 'owned.bin') facts.fixtureFiles++;
+        else facts.otherEntries++;
+      } else facts.otherEntries++;
+    } catch (error) {
+      if (error?.code === 'ENOENT') facts.vanishedAfterRead++;
+      else facts.statFailures++;
+    }
+  }
+  return facts;
+};
+const downloadSessionId = (ses) => {
+  if (!downloadSessions.has(ses))
+    downloadSessions.set(ses, ++nextDownloadSession);
+  return downloadSessions.get(ses);
+};
+const downloadListenerId = (fn) => {
+  if (!downloadListenerIds.has(fn))
+    downloadListenerIds.set(fn, ++nextDownloadListener);
+  return downloadListenerIds.get(fn);
+};
+const guards = (ses) =>
+  ses
+    .listeners('will-download')
+    .filter((fn) => !downloadObserverFunctions.has(fn))
+    .map(downloadListenerId);
+const itemFacts = (item) => {
+  const facts = {};
+  for (const [key, method] of [
+    ['state', 'getState'],
+    ['receivedBytes', 'getReceivedBytes'],
+    ['totalBytes', 'getTotalBytes'],
+    ['paused', 'isPaused'],
+    ['canResume', 'canResume'],
+  ]) {
+    try {
+      facts[key] = item[method]();
+    } catch {
+      facts[key + 'Unavailable'] = true;
+    }
+  }
+  return facts;
+};
+const downloadMark = (stage, details = {}) => {
+  if (!observeDownloads) return;
+  let physical;
+  try {
+    physical = fileFacts();
+  } catch {
+    physical = { readUnavailable: true };
+  }
+  downloadStages.push({ stage, time: Date.now(), ...details, physical });
+};
+const observeSession = (ses) => {
+  if (!observeDownloads) return;
+  const sessionId = downloadSessionId(ses);
+  const add = (event, fn) => {
+    downloadObserverFunctions.add(fn);
+    ses.on(event, fn);
+  };
+  add('newListener', (event, fn) => {
+    if (event === 'will-download' && !downloadObserverFunctions.has(fn)) {
+      const listenerId = downloadListenerId(fn);
+      downloadMark('guard-register-before', {
+        sessionId,
+        listenerId,
+        activeGuardIds: guards(ses),
+      });
+      queueMicrotask(() =>
+        downloadMark('guard-register-after', {
+          sessionId,
+          listenerId,
+          activeGuardIds: guards(ses),
+        }),
+      );
+    }
+  });
+  add('removeListener', (event, fn) => {
+    if (event === 'will-download' && !downloadObserverFunctions.has(fn))
+      downloadMark('guard-remove-after', {
+        sessionId,
+        listenerId: downloadListenerId(fn),
+        activeGuardIds: guards(ses),
+      });
+  });
+  add('will-download', (event, item, contents) => {
+    const itemId = downloadItems.length + 1;
+    downloadItems.push({ item, itemId, sessionId });
+    const activeGuardIds = guards(ses),
+      preventedBefore = event.defaultPrevented === true;
+    downloadMark('will-download-before-guard', {
+      sessionId,
+      itemId,
+      windowId: (() => {
+        try {
+          return BrowserWindow.fromWebContents(contents)?.id ?? null;
+        } catch {
+          return null;
+        }
+      })(),
+      activeGuardIds,
+      prevented: preventedBefore,
+      item: itemFacts(item),
+    });
+    item.on('updated', (_event, state) =>
+      downloadMark('item-updated', {
+        sessionId,
+        itemId,
+        state,
+        item: itemFacts(item),
+      }),
+    );
+    item.on('done', (_event, state) =>
+      downloadMark('item-done', {
+        sessionId,
+        itemId,
+        state,
+        item: itemFacts(item),
+      }),
+    );
+    queueMicrotask(() =>
+      downloadMark('will-download-after-emission', {
+        sessionId,
+        itemId,
+        activeGuardIds: guards(ses),
+        prevented: event.defaultPrevented === true,
+        guardCallInferred:
+          activeGuardIds.length === 1 &&
+          !preventedBefore &&
+          event.defaultPrevented === true,
+        item: itemFacts(item),
+      }),
+    );
+  });
+};
+const downloadObservation = {
+  mark: downloadMark,
+  snapshot: (stage, ses) => {
+    downloadMark(stage, {
+      sessionId: downloadSessionId(ses),
+      activeGuardIds: guards(ses),
+      items: downloadItems.map((value) => ({
+        itemId: value.itemId,
+        sessionId: value.sessionId,
+        ...itemFacts(value.item),
+      })),
+    });
+    return downloadStages[downloadStages.length - 1];
+  },
+  stages: () => downloadStages.map((value) => ({ ...value })),
+};
+
+const observeWindow = (win) => {
+  const contents = win.webContents;
+  if (observeDownloads) {
+    contents.on(
+      'did-fail-load',
+      (_event, code, _description, url, mainFrame) => {
+        const sessionId = downloadSessionId(contents.session);
+        const kind = (() => {
+          try {
+            return new URL(url).pathname === '/download'
+              ? 'download'
+              : 'other-fixture';
+          } catch {
+            return 'unknown';
+          }
+        })();
+        downloadMark('did-fail-load-before-production', {
+          windowId: win.id,
+          sessionId,
+          code,
+          mainFrame,
+          kind,
+          activeGuardIds: guards(contents.session),
+        });
+        queueMicrotask(() =>
+          downloadMark('did-fail-load-after-emission', {
+            windowId: win.id,
+            sessionId,
+            code,
+            mainFrame,
+            kind,
+            windowDestroyed: win.isDestroyed(),
+            activeGuardIds: guards(sesForFailure),
+          }),
+        );
+        const sesForFailure = contents.session;
+      },
+    );
+    win.on('closed', () => downloadMark('window-closed', { windowId: win.id }));
+    contents.on('destroyed', () =>
+      downloadMark('contents-destroyed', { windowId: win.id }),
+    );
+  }
+};
+
+const intercept=async request=>{pages.requests++;globalThis.AuthWindowFixture?.trace('HTTPS request');if(pages.mode==='hold')await new Promise(yes=>pages.pending.push(yes));if(pages.mode==='failure')throw Error('Owned load failure');if(new URL(request.url).pathname==='/download'){if(!observeDownloads)return new Response('owned download fixture',{headers:{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename=owned.bin'}});downloadMark('download-response-enter',{fixtureBodyBytes:Buffer.byteLength('owned download fixture')});const response=new Response('owned download fixture',{headers:{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename=owned.bin'}});downloadMark('download-response-return',{fixtureBodyBytes:Buffer.byteLength('owned download fixture')});return response;}return new Response('<html><body>Owned HTTPS login fixture<script>window.onbeforeunload=()=>"hold";<\/script></body></html>',{headers:{'Content-Type':'text/html'}})};
+const permissions=new Map();const permissionChecks=new Map();const clears=[];const configured=new WeakSet();const configure=ses=>{if(configured.has(ses))return;configured.add(ses);observeSession(ses);const request=ses.setPermissionRequestHandler.bind(ses),check=ses.setPermissionCheckHandler.bind(ses);ses.setPermissionRequestHandler=handler=>{permissions.set(ses,handler);request(handler)};ses.setPermissionCheckHandler=handler=>{permissionChecks.set(ses,handler);check(handler)};for(const method of ['clearStorageData','clearCache']){const native=ses[method].bind(ses);ses[method]=(...args)=>{const promise=native(...args);clears.push({session:ses,method,promise});return promise;};}ses.protocol.handle('https',intercept);ses.protocol.handle('http',intercept);};
 const taskPath=path.join(owned,'task.json');let lastTask=0;
 fs.watchFile(taskPath,{interval:5},async()=>{if(!fs.existsSync(taskPath))return;const task=JSON.parse(fs.readFileSync(taskPath,'utf8'));if(task.id<=lastTask)return;lastTask=task.id;try{const fn=eval('('+task.source+')');const result=await fn(require('electron'),task.arg);fs.writeFileSync(path.join(owned,'result.tmp'),JSON.stringify({id:task.id,ok:true,result}));fs.renameSync(path.join(owned,'result.tmp'),path.join(owned,'result.json'));}catch(error){fs.writeFileSync(path.join(owned,'result.tmp'),JSON.stringify({id:task.id,ok:false,error:String(error?.name||'Error')}));fs.renameSync(path.join(owned,'result.tmp'),path.join(owned,'result.json'));}});
 app.on('session-created',configure);app.on('window-all-closed',()=>{});
-app.on('browser-window-created',(_event,win)=>{created.push(win);globalThis.AuthWindowFixture?.trace('window-created '+win.id);const contents=win.webContents;contents.on('will-navigate',(event,url)=>globalThis.AuthWindowFixture?.trace('navigate args '+typeof url+' '+typeof event.url));contents.on('did-finish-load',()=>globalThis.AuthWindowFixture?.trace('finished window '+win.id));const native=contents.setWindowOpenHandler.bind(contents);contents.setWindowOpenHandler=handler=>{handlers.set(contents.id,handler);native(details=>{globalThis.AuthWindowFixture?.trace('popup-handler begin');const answer=handler(details);globalThis.AuthWindowFixture?.trace('popup-handler '+answer.action);if(answer.createWindow){const creator=answer.createWindow;answer.createWindow=options=>{globalThis.AuthWindowFixture?.trace('popup-create begin '+Object.keys(options).join(',')+' prefs '+Object.keys(options.webPreferences||{}).join(','));const child=creator(options);globalThis.AuthWindowFixture?.trace('popup-create finish');return child;};}return answer;})};const on=win.on.bind(win);win.on=(event,handler)=>{if(event==='ready-to-show')readyHandlers.set(win.id,handler);return on(event,handler)};const show=win.show.bind(win);win.show=()=>{shows.set(win.id,(shows.get(win.id)||0)+1);return show()};if(globalThis.AuthWindowFixture?.abortOnCreate)globalThis.AuthWindowFixture.abortOnCreate.abort();});
+app.on('browser-window-created',(_event,win)=>{created.push(win);globalThis.AuthWindowFixture?.trace('window-created '+win.id);const contents=win.webContents;observeWindow(win);contents.on('will-navigate',(event,url)=>globalThis.AuthWindowFixture?.trace('navigate args '+typeof url+' '+typeof event.url));contents.on('did-finish-load',()=>globalThis.AuthWindowFixture?.trace('finished window '+win.id));const native=contents.setWindowOpenHandler.bind(contents);contents.setWindowOpenHandler=handler=>{handlers.set(contents.id,handler);native(details=>{globalThis.AuthWindowFixture?.trace('popup-handler begin');const answer=handler(details);globalThis.AuthWindowFixture?.trace('popup-handler '+answer.action);if(answer.createWindow){const creator=answer.createWindow;answer.createWindow=options=>{globalThis.AuthWindowFixture?.trace('popup-create begin '+Object.keys(options).join(',')+' prefs '+Object.keys(options.webPreferences||{}).join(','));const child=creator(options);globalThis.AuthWindowFixture?.trace('popup-create finish');return child;};}return answer;})};const on=win.on.bind(win);win.on=(event,handler)=>{if(event==='ready-to-show')readyHandlers.set(win.id,handler);return on(event,handler)};const show=win.show.bind(win);win.show=()=>{shows.set(win.id,(shows.get(win.id)||0)+1);return show()};if(globalThis.AuthWindowFixture?.abortOnCreate)globalThis.AuthWindowFixture.abortOnCreate.abort();});
 (async()=>{await app.whenReady();configure(session.defaultSession);const parentSession=session.fromPartition('scrobble-owned-parent',{cache:false});configure(parentSession);const createParent=()=>{const win=new BrowserWindow({show:true,width:300,height:200,webPreferences:{session:parentSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});win.loadFile(path.join(owned,'parent.html'));return win};
- const adapter=require('./adapter.cjs');globalThis.AuthWindowFixture={trace:phase=>fs.appendFileSync(path.join(owned,'trace.log'),phase+String.fromCharCode(10)),...adapter,main:createParent(),parentSession,defaultSession:session.defaultSession,pages,created,handlers,readyHandlers,shows,partitions,clears,permissions,permissionChecks,downloadFiles:()=>fs.readdirSync(path.join(owned,'downloads')),createParent};
+ const adapter=require('./adapter.cjs');globalThis.AuthWindowFixture={trace:phase=>fs.appendFileSync(path.join(owned,'trace.log'),phase+String.fromCharCode(10)),...adapter,main:createParent(),parentSession,defaultSession:session.defaultSession,pages,created,handlers,readyHandlers,shows,partitions,clears,permissions,permissionChecks,downloadObservation,downloadFiles:()=>fs.readdirSync(path.join(owned,'downloads')),createParent};
 })().catch(()=>app.exit(1));
 `;
   await writeFile(path.join(directory, 'entry.cjs'), script);
