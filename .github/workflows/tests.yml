@@ -25,4 +25,4 @@ jobs:
       - name: Install test browser
         run: pnpm exec playwright install chromium
       - name: Verify single playback module identity
-        run: pnpm exec playwright test tests/playback-pitch-native.test.ts tests/playback-pitch-policy.test.ts --workers=1 --reporter=line --max-failures=2
+        run: pnpm exec playwright test tests/playback-pitch-native.test.ts tests/playback-pitch-policy.test.ts --workers=1 --reporter=line
