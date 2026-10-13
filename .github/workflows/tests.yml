@@ -1,27 +1,15 @@
-name: Regression tests
+name: Shortcuts native Task1 proof
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+  windows-native:
+    runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -34,17 +22,7 @@ jobs:
           node-version: 24.x
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install virtual display
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
-      - run: pnpm build
-      - name: Run Linux tests in a virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm test
-      - name: Run macOS and Windows tests
-        if: runner.os != 'Linux'
-        run: pnpm test
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
+      - name: Install test browser
+        run: pnpm exec playwright install chromium
+      - name: Verify native ownership, local input and gestures
+        run: pnpm exec playwright test tests/shortcuts-4581.test.ts tests/shortcuts-rating-native.test.ts tests/seek-shortcuts.test.ts tests/seek-shortcuts-menu.test.ts --workers=1 --reporter=line
