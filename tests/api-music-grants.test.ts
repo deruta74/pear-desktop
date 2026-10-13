@@ -962,3 +962,140 @@ test('Windows failed native caller waits for physical worker close before return
     await f.close();
   }
 });
+
+// Diagnostic observation only; no production or frozen security assertion is changed.
+test('Windows observational trailing-whitespace normalization and native ledger identity', async () => {
+  test.skip(
+    process.platform !== 'win32',
+    'Requires the actual Windows native host',
+  );
+  test.setTimeout(60000); // Same overall budget as the existing native alias case.
+  const codes = [9, 10, 13, 133, 160];
+  const queryScript = String.raw`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';$WarningPreference='SilentlyContinue'
+[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+try {
+ $r=[Console]::ReadLine()|ConvertFrom-Json
+ if($r.base -isnot [string]){throw 'query unavailable'}
+ $base=[IO.Path]::GetFullPath($r.base)
+ $rows=@()
+ foreach($cp in @(9,10,13,133,160)) {
+  $accepted=$false;$same=$false
+  try {$resolved=[IO.Path]::GetFullPath($r.base+[char]$cp);$accepted=$true;$same=[StringComparer]::OrdinalIgnoreCase.Equals($resolved,$base)}catch{}
+  $rows+=@{cp=$cp;accepted=$accepted;sameAsBase=$same}
+ }
+ [Console]::WriteLine((@{rows=$rows}|ConvertTo-Json -Depth 4 -Compress))
+}catch{[Console]::Error.WriteLine('whitespace query unavailable');exit 1}`;
+  let folder: string | undefined;
+  try {
+    folder = await privateTestFolder();
+    const native = await nativeTestBridge(folder);
+    if (!native) throw Error('Whitespace probe native setup unavailable');
+    const dir = path.join(folder, 'owned');
+    const contents = '{"version":1,"records":[]}';
+    const prepared = await native.stage(dir, contents, null);
+    let committed: string;
+    try {
+      committed = await prepared.commit();
+    } finally {
+      await prepared.close();
+    }
+    const base = await native.read(dir);
+    if (
+      base.binding === null ||
+      base.binding !== committed ||
+      base.contents !== contents
+    )
+      throw Error('Whitespace probe base ledger unavailable');
+    const system = process.env.SystemRoot;
+    if (!system) throw Error('Whitespace probe query setup unavailable');
+    let query: any;
+    try {
+      query = JSON.parse(
+        execFileSync(
+          path.win32.join(
+            system,
+            'System32/WindowsPowerShell/v1.0/powershell.exe',
+          ),
+          [
+            '-NoLogo',
+            '-NoProfile',
+            '-NonInteractive',
+            '-EncodedCommand',
+            Buffer.from(queryScript, 'utf16le').toString('base64'),
+          ],
+          {
+            input: JSON.stringify({ base: dir }) + '\n',
+            encoding: 'utf8',
+            timeout: 8000,
+            maxBuffer: 4096,
+            windowsHide: true,
+            env: { ...process.env, TEMP: folder, TMP: folder },
+          },
+        ),
+      );
+    } catch {
+      throw Error('Whitespace probe normalization query unavailable');
+    }
+    if (!Array.isArray(query?.rows) || query.rows.length !== codes.length)
+      throw Error('Whitespace probe classification invalid');
+    const queryRows = codes.map((cp) => {
+      const row = query.rows.find((value: any) => value.cp === cp);
+      if (
+        !row ||
+        typeof row.accepted !== 'boolean' ||
+        typeof row.sameAsBase !== 'boolean'
+      )
+        throw Error('Whitespace probe classification invalid');
+      return { cp, accepted: row.accepted, sameAsBase: row.sameAsBase };
+    });
+    const adapterRows: {
+      cp: number;
+      accepted: boolean;
+      unavailable: boolean;
+      sameBinding: boolean;
+      sameContent: boolean;
+    }[] = [];
+    for (const cp of codes) {
+      try {
+        const value = await native.read(dir + String.fromCharCode(cp));
+        adapterRows.push({
+          cp,
+          accepted: true,
+          unavailable: false,
+          sameBinding: value.binding === base.binding,
+          sameContent: value.contents === base.contents,
+        });
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'unavailable')
+          throw Error('Whitespace probe unexpected native failure');
+        adapterRows.push({
+          cp,
+          accepted: false,
+          unavailable: true,
+          sameBinding: false,
+          sameContent: false,
+        });
+      }
+    }
+    // Never print the folder, bytes, binding, SID or exception; observations only.
+    console.log(
+      'WINDOWS_WHITESPACE_OBSERVATION ' +
+        JSON.stringify({
+          baseAccepted: true,
+          query: queryRows,
+          adapter: adapterRows,
+        }),
+    );
+  } catch {
+    throw Error('Whitespace probe setup or observation unavailable');
+  } finally {
+    if (folder) {
+      try {
+        await rm(folder, { recursive: true, force: true });
+      } catch {
+        throw Error('Whitespace probe cleanup unavailable');
+      }
+    }
+  }
+});
