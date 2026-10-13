@@ -7,21 +7,9 @@ permissions:
   contents: read
 
 jobs:
-  windows-private-probe:
-    runs-on: windows-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
-        with:
-          node-version: 24.x
-      - name: Probe original lexical gate and normalized candidate
-        run: node scripts/windows-private-native-diagnostic.cjs
-  windows-grants:
-    runs-on: windows-latest
-    timeout-minutes: 15
+  linux-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -35,6 +23,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install test browser
-        run: pnpm exec playwright install chromium
-      - name: Verify native ledger and mandatory real aliases
-        run: pnpm exec playwright test tests/api-music-grants.test.ts --workers=1 --reporter=line
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install virtual display
+        run: sudo apt-get install -y xvfb
+      - name: Verify native renderer termination and built locale owners
+        run: xvfb-run -a pnpm exec playwright test tests/api-music-native.test.ts tests/i18n-built-native.test.ts --workers=1 --reporter=line --repeat-each=2

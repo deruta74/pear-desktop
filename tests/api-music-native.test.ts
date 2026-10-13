@@ -122,11 +122,37 @@ test('actual Electron raw sender physical tombstones reload and renderer loss pr
       `window.musicProof.send('peard:music-reply',window.held.shift())`,
     );
     await wait(async () => await evaluate('window.fetches.length===1'));
-    const gone = new Promise<void>((resolve) =>
-      window.webContents.once('render-process-gone', resolve),
+    const rendererPid = window.webContents.getOSProcessId();
+    const ownedRenderer = f.app
+      .getAppMetrics()
+      .find((entry: any) => entry.pid === rendererPid && entry.type === 'Tab');
+    if (
+      !Number.isInteger(rendererPid) ||
+      rendererPid <= 0 ||
+      rendererPid === process.pid ||
+      !ownedRenderer
+    )
+      throw Error('Missing distinct owned native renderer process');
+    const gone = new Promise<{ reason: string }>((resolve) =>
+      window.webContents.once(
+        'render-process-gone',
+        (_event: any, details: any) => resolve({ reason: details.reason }),
+      ),
     );
-    window.webContents.forcefullyCrashRenderer();
-    await bounded('renderer-gone', gone);
+    // The Linux runner did not emit terminal evidence after force-crashing.
+    // Terminate only this verified owned renderer; Electron must still deliver
+    // its actual terminal process event below.
+    if (process.platform === 'linux') process.kill(rendererPid, 'SIGKILL');
+    else window.webContents.forcefullyCrashRenderer();
+    const termination = await bounded('renderer-gone', gone);
+    if (
+      process.platform === 'linux'
+        ? termination.reason !== 'killed'
+        : !['crashed', 'killed'].includes(termination.reason)
+    )
+      throw Error(
+        'Unexpected native renderer termination: ' + termination.reason,
+      );
     const crashResult = await bounded('crash-call-retired', crashPromise),
       afterCrash = broker.stats().dispatched;
     phase = 'renderer-recovery';
@@ -134,6 +160,14 @@ test('actual Electron raw sender physical tombstones reload and renderer loss pr
       'crashed-renderer-reload',
       window.loadFile(f.owned + '/main.html'),
     );
+    const replacementRendererPid = window.webContents.getOSProcessId();
+    if (
+      !Number.isInteger(replacementRendererPid) ||
+      replacementRendererPid <= 0 ||
+      replacementRendererPid === rendererPid ||
+      replacementRendererPid === process.pid
+    )
+      throw Error('Missing replacement native renderer process');
     await setup();
     phase = 'recovered-read';
     const after = broker.read(
@@ -158,6 +192,8 @@ test('actual Electron raw sender physical tombstones reload and renderer loss pr
       snapshot: { id: snapshot.current.id, ms: snapshot.elapsedMilliseconds },
       crashResult,
       afterCrash,
+      termination: termination.reason,
+      distinctRenderer: replacementRendererPid !== rendererPid,
       reloaded: reloaded.current.id,
     };
   });
@@ -172,6 +208,11 @@ test('actual Electron raw sender physical tombstones reload and renderer loss pr
     snapshot: { id: 'current0001', ms: 1234.5 },
     crashResult: 'retired',
     afterCrash: 0,
+    termination:
+      process.platform === 'linux'
+        ? 'killed'
+        : expect.stringMatching(/^(crashed|killed)$/),
+    distinctRenderer: true,
     reloaded: 'current0001',
   });
 });
