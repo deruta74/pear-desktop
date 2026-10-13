@@ -7,9 +7,9 @@ permissions:
   contents: read
 
 jobs:
-  windows-whitespace:
+  windows-native:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -22,5 +22,7 @@ jobs:
           node-version: 24.x
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Classify actual trailing-whitespace namespace behavior
-        run: pnpm exec playwright test tests/api-music-grants.test.ts --grep "Windows observational trailing-whitespace normalization and native ledger identity" --workers=1 --reporter=line
+      - name: Install test browser
+        run: pnpm exec playwright install chromium
+      - name: Verify strict namespaces and Unicode native ledgers
+        run: pnpm exec playwright test tests/api-music-grants.test.ts tests/api-music-http.test.ts tests/api-music-service.test.ts tests/api-music-native.test.ts tests/discord-artist-artwork.test.ts tests/scrobbler-auth-window-native.test.ts tests/i18n-built-native.test.ts --workers=1 --reporter=line

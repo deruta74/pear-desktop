@@ -46,12 +46,19 @@ function directoryPath(value: string) {
     typeof value !== 'string' ||
     value.length > 4096 ||
     !/^[A-Za-z]:\\/.test(value) ||
-    value.includes('\0') ||
     value.includes('/') ||
     /[<>"|?*]/.test(value) ||
     value.slice(2).includes(':')
   )
     throw unavailable();
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (
+      code < 0x20 ||
+      (index === value.length - 1 && (code === 0x85 || code === 0xa0))
+    )
+      throw unavailable();
+  }
   const parts = value.slice(3).split('\\');
   if (
     parts.some(

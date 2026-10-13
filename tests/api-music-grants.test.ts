@@ -942,6 +942,9 @@ test('Windows actual short and long aliases share owned ledger identity across r
       dir + '//owned',
       dir + '/CON/owned',
       dir + '/owned',
+      ...[9, 10, 11, 12, 13, 133, 160].map(
+        (code) => dir + String.fromCharCode(code),
+      ),
     ])
       await expect(native.read(invalid)).rejects.toMatchObject({
         code: 'unavailable',
@@ -963,139 +966,96 @@ test('Windows failed native caller waits for physical worker close before return
   }
 });
 
-// Diagnostic observation only; no production or frozen security assertion is changed.
-test('Windows observational trailing-whitespace normalization and native ledger identity', async () => {
+for (const operation of ['read', 'stage'] as const)
+  test(`Windows adapter rejects C0 and trimmed terminal whitespace before ${operation} launch`, async () => {
+    const f = await windowsProtocol();
+    const contents = '{"version":1,"records":[]}';
+    const invalid = [
+      ...Array.from(
+        { length: 32 },
+        (_, code) => 'C:\\Owned\\grants' + String.fromCharCode(code),
+      ),
+      'C:\\Owned\\grants\u0085',
+      'C:\\Owned\\grants\u00a0',
+      'C:\\Ow\tner\\grants',
+      'C:\\Ow\nner\\grants',
+    ];
+    try {
+      const before = f.launches();
+      const rejected: boolean[] = [];
+      for (const value of invalid) {
+        try {
+          if (operation === 'read') await f.bridge.read(value);
+          else {
+            const lease = await f.bridge.stage(
+              value,
+              contents,
+              testBinding(contents),
+            );
+            await lease.close();
+          }
+          rejected.push(false);
+        } catch (error) {
+          rejected.push((error as { code?: string }).code === 'unavailable');
+        }
+      }
+      expect(f.launches()).toBe(before);
+      expect(rejected).toEqual(invalid.map(() => true));
+    } finally {
+      await f.close();
+    }
+  });
+
+for (const operation of ['read', 'stage'] as const)
+  test(`Windows adapter preserves healthy Unicode and aliases for ${operation}`, async () => {
+    const f = await windowsProtocol();
+    const contents = '{"version":1,"records":[]}';
+    try {
+      const before = f.launches();
+      for (const value of [
+        'C:\\Owned\\Музыка\u2003',
+        'C:\\Owned\\Audio\u0085Name',
+        'C:\\Owned\\Audio\u00a0Name',
+        'C:\\OWNED~1\\Audio',
+      ]) {
+        if (operation === 'read')
+          expect((await f.bridge.read(value)).contents).toBe(contents);
+        else {
+          const lease = await f.bridge.stage(
+            value,
+            contents,
+            testBinding(contents),
+          );
+          expect(await lease.commit()).toBe(testBinding(contents));
+          await lease.close();
+        }
+      }
+      expect(f.launches() - before).toBe(4);
+    } finally {
+      await f.close();
+    }
+  });
+
+test('Windows actual private ledgers retain healthy Unicode directory namespaces', async () => {
   test.skip(
     process.platform !== 'win32',
-    'Requires the actual Windows native host',
+    'Mandatory native Unicode namespace proof runs on Windows',
   );
-  test.setTimeout(60000); // Same overall budget as the existing native alias case.
-  const codes = [9, 10, 13, 133, 160];
-  const queryScript = String.raw`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';$WarningPreference='SilentlyContinue'
-[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)
-[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
-try {
- $r=[Console]::ReadLine()|ConvertFrom-Json
- if($r.base -isnot [string]){throw 'query unavailable'}
- $base=[IO.Path]::GetFullPath($r.base)
- $rows=@()
- foreach($cp in @(9,10,13,133,160)) {
-  $accepted=$false;$same=$false
-  try {$resolved=[IO.Path]::GetFullPath($r.base+[char]$cp);$accepted=$true;$same=[StringComparer]::OrdinalIgnoreCase.Equals($resolved,$base)}catch{}
-  $rows+=@{cp=$cp;accepted=$accepted;sameAsBase=$same}
- }
- [Console]::WriteLine((@{rows=$rows}|ConvertTo-Json -Depth 4 -Compress))
-}catch{[Console]::Error.WriteLine('whitespace query unavailable');exit 1}`;
-  let folder: string | undefined;
+  test.setTimeout(60000);
+  const folder = await privateTestFolder(),
+    native = await nativeTestBridge(folder);
+  const contents = '{"version":1,"records":[]}';
   try {
-    folder = await privateTestFolder();
-    const native = await nativeTestBridge(folder);
-    if (!native) throw Error('Whitespace probe native setup unavailable');
-    const dir = path.join(folder, 'owned');
-    const contents = '{"version":1,"records":[]}';
-    const prepared = await native.stage(dir, contents, null);
-    let committed: string;
-    try {
-      committed = await prepared.commit();
-    } finally {
-      await prepared.close();
+    for (const name of ['Музыка\u2003', 'Audio\u0085Name', 'Audio\u00a0Name']) {
+      const dir = path.join(folder, name);
+      const lease = await native.stage(dir, contents, null);
+      const committed = await lease.commit();
+      await lease.close();
+      const read = await native.read(dir);
+      expect(read.contents).toBe(contents);
+      expect(read.binding).toBe(committed);
     }
-    const base = await native.read(dir);
-    if (
-      base.binding === null ||
-      base.binding !== committed ||
-      base.contents !== contents
-    )
-      throw Error('Whitespace probe base ledger unavailable');
-    const system = process.env.SystemRoot;
-    if (!system) throw Error('Whitespace probe query setup unavailable');
-    let query: any;
-    try {
-      query = JSON.parse(
-        execFileSync(
-          path.win32.join(
-            system,
-            'System32/WindowsPowerShell/v1.0/powershell.exe',
-          ),
-          [
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-EncodedCommand',
-            Buffer.from(queryScript, 'utf16le').toString('base64'),
-          ],
-          {
-            input: JSON.stringify({ base: dir }) + '\n',
-            encoding: 'utf8',
-            timeout: 8000,
-            maxBuffer: 4096,
-            windowsHide: true,
-            env: { ...process.env, TEMP: folder, TMP: folder },
-          },
-        ),
-      );
-    } catch {
-      throw Error('Whitespace probe normalization query unavailable');
-    }
-    if (!Array.isArray(query?.rows) || query.rows.length !== codes.length)
-      throw Error('Whitespace probe classification invalid');
-    const queryRows = codes.map((cp) => {
-      const row = query.rows.find((value: any) => value.cp === cp);
-      if (
-        !row ||
-        typeof row.accepted !== 'boolean' ||
-        typeof row.sameAsBase !== 'boolean'
-      )
-        throw Error('Whitespace probe classification invalid');
-      return { cp, accepted: row.accepted, sameAsBase: row.sameAsBase };
-    });
-    const adapterRows: {
-      cp: number;
-      accepted: boolean;
-      unavailable: boolean;
-      sameBinding: boolean;
-      sameContent: boolean;
-    }[] = [];
-    for (const cp of codes) {
-      try {
-        const value = await native.read(dir + String.fromCharCode(cp));
-        adapterRows.push({
-          cp,
-          accepted: true,
-          unavailable: false,
-          sameBinding: value.binding === base.binding,
-          sameContent: value.contents === base.contents,
-        });
-      } catch (error) {
-        if ((error as { code?: string }).code !== 'unavailable')
-          throw Error('Whitespace probe unexpected native failure');
-        adapterRows.push({
-          cp,
-          accepted: false,
-          unavailable: true,
-          sameBinding: false,
-          sameContent: false,
-        });
-      }
-    }
-    // Never print the folder, bytes, binding, SID or exception; observations only.
-    console.log(
-      'WINDOWS_WHITESPACE_OBSERVATION ' +
-        JSON.stringify({
-          baseAccepted: true,
-          query: queryRows,
-          adapter: adapterRows,
-        }),
-    );
-  } catch {
-    throw Error('Whitespace probe setup or observation unavailable');
   } finally {
-    if (folder) {
-      try {
-        await rm(folder, { recursive: true, force: true });
-      } catch {
-        throw Error('Whitespace probe cleanup unavailable');
-      }
-    }
+    await rm(folder, { recursive: true, force: true });
   }
 });
