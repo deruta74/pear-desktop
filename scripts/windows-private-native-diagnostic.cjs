@@ -53,16 +53,20 @@ function instrument(worker,raw){
 (async()=>{
  if(process.platform!=='win32')throw Error('Windows runner required');
  const source=readFileSync(path.join(process.cwd(),'src','plugins','api-server','backend','windows-private-path.ts'),'utf8');const match=source.match(/const WINDOWS_PRIVATE_WORKER = String\.raw`([\s\S]*?)`\.trim\(\);/);if(!match)throw Error('Fixed worker source missing');
- for(const raw of [false,true]){
+ for(const control of [true,false]){
+ const raw=false, label=control?'original':'candidate';
  const parent=await mkdtemp(path.join(tmpdir(),'pear-grant-native-diag-'));
  try{
- const protection=await execute('parent-'+(raw?'raw':'console'),parentScript,{directory:parent});console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(protection));if(protection.exitCode!==0||protection.timedOut)continue;
- const directory=path.join(parent,'owned'),worker=instrument(match[1],raw);
+ const protection=await execute('parent-'+label,parentScript,{directory:parent});console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(protection));if(protection.exitCode!==0||protection.timedOut)continue;
+ const directory=path.join(parent,'owned');
+ if(!match[1].includes('if(folder.Length>4096)throw Bad();')||match[1].includes('if(folder!=value||'))throw Error('Candidate normalization source not selected');
+ const original=match[1].replace('if(folder.Length>4096)throw Bad();','if(folder!=value||folder.Length>4096)throw Bad();');
+ const worker=instrument(control?original:match[1],raw);
  const read=()=>({version:1,operation:'read',directory,contents64:null,expected:null});
- console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('read-empty-'+(raw?'raw':'console'),worker,read())));
+ console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('read-empty-'+label,worker,read())));
  const content=Buffer.from('{"version":1,"records":[]}','utf8').toString('base64');
- console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('prepare-commit-'+(raw?'raw':'console'),worker,{version:1,operation:'prepare',directory,contents64:content,expected:null},true)));
- console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('readback-'+(raw?'raw':'console'),worker,read())));
+ console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('prepare-commit-'+label,worker,{version:1,operation:'prepare',directory,contents64:content,expected:null},true)));
+ console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('readback-'+label,worker,read())));
  }finally{await rm(parent,{recursive:true,force:true})}
  }
 })().catch(()=>{console.error('WINDOWS_NATIVE_DIAG fixed-diagnostic-failure');process.exitCode=1});

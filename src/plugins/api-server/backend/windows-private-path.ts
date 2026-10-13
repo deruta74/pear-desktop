@@ -268,7 +268,8 @@ export function createWindowsPrivatePath(
       exitResolve();
     });
     const response = take(operation === 'read' ? 'read' : 'ready');
-    child.stdin.write(request);
+    if (operation === 'read') child.stdin.end(request);
+    else child.stdin.write(request);
     return {
       response,
       exited,
@@ -282,7 +283,7 @@ export function createWindowsPrivatePath(
         phase = 'committed';
         challenge = randomUUID();
         const response = take('committed');
-        child.stdin.write(
+        child.stdin.end(
           JSON.stringify({ version: 1, action: 'commit', challenge }) + '\n',
         );
         const packet = await response;
@@ -386,7 +387,7 @@ static void Parent(SafeFileHandle h){RawSecurityDescriptor sd=Security(h);if(sd.
 static string Sddl(bool directory){string flags=directory?"OICI":"";return "O:"+User+"D:P(A;"+flags+";FA;;;"+User+")"+(User=="S-1-5-18"?"":"(A;"+flags+";FA;;;SY)")+"(A;"+flags+";FA;;;BA)";}
 static IntPtr Descriptor(bool directory){IntPtr p;uint n;if(!ConvertStringSecurityDescriptorToSecurityDescriptorW(Sddl(directory),1,out p,out n))throw Bad();return p;}
 static SafeFileHandle OpenDir(string p,bool write){SafeFileHandle h=CreateFileW(Native(p),RC|RA|SY|(write?0x46u:0u),3,IntPtr.Zero,3,0x2200000,IntPtr.Zero);if(h.IsInvalid){h.Dispose();return null;}try{Stat(h,true);return h;}catch{h.Dispose();throw;}}
-public GrantPath(string value,bool create){try{folder=Path.GetFullPath(value);if(folder!=value||folder.Length>4096)throw Bad();string root=Path.GetPathRoot(folder),parent=Path.GetDirectoryName(folder);if(parent==null||(GetDriveTypeW(root)!=2&&GetDriveTypeW(root)!=3))throw Bad();string current=root;SafeFileHandle h=OpenDir(current,false);if(h==null)throw Bad();chain.Add(h);uint serial,max,flags;StringBuilder fs=new StringBuilder(32);if(!GetVolumeInformationByHandleW(h,null,0,out serial,out max,out flags,fs,32)||(flags&8)==0||(fs.ToString()!="NTFS"&&fs.ToString()!="ReFS"))throw Bad();string rest=parent.Substring(root.Length);string[] names=rest.Split(new char[]{'\\'},StringSplitOptions.RemoveEmptyEntries);if(names.Length>64)throw Bad();foreach(string name in names){current=Path.Combine(current,name);h=OpenDir(current,false);if(h==null)throw Bad();chain.Add(h);}Parent(chain[chain.Count-1]);if(create){IntPtr sd=Descriptor(true);try{SA sa=new SA{Size=Marshal.SizeOf(typeof(SA)),SD=sd};if(!CreateDirectoryW(Native(folder),ref sa)&&Marshal.GetLastWin32Error()!=183)throw Bad();}finally{LocalFree(sd);}}dir=OpenDir(folder,create);if(dir==null){int error=Marshal.GetLastWin32Error();if(!create&&(error==2||error==3))return;throw Bad();}Private(dir,true);}catch{Dispose();throw;}}
+public GrantPath(string value,bool create){try{folder=Path.GetFullPath(value);if(folder.Length>4096)throw Bad();string root=Path.GetPathRoot(folder),parent=Path.GetDirectoryName(folder);if(parent==null||(GetDriveTypeW(root)!=2&&GetDriveTypeW(root)!=3))throw Bad();string current=root;SafeFileHandle h=OpenDir(current,false);if(h==null)throw Bad();chain.Add(h);uint serial,max,flags;StringBuilder fs=new StringBuilder(32);if(!GetVolumeInformationByHandleW(h,null,0,out serial,out max,out flags,fs,32)||(flags&8)==0||(fs.ToString()!="NTFS"&&fs.ToString()!="ReFS"))throw Bad();string rest=parent.Substring(root.Length);string[] names=rest.Split(new char[]{'\\'},StringSplitOptions.RemoveEmptyEntries);if(names.Length>64)throw Bad();foreach(string name in names){current=Path.Combine(current,name);h=OpenDir(current,false);if(h==null)throw Bad();chain.Add(h);}Parent(chain[chain.Count-1]);if(create){IntPtr sd=Descriptor(true);try{SA sa=new SA{Size=Marshal.SizeOf(typeof(SA)),SD=sd};if(!CreateDirectoryW(Native(folder),ref sa)&&Marshal.GetLastWin32Error()!=183)throw Bad();}finally{LocalFree(sd);}}dir=OpenDir(folder,create);if(dir==null){int error=Marshal.GetLastWin32Error();if(!create&&(error==2||error==3))return;throw Bad();}Private(dir,true);}catch{Dispose();throw;}}
 SafeFileHandle Ledger(uint share){SafeFileHandle h=CreateFileW(Native(Path.Combine(folder,"grants.json")),0x80000000|RC|RA,share,IntPtr.Zero,3,0x200000,IntPtr.Zero);if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();if(e==2||e==3)return null;throw Bad();}try{Private(h,false);return h;}catch{h.Dispose();throw;}}
 static byte[] Bytes(SafeFileHandle h){Stat(h,false);using(SafeFileHandle borrowed=new SafeFileHandle(h.DangerousGetHandle(),false))using(FileStream stream=new FileStream(borrowed,FileAccess.Read,8192,false))using(MemoryStream data=new MemoryStream()){stream.Position=0;byte[] b=new byte[8192];int n;while((n=stream.Read(b,0,b.Length))>0){if(data.Length+n>Max)throw Bad();data.Write(b,0,n);}Private(h,false);return data.ToArray();}}
 static string Bind(SafeFileHandle h,byte[] bytes){using(SHA256 sha=SHA256.Create())return Identity(h)+":"+BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-","").ToLowerInvariant();}
