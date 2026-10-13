@@ -880,6 +880,7 @@ test('Windows actual short and long aliases share owned ledger identity across r
     expect(authorized.id === grant.record.id).toBe(true);
     await new m.MusicGrantStore(aliases.longPath, Date.now, native).revoke(
       grant.record.id,
+      () => true,
     );
     await expect(
       new m.MusicGrantStore(aliases.shortPath, Date.now, native).authorize(
