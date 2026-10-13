@@ -816,6 +816,42 @@ test('Windows native command is fixed while literal path data never becomes exec
   }
 });
 
+for (const operation of ['read', 'stage'] as const)
+  test(`Windows adapter rejects mixed forward-slash paths before ${operation} worker launch`, async () => {
+    const f = await windowsProtocol();
+    const contents = '{"version":1,"records":[]}';
+    try {
+      const before = f.launches();
+      const rejected: boolean[] = [];
+      for (const value of [
+        'C:\\private/../escape',
+        'C:\\private/./grants',
+        'C:\\private//grants',
+        'C:\\private/CON/grants',
+        'C:\\private/grants',
+      ]) {
+        try {
+          if (operation === 'read') await f.bridge.read(value);
+          else {
+            const lease = await f.bridge.stage(
+              value,
+              contents,
+              testBinding(contents),
+            );
+            await lease.close();
+          }
+          rejected.push(false);
+        } catch (error) {
+          rejected.push((error as { code?: string }).code === 'unavailable');
+        }
+      }
+      expect(f.launches()).toBe(before);
+      expect(rejected).toEqual([true, true, true, true, true]);
+    } finally {
+      await f.close();
+    }
+  });
+
 test('Windows terminal read and commit requests send EOF while prepare remains open', async () => {
   const f = await windowsProtocol('require-eof', 1000);
   try {
@@ -901,6 +937,11 @@ test('Windows actual short and long aliases share owned ledger identity across r
       dir + '\\..\\owned',
       dir + ':stream',
       '\\\\?\\' + dir,
+      dir + '/../escape',
+      dir + '/./owned',
+      dir + '//owned',
+      dir + '/CON/owned',
+      dir + '/owned',
     ])
       await expect(native.read(invalid)).rejects.toMatchObject({
         code: 'unavailable',

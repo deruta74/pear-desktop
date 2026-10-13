@@ -47,6 +47,7 @@ function directoryPath(value: string) {
     value.length > 4096 ||
     !/^[A-Za-z]:\\/.test(value) ||
     value.includes('\0') ||
+    value.includes('/') ||
     /[<>"|?*]/.test(value) ||
     value.slice(2).includes(':')
   )

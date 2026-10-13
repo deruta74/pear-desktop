@@ -24,5 +24,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install test browser
         run: pnpm exec playwright install chromium
-      - name: Verify Ex POSIX grants and real native PID fixtures
+      - name: Verify namespace-safe grants and native PID fixtures
         run: pnpm exec playwright test tests/api-music-grants.test.ts tests/api-music-http.test.ts tests/api-music-service.test.ts tests/api-music-native.test.ts tests/discord-artist-artwork.test.ts tests/scrobbler-auth-window-native.test.ts tests/i18n-built-native.test.ts --workers=1 --reporter=line
