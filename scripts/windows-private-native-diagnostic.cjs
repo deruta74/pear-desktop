@@ -48,21 +48,21 @@ function instrument(worker,raw,renameMode){
  worker=worker.replace('public void Prepare(string data,string wanted){','public void Prepare(string data,string wanted){Console.Error.WriteLine("N13 0");');
  worker=worker.replace('public string Commit(){','public string Commit(){Console.Error.WriteLine("N16 0");');
  worker=worker.replace('if(!SetFileInformationByHandle(tmp,3,','Console.Error.WriteLine("N17 0");if(!SetFileInformationByHandle(tmp,3,');
- const originalSize='offset+name.Length';
- if(renameMode==='win32-null')worker=worker.replaceAll(originalSize,'offset+name.Length+2');
- if(renameMode==='win32-padded')worker=worker.replaceAll(originalSize,'Marshal.SizeOf(typeof(Ren))+name.Length+2');
- worker=worker.replace('IntPtr buffer=Marshal.AllocHGlobal(', 'Console.Error.WriteLine("N50 "+IntPtr.Size);Console.Error.WriteLine("N51 "+Marshal.SizeOf(typeof(Ren)));Console.Error.WriteLine("N52 "+Marshal.OffsetOf(typeof(Ren),"Root"));Console.Error.WriteLine("N53 "+Marshal.OffsetOf(typeof(Ren),"Length"));Console.Error.WriteLine("N54 "+offset);Console.Error.WriteLine("N55 "+name.Length);IntPtr buffer=Marshal.AllocHGlobal(');
- if(renameMode==='nt-relative'){
-  worker=worker.replace('static Exception Bad()', '[StructLayout(LayoutKind.Sequential)]struct IoStatus {public IntPtr Status;public UIntPtr Information;}[DllImport("ntdll.dll")]static extern int NtSetInformationFile(SafeFileHandle file,out IoStatus status,IntPtr data,uint length,int kind);[DllImport("ntdll.dll")]static extern uint RtlNtStatusToDosError(int status);static Exception Bad()');
-  worker=worker.replace('if(!SetFileInformationByHandle(tmp,3,buffer,(uint)(offset+name.Length)))throw Bad();', 'IoStatus io;int status=NtSetInformationFile(tmp,out io,buffer,(uint)(offset+name.Length),10);Console.Error.WriteLine("N60 "+(status==0?1:0));uint mapped=status==0?0:RtlNtStatusToDosError(status);Console.Error.WriteLine("N61 "+(mapped<=65535?mapped:0));if(status!=0)throw Bad();');
- }
 
+ worker=worker.replace('IntPtr buffer=Marshal.AllocHGlobal(', 'Console.Error.WriteLine("N50 "+IntPtr.Size);Console.Error.WriteLine("N51 "+Marshal.SizeOf(typeof(Ren)));Console.Error.WriteLine("N52 "+Marshal.OffsetOf(typeof(Ren),"Root"));Console.Error.WriteLine("N53 "+Marshal.OffsetOf(typeof(Ren),"Length"));Console.Error.WriteLine("N54 "+offset);Console.Error.WriteLine("N55 "+name.Length);IntPtr buffer=Marshal.AllocHGlobal(');
+ const ntCall='IoStatus io;int status=NtSetInformationFile(tmp,out io,buffer,(uint)(offset+name.Length),10);if(status<0)throw Bad();';
+ if(!worker.includes(ntCall))throw Error('NT candidate rename source mismatch');
+ if(renameMode==='win32-control')worker=worker.replace(ntCall,'Console.Error.WriteLine("N17 0");if(!SetFileInformationByHandle(tmp,3,buffer,(uint)(offset+name.Length)))throw Bad();');
+ else {
+  worker=worker.replace('static Exception Bad()', '[DllImport("ntdll.dll")]static extern uint RtlNtStatusToDosError(int status);static Exception Bad()');
+  worker=worker.replace(ntCall,'Console.Error.WriteLine("N17 0");IoStatus io;int status=NtSetInformationFile(tmp,out io,buffer,(uint)(offset+name.Length),10);Console.Error.WriteLine("N60 "+(status>=0?1:0));uint mapped=status<0?RtlNtStatusToDosError(status):0;Console.Error.WriteLine("N61 "+(mapped<=65535?mapped:0));if(status<0)throw Bad();');
+ }
  return worker;
 }
 (async()=>{
  if(process.platform!=='win32')throw Error('Windows runner required');
  const source=readFileSync(path.join(process.cwd(),'src','plugins','api-server','backend','windows-private-path.ts'),'utf8');const match=source.match(/const WINDOWS_PRIVATE_WORKER = String\.raw`([\s\S]*?)`\.trim\(\);/);if(!match)throw Error('Fixed worker source missing');
- for(const renameMode of ['win32-original','win32-null','win32-padded','nt-relative']){
+ for(const renameMode of ['win32-control','nt-candidate']){
  const raw=false, label=renameMode;
  const parent=await mkdtemp(path.join(tmpdir(),'pear-grant-native-diag-'));
  try{

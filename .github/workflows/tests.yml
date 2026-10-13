@@ -7,15 +7,24 @@ permissions:
   contents: read
 
 jobs:
-  windows-rename:
+  windows-native:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        with:
+          version: 11
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
           node-version: 24.x
-      - name: Compare native relative rename framing
+          cache: pnpm
+      - name: Compare NT candidate and old Win32 rename
         run: node scripts/windows-private-native-diagnostic.cjs
+      - run: pnpm install --frozen-lockfile
+      - name: Install test browser
+        run: pnpm exec playwright install chromium
+      - name: Verify Windows grants and dependent native fixtures
+        run: pnpm exec playwright test tests/api-music-grants.test.ts tests/api-music-http.test.ts tests/api-music-service.test.ts tests/api-music-native.test.ts tests/discord-artist-artwork.test.ts tests/scrobbler-auth-window-native.test.ts tests/i18n-built-native.test.ts --workers=1 --reporter=line

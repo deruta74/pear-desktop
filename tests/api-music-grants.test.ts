@@ -92,7 +92,11 @@ async function nativeTestBridge(folder: string) {
   });
 }
 
-async function windowsProtocol(mode = 'normal', timeoutMs = 8000) {
+async function windowsProtocol(
+  mode = 'normal',
+  timeoutMs = 8000,
+  delayKillMs = 0,
+) {
   const m = await musicModuleSource(
     'src/plugins/api-server/backend/windows-private-path.ts',
   );
@@ -109,6 +113,7 @@ async function windowsProtocol(mode = 'normal', timeoutMs = 8000) {
     const reply=data=>process.stdout.write(JSON.stringify({version:1,...data})+'\\n');
     const input=readline.createInterface({input:process.stdin});let terminal;input.on('close',()=>{if(terminal)terminal()});input.on('line',line=>{
       const data=JSON.parse(line);seen.push(data.operation??data.action);fs.writeFileSync(calls,JSON.stringify(seen));
+      if(mode==='held-failure'){reply({type:'failure'});setInterval(()=>{},1000);return;}
       if(mode==='hang')return;
       if(mode==='oversize'){process.stdout.write('x'.repeat(1024*1024+1));return;}
       if(mode==='early-exit'){process.exit(0);return;}
@@ -122,7 +127,8 @@ async function windowsProtocol(mode = 'normal', timeoutMs = 8000) {
     });
   `,
   );
-  let launches = 0;
+  let launches = 0,
+    physicallyClosed = false;
   const commands: { file: string; args: string[] }[] = [];
   const bridge = m.createWindowsPrivatePath({
     systemRoot: 'C:\\Windows',
@@ -130,13 +136,25 @@ async function windowsProtocol(mode = 'normal', timeoutMs = 8000) {
     launch(_file: string, _args: string[], options: any) {
       launches++;
       commands.push({ file: _file, args: [..._args] });
-      return spawn(process.execPath, [entry, mode, calls], options);
+      const child = spawn(process.execPath, [entry, mode, calls], options);
+      child.once('close', () => {
+        physicallyClosed = true;
+      });
+      if (delayKillMs) {
+        const kill = child.kill.bind(child);
+        child.kill = (signal) => {
+          setTimeout(() => kill(signal), delayKillMs);
+          return true;
+        };
+      }
+      return child;
     },
   });
   return {
     bridge,
     calls,
     launches: () => launches,
+    physicallyClosed: () => physicallyClosed,
     commands,
     close: () => rm(folder, { recursive: true, force: true }),
   };
@@ -888,5 +906,17 @@ test('Windows actual short and long aliases share owned ledger identity across r
       });
   } finally {
     await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test('Windows failed native caller waits for physical worker close before returning cleanup ownership', async () => {
+  const f = await windowsProtocol('held-failure', 500, 150);
+  try {
+    await expect(f.bridge.read('C:\\Owned\\grants')).rejects.toMatchObject({
+      code: 'unavailable',
+    });
+    expect(f.physicallyClosed()).toBe(true);
+  } finally {
+    await f.close();
   }
 });
