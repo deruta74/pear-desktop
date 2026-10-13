@@ -233,6 +233,13 @@ export async function playerActionsFixture({ nativeTimers = false } = {}) {
           if (id === '\0css') return 'export default "";';
           return undefined;
         },
+        generateBundle() {
+          const identities = [...this.getModuleIds()].filter((id) =>
+            id.replaceAll('\\', '/').endsWith('/playback-rate-owner.ts'),
+          );
+          if (identities.length !== 1)
+            this.error(`Expected one playback rate owner, found ${identities.length}`);
+        },
       },
     ],
     build: {
