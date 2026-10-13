@@ -22,7 +22,7 @@ function execute(name,script,request,prepare=false,relocated=false){
  const frame=JSON.stringify(request)+'\n';if(prepare)child.stdin.write(frame);else child.stdin.end(frame);
  });
 }
-function instrument(worker,raw){
+function instrument(worker,raw,renameMode){
  worker=worker.replace(/\r\n/g,'\n');
  worker='[Console]::WriteLine("P0");'+worker;
  worker=worker.replace("[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)",raw?"$reader=[IO.StreamReader]::new([Console]::OpenStandardInput(),[Text.UTF8Encoding]::new($false,$true),$false,4096,$true);[Console]::WriteLine('P1')":"[Console]::InputEncoding=[Text.UTF8Encoding]::new($false);[Console]::WriteLine('P1')");
@@ -48,20 +48,28 @@ function instrument(worker,raw){
  worker=worker.replace('public void Prepare(string data,string wanted){','public void Prepare(string data,string wanted){Console.Error.WriteLine("N13 0");');
  worker=worker.replace('public string Commit(){','public string Commit(){Console.Error.WriteLine("N16 0");');
  worker=worker.replace('if(!SetFileInformationByHandle(tmp,3,','Console.Error.WriteLine("N17 0");if(!SetFileInformationByHandle(tmp,3,');
+ const originalSize='offset+name.Length';
+ if(renameMode==='win32-null')worker=worker.replaceAll(originalSize,'offset+name.Length+2');
+ if(renameMode==='win32-padded')worker=worker.replaceAll(originalSize,'Marshal.SizeOf(typeof(Ren))+name.Length+2');
+ worker=worker.replace('IntPtr buffer=Marshal.AllocHGlobal(', 'Console.Error.WriteLine("N50 "+IntPtr.Size);Console.Error.WriteLine("N51 "+Marshal.SizeOf(typeof(Ren)));Console.Error.WriteLine("N52 "+Marshal.OffsetOf(typeof(Ren),"Root"));Console.Error.WriteLine("N53 "+Marshal.OffsetOf(typeof(Ren),"Length"));Console.Error.WriteLine("N54 "+offset);Console.Error.WriteLine("N55 "+name.Length);IntPtr buffer=Marshal.AllocHGlobal(');
+ if(renameMode==='nt-relative'){
+  worker=worker.replace('static Exception Bad()', '[StructLayout(LayoutKind.Sequential)]struct IoStatus {public IntPtr Status;public UIntPtr Information;}[DllImport("ntdll.dll")]static extern int NtSetInformationFile(SafeFileHandle file,out IoStatus status,IntPtr data,uint length,int kind);[DllImport("ntdll.dll")]static extern uint RtlNtStatusToDosError(int status);static Exception Bad()');
+  worker=worker.replace('if(!SetFileInformationByHandle(tmp,3,buffer,(uint)(offset+name.Length)))throw Bad();', 'IoStatus io;int status=NtSetInformationFile(tmp,out io,buffer,(uint)(offset+name.Length),10);Console.Error.WriteLine("N60 "+(status==0?1:0));uint mapped=status==0?0:RtlNtStatusToDosError(status);Console.Error.WriteLine("N61 "+(mapped<=65535?mapped:0));if(status!=0)throw Bad();');
+ }
+
  return worker;
 }
 (async()=>{
  if(process.platform!=='win32')throw Error('Windows runner required');
  const source=readFileSync(path.join(process.cwd(),'src','plugins','api-server','backend','windows-private-path.ts'),'utf8');const match=source.match(/const WINDOWS_PRIVATE_WORKER = String\.raw`([\s\S]*?)`\.trim\(\);/);if(!match)throw Error('Fixed worker source missing');
- for(const control of [true,false]){
- const raw=false, label=control?'original':'candidate';
+ for(const renameMode of ['win32-original','win32-null','win32-padded','nt-relative']){
+ const raw=false, label=renameMode;
  const parent=await mkdtemp(path.join(tmpdir(),'pear-grant-native-diag-'));
  try{
  const protection=await execute('parent-'+label,parentScript,{directory:parent});console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(protection));if(protection.exitCode!==0||protection.timedOut)continue;
  const directory=path.join(parent,'owned');
  if(!match[1].includes('if(folder.Length>4096)throw Bad();')||match[1].includes('if(folder!=value||'))throw Error('Candidate normalization source not selected');
- const original=match[1].replace('if(folder.Length>4096)throw Bad();','if(folder!=value||folder.Length>4096)throw Bad();');
- const worker=instrument(control?original:match[1],raw);
+ const worker=instrument(match[1],raw,renameMode);
  const read=()=>({version:1,operation:'read',directory,contents64:null,expected:null});
  console.log('WINDOWS_NATIVE_DIAG '+JSON.stringify(await execute('read-empty-'+label,worker,read())));
  const content=Buffer.from('{"version":1,"records":[]}','utf8').toString('base64');
