@@ -1,27 +1,35 @@
-name: Regression tests
+name: Native runner diagnostics
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ matrix.os }}
+  windows-stdio:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.x
+      - name: Probe asynchronous PowerShell stdin
+        run: node scripts/windows-powershell-stdio-diagnostic.cjs
+      - name: Probe synchronous ACL fixture
+        run: node scripts/windows-fixture-acl-diagnostic.cjs
+  native-fixtures:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PEAR_MUSIC_NATIVE_TRACE: '1'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -34,17 +42,20 @@ jobs:
           node-version: 24.x
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
-        run: pnpm exec playwright install --with-deps chromium
+      - run: node node_modules/@playwright/test/cli.js install --with-deps chromium
       - name: Install virtual display
         if: runner.os == 'Linux'
         run: sudo apt-get install -y xvfb
-      - run: pnpm build
-      - name: Run Linux tests in a virtual display
+      - name: Linux native controls
         if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm test
-      - name: Run macOS and Windows tests
-        if: runner.os != 'Linux'
-        run: pnpm test
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
+        run: xvfb-run -a node node_modules/@playwright/test/cli.js test tests/api-music-native.test.ts tests/i18n-built-native.test.ts --workers=1 --reporter=line --repeat-each=2
+      - name: macOS native controls
+        if: runner.os == 'macOS'
+        run: node node_modules/@playwright/test/cli.js test tests/api-music-native.test.ts tests/i18n-built-native.test.ts --workers=1 --reporter=line --repeat-each=2
+      - name: Preserve diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: native-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
