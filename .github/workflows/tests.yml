@@ -17,9 +17,5 @@ jobs:
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
           node-version: 24.x
-      - name: Probe asynchronous PowerShell stdin
-        run: node scripts/windows-powershell-stdio-diagnostic.cjs
-      - name: Probe synchronous ACL fixture
-        run: node scripts/windows-fixture-acl-diagnostic.cjs
       - name: Probe exact private worker and native rename
         run: node scripts/windows-private-native-diagnostic.cjs
