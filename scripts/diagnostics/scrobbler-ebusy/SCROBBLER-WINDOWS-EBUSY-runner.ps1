@@ -72,26 +72,28 @@ function NativeRun([string]$Name,[string]$Command) {
   $started=[DateTime]::UtcNow.ToString('o'); $info=[Diagnostics.ProcessStartInfo]::new()
   $info.FileName=$env:ComSpec; $info.WorkingDirectory=$SourceRoot; $info.UseShellExecute=$false
   $info.RedirectStandardOutput=$true; $info.RedirectStandardError=$true; $info.CreateNoWindow=$true
-  $info.ArgumentList.Add('/d'); $info.ArgumentList.Add('/s'); $info.ArgumentList.Add('/c'); $info.ArgumentList.Add($Command)
+  # cmd /s /c consumes command text; CRT ArgumentList quote escaping corrupts its inner quotes.
+  $info.Arguments = '/d /s /c "' + $Command + '"'
   $child=[Diagnostics.Process]::new(); $child.StartInfo=$info
   $outStream=[IO.FileStream]::new((Join-Path $ReportRoot ($Name+'.stdout.log')),[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
   $errStream=[IO.FileStream]::new((Join-Path $ReportRoot ($Name+'.stderr.log')),[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
   try {
     [void]$child.Start()
     $stdout=$child.StandardOutput.BaseStream.CopyToAsync($outStream); $stderr=$child.StandardError.BaseStream.CopyToAsync($errStream)
-    $child.WaitForExit(); $stdout.GetAwaiter().GetResult(); $stderr.GetAwaiter().GetResult()
-    $code=$child.ExitCode
-  } finally { $outStream.Dispose(); $errStream.Dispose(); $child.Dispose() }
+    [void]$child.WaitForExit(); [void]$stdout.GetAwaiter().GetResult(); [void]$stderr.GetAwaiter().GetResult()
+    $code=[int]$child.ExitCode
+  } finally { [void]$outStream.Dispose(); [void]$errStream.Dispose(); [void]$child.Dispose() }
   [IO.File]::WriteAllText((Join-Path $ReportRoot ($Name+'.exit.txt')),([string]$code+"`n"),$utf8)
-  JsonFile ($Name+'.command.json') @{command=$Command; cwd=$SourceRoot; startedUtc=$started; endedUtc=[DateTime]::UtcNow.ToString('o'); exitCode=$code; stdoutFile=$Name+'.stdout.log'; stderrFile=$Name+'.stderr.log'; retries=0; limitation='Raw stdout/stderr bytes retained separately; cross-stream ordering is not reconstructed.'}
+  [void](JsonFile ($Name+'.command.json') @{command=$Command; cwd=$SourceRoot; startedUtc=$started; endedUtc=[DateTime]::UtcNow.ToString('o'); exitCode=[int]$code; stdoutFile=$Name+'.stdout.log'; stderrFile=$Name+'.stderr.log'; retries=0; limitation='Raw stdout/stderr bytes retained separately; cross-stream ordering is not reconstructed.'})
   Write-Host "$Name exit=$code; raw stdout/stderr retained outside source."
   Get-Content -LiteralPath (Join-Path $ReportRoot ($Name+'.stdout.log')) -Tail 20 | Write-Host
   Get-Content -LiteralPath (Join-Path $ReportRoot ($Name+'.stderr.log')) -Tail 10 | Write-Host
-  return $code
+  return [int]$code
 }
 $collector=$null; $collectorStdout=$null; $collectorStderr=$null; $copyOut=$null; $copyErr=$null
 $oldNodeOptions=$env:NODE_OPTIONS; $oldReportRoot=$env:PEAR_EBUSY_REPORT_ROOT
 $fullCode=$null; $focusedCode=$null; $sourceValid=$false; $diagnosticHealthy=$false
+$carrierQualified=$false
 $driverStage='source-scope'
 try {
   if ($ReportRoot -ieq $SourceRoot -or $ReportRoot.StartsWith($SourceRoot+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Report root must be outside source.' }
@@ -99,7 +101,7 @@ try {
   $driverStage='source-before'
   $before=SourceManifest; VerifyExpected $before; JsonFile 'source-before.json' $before
   $driverStage='diagnostic-file-copy'
-  foreach ($name in @('SCROBBLER-WINDOWS-EBUSY-preload.cjs','SCROBBLER-WINDOWS-EBUSY-collector.ps1')) { Copy-Item -LiteralPath (Join-Path $DiagnosticRoot $name) -Destination (Join-Path $ReportRoot $name) }
+  foreach ($name in @('SCROBBLER-WINDOWS-EBUSY-preload.cjs','SCROBBLER-WINDOWS-EBUSY-collector.ps1','SCROBBLER-WINDOWS-EBUSY-carrier.cjs')) { Copy-Item -LiteralPath (Join-Path $DiagnosticRoot $name) -Destination (Join-Path $ReportRoot $name) }
   $diagnosticHashes=@{}
   foreach ($file in @(Get-ChildItem -LiteralPath $DiagnosticRoot -File)) { $diagnosticHashes[$file.Name]=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
   JsonFile 'diagnostic-files.json' $diagnosticHashes
@@ -108,6 +110,26 @@ try {
   $nodeVersion=(& node --version); if ($LASTEXITCODE -ne 0) { throw 'Node version query failed.' }
   $pnpmVersion=(& pnpm --version); if ($LASTEXITCODE -ne 0) { throw 'pnpm version query failed.' }
   JsonFile 'resolved-environment.json' @{utc=[DateTime]::UtcNow.ToString('o'); os=[Environment]::OSVersion.VersionString; cpuCount=[Environment]::ProcessorCount; node=$nodeVersion; pnpm=$pnpmVersion; electron=$package.devDependencies.electron; playwright=$package.devDependencies.'@playwright/test'; runnerImageOS=$env:ImageOS; runnerImageVersion=$env:ImageVersion; sourceHead=$before.head; sourceTree=$before.tree}
+
+  $driverStage='carrier-environment'
+  $preload=Join-Path $ReportRoot 'SCROBBLER-WINDOWS-EBUSY-preload.cjs'
+  $preloadForward=$preload.Replace('\','/')
+  $carrierForward=(Join-Path $ReportRoot 'SCROBBLER-WINDOWS-EBUSY-carrier.cjs').Replace('\','/')
+  $env:PEAR_EBUSY_REPORT_ROOT=$ReportRoot
+  $env:NODE_OPTIONS=(([string]$oldNodeOptions+' --require="'+$preloadForward+'"').Trim())
+  # SAME NativeRun/cmd.exe/env/preload used below by the original tests.
+  $carrierSuffix=' --node-major 24 --preload "'+$preloadForward+'" --literal "owned argument with spaces" --literal-backslash "owned\argument" --grep "^a guestless SSO child load failure while still owned retires authentication$"'
+  $driverStage='carrier-exit-zero'
+  $carrierZero=NativeRun 'carrier-exit-0' ('node "'+$carrierForward+'" --expected-exit 0'+$carrierSuffix)
+  if ($carrierZero -isnot [int] -or $carrierZero -ne 0) { throw 'Host Node carrier zero-exit result is not the expected scalar Int32.' }
+  $driverStage='carrier-exit-seven'
+  $carrierSeven=NativeRun 'carrier-exit-7' ('node "'+$carrierForward+'" --expected-exit 7'+$carrierSuffix)
+  if ($carrierSeven -isnot [int] -or $carrierSeven -ne 7) { throw 'Host Node carrier controlled-exit result is not the expected scalar Int32.' }
+  $carrierTraceZero=Get-Content -LiteralPath (Join-Path $ReportRoot 'host-carrier-0.json') -Raw | ConvertFrom-Json
+  $carrierTraceSeven=Get-Content -LiteralPath (Join-Path $ReportRoot 'host-carrier-7.json') -Raw | ConvertFrom-Json
+  if ($carrierTraceZero.healthy -ne $true -or $carrierTraceSeven.healthy -ne $true -or $carrierTraceZero.expectedExit -ne 0 -or $carrierTraceSeven.expectedExit -ne 7) { throw 'Host Node carrier trace validation failed.' }
+  $carrierQualified=$true
+  JsonFile 'carrier-health.json' @{healthy=[bool]$carrierQualified; scalarExitZero=[int]$carrierZero; scalarExitSeven=[int]$carrierSeven; nodeMajorRequired=24; exactPreloadLoaded=$true; controlledArgumentsMatched=$true; previousNodeOptionsPreserved=$true; fullOrFocusedTestsRunByCarrier=$false; nativeFixtureOrElectronStartedByCarrier=$false}
 
   $driverStage='handle-provision'
   $toolRoot=Join-Path $ReportRoot 'tool'; [void][IO.Directory]::CreateDirectory($toolRoot)
@@ -131,15 +153,16 @@ try {
     if ($collector.HasExited -or [DateTime]::UtcNow -ge $readyDeadline) { throw 'Collector failed to become ready.' }
     Start-Sleep -Milliseconds 100
   }
-  $preload=Join-Path $ReportRoot 'SCROBBLER-WINDOWS-EBUSY-preload.cjs'
-  $env:PEAR_EBUSY_REPORT_ROOT=$ReportRoot
-  $env:NODE_OPTIONS=(([string]$oldNodeOptions+' --require="'+$preload+'"').Trim())
   # Full original command FIRST. The collector/preload are observational only.
   $driverStage='full-suite'
-  $fullCode=NativeRun 'full-suite' 'pnpm test'
+  $fullResult=NativeRun 'full-suite' 'pnpm test'
+  if ($fullResult -isnot [int]) { throw 'Full-suite NativeRun result is not a scalar Int32.' }
+  $fullCode=[int]$fullResult
   # One focused context, even after full-suite failure. Never another full suite.
   $driverStage='focused'
-  $focusedCode=NativeRun 'focused' 'pnpm exec playwright test tests/scrobbler-auth-window-native.test.ts --grep "^a guestless SSO child load failure while still owned retires authentication$" --workers=1 --retries=0 --reporter=line'
+  $focusedResult=NativeRun 'focused' 'pnpm exec playwright test tests/scrobbler-auth-window-native.test.ts --grep "^a guestless SSO child load failure while still owned retires authentication$" --workers=1 --retries=0 --reporter=line'
+  if ($focusedResult -isnot [int]) { throw 'Focused NativeRun result is not a scalar Int32.' }
+  $focusedCode=[int]$focusedResult
 } catch { JsonFile 'driver-error.json' (DriverFailure $_ $driverStage) }
 finally {
   $env:NODE_OPTIONS=$oldNodeOptions; $env:PEAR_EBUSY_REPORT_ROOT=$oldReportRoot
@@ -148,8 +171,8 @@ finally {
     # Bounded teardown of the collector only; never kill Electron/test/lock owners.
     if (-not $collector.WaitForExit(15000)) { JsonFile 'collector-stop-timeout.json' @{timeoutMs=15000; collectorPid=$collector.Id}; $collector.Kill(); [void]$collector.WaitForExit(2000) }
     if ($collector.HasExited) { [IO.File]::WriteAllText((Join-Path $ReportRoot 'collector.exit.txt'),([string]$collector.ExitCode+"`n"),$utf8) }
-    if ($null -ne $copyOut -and $copyOut.IsCompleted) { try { $copyOut.GetAwaiter().GetResult() } catch {} }
-    if ($null -ne $copyErr -and $copyErr.IsCompleted) { try { $copyErr.GetAwaiter().GetResult() } catch {} }
+    if ($null -ne $copyOut -and $copyOut.IsCompleted) { try { [void]$copyOut.GetAwaiter().GetResult() } catch {} }
+    if ($null -ne $copyErr -and $copyErr.IsCompleted) { try { [void]$copyErr.GetAwaiter().GetResult() } catch {} }
     if ($null -ne $collectorStdout) { $collectorStdout.Dispose() }; if ($null -ne $collectorStderr) { $collectorStderr.Dispose() }; $collector.Dispose()
   }
   try {
@@ -158,17 +181,21 @@ finally {
     if ($sourceValid) { foreach ($name in $before.sha256.Keys) { if (-not $after.sha256.ContainsKey($name) -or $before.sha256[$name] -cne $after.sha256[$name]) { $sourceValid=$false; break } } }
   } catch { JsonFile 'source-verification-error.json' (DriverFailure $_ 'source-after') }
   try {
+    if (-not $carrierQualified) {
+      JsonFile 'diagnostic-health.json' @{healthy=$false; carrierQualified=$false; originalSuite1745With2WorkersObserved=$false; workerLogs=0; originalSuiteStarted=$false; focusedStarted=$false; reason='Carrier gate did not pass; no original/native coverage claimed.'}
+    } else {
     $health=Get-Content -LiteralPath (Join-Path $ReportRoot 'collector-health.json') -Raw | ConvertFrom-Json
     $loggerErrors=@(Get-ChildItem -LiteralPath $ReportRoot -Filter '*.diagnostic-error' -File)
     $workerLogs=@(Get-ChildItem -LiteralPath $ReportRoot -Filter 'worker-*.jsonl' -File)
     $allWorkersReady=$workerLogs.Count -gt 0
     foreach ($file in $workerLogs) { $first=Get-Content -LiteralPath $file.FullName -TotalCount 1 | ConvertFrom-Json; if ($first.event -ne 'preload-ready') { $allWorkersReady=$false } }
-    $fullRaw=Get-Content -LiteralPath (Join-Path $ReportRoot 'full-suite.stdout.log') -Raw
-    $originalWorkers=($fullRaw -match 'Running 1745 tests using 2 workers')
-    $diagnosticHealthy=($health.healthy -eq $true -and $loggerErrors.Count -eq 0 -and $allWorkersReady -and $originalWorkers -and -not (Test-Path -LiteralPath (Join-Path $ReportRoot 'collector-stop-timeout.json')))
+    $fullRaw=[string](Get-Content -LiteralPath (Join-Path $ReportRoot 'full-suite.stdout.log') -Raw)
+    $originalWorkers=[bool]($fullRaw -match 'Running 1745 tests using 2 workers')
+    $diagnosticHealthy=[bool]($health.healthy -eq $true -and $loggerErrors.Count -eq 0 -and $allWorkersReady -and $originalWorkers -and -not (Test-Path -LiteralPath (Join-Path $ReportRoot 'collector-stop-timeout.json')))
     JsonFile 'diagnostic-health.json' @{healthy=$diagnosticHealthy; originalSuite1745With2WorkersObserved=$originalWorkers; workerLogs=$workerLogs.Count; everyWorkerLogReady=$allWorkersReady; loggerErrorFiles=$loggerErrors.Count; collector=$health}
+    }
   } catch { JsonFile 'diagnostic-health-error.json' (DriverFailure $_ 'diagnostic-health-after') }
-  JsonFile 'outcome.json' @{fullSuiteExit=$fullCode; focusedExit=$focusedCode; sourceUnchanged=$sourceValid; diagnosticHealthy=$diagnosticHealthy; originalBudgetsChanged=$false; fullSuiteFirst=$true; acceptance='Diagnostic evidence only; does not replace failed original PR58 Windows acceptance.'}
+  JsonFile 'outcome.json' @{fullSuiteExit=$fullCode; focusedExit=$focusedCode; sourceUnchanged=[bool]$sourceValid; diagnosticHealthy=[bool]$diagnosticHealthy; carrierQualified=[bool]$carrierQualified; originalBudgetsChanged=$false; fullSuiteFirst=$true; acceptance='Diagnostic evidence only; does not replace failed original PR58 Windows acceptance.'}
 }
 if ($fullCode -ne 0 -or $focusedCode -ne 0 -or -not $sourceValid -or -not $diagnosticHealthy -or (Test-Path -LiteralPath (Join-Path $ReportRoot 'driver-error.json'))) { exit 1 }
 exit 0
