@@ -38,7 +38,7 @@ jobs:
           if ($env:EXPECTED_REPLAY_HEAD -cnotmatch '^[a-f0-9]{40}$' -or $env:GITHUB_SHA -cne $env:EXPECTED_REPLAY_HEAD) { throw 'Replay dispatch must resolve to exact reviewed SHA.' }
           $inputRoot = Join-Path $env:GITHUB_WORKSPACE 'replay-checkout/scripts/diagnostics/windows-collector-field-replay'
           $seal = Get-Content -LiteralPath (Join-Path $inputRoot 'REPLAY-SEAL.json') -Raw | ConvertFrom-Json
-          $fixedNames = @('exact-functions.ps1','actual-samples.jsonl','negative-controls.jsonl','SOURCE.json','replay.ps1')
+          $fixedNames = @('baseline-functions.ps1','candidate-functions.ps1','actual-samples.jsonl','negative-controls.jsonl','SOURCE.json','replay.ps1','lexical-controls.jsonl','compare-replay.ps1')
           if (@($seal.filesSha256.PSObject.Properties).Count -ne $fixedNames.Count) { throw 'Unexpected replay seal member count.' }
           foreach ($name in $fixedNames) {
             $expected = $seal.filesSha256.PSObject.Properties[$name]
@@ -49,7 +49,7 @@ jobs:
           [IO.File]::WriteAllText((Join-Path $report 'identity.json'),(@{expectedHead=$env:EXPECTED_REPLAY_HEAD; dispatchHead=$env:GITHUB_SHA; scope='sparse replay inputs only'; sealSha256=(Get-FileHash -LiteralPath (Join-Path $inputRoot 'REPLAY-SEAL.json') -Algorithm SHA256).Hash.ToLowerInvariant()} | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
       - name: Replay exact collector field functions without native work
         run: |
-          & (Join-Path $env:GITHUB_WORKSPACE 'replay-checkout/scripts/diagnostics/windows-collector-field-replay/replay.ps1') -OutputRoot (Join-Path $env:RUNNER_TEMP 'pear-field-replay')
+          & (Join-Path $env:GITHUB_WORKSPACE 'replay-checkout/scripts/diagnostics/windows-collector-field-replay/compare-replay.ps1') -OutputRoot (Join-Path $env:RUNNER_TEMP 'pear-field-replay')
           exit $LASTEXITCODE
       - name: Preserve bounded field replay evidence unconditionally
         if: always()

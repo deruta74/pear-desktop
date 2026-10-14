@@ -1,11 +1,13 @@
 {
   "schema": 1,
-  "scope": "fixed Windows field-ingestion replay payload only",
   "filesSha256": {
-    "exact-functions.ps1": "916296a6a1e734e6d3758ce0a0e8898652077a6b56765287ec6bb516d7bb7189",
+    "baseline-functions.ps1": "916296a6a1e734e6d3758ce0a0e8898652077a6b56765287ec6bb516d7bb7189",
+    "candidate-functions.ps1": "6b1a704b786bae7700e9df33e343848fffe360803354ecb965522c5424b78847",
     "actual-samples.jsonl": "44cac4b8b8193de2033c906d65c73848e3c9519b9b2a4092799a5f0fead1dcd0",
     "negative-controls.jsonl": "c5244bb27a14fcef949c07c9bc4d7c2f776aa999e19e383cfdb7955f00fd9ce7",
     "SOURCE.json": "eb0cb21c12ce8b0ca3425ac69ce9b485667f0a3f24ea7c824de2afeca60c94e7",
-    "replay.ps1": "53219adc08cfcf6d738ca5030d2c7b36541091abce44610e9cd339d3c0dfd6d6"
+    "replay.ps1": "53219adc08cfcf6d738ca5030d2c7b36541091abce44610e9cd339d3c0dfd6d6",
+    "lexical-controls.jsonl": "968a7758bc1a9a87e1412ea77010572a9c6a8720e1bf8796164702847bfcdcc9",
+    "compare-replay.ps1": "866efe3789ee8bf0443831fca16d798cd9dde43ac36bfbe637ab6674d6b9f226"
   }
 }
