@@ -1,50 +1,84 @@
-name: Regression tests
+name: Manual Windows scrobbler cleanup diagnostic
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
   workflow_dispatch:
+    inputs:
+      expected_head:
+        description: Exact reviewed signed diagnostic branch commit SHA
+        required: true
+        type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+  diagnostic:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      EXPECTED_DIAGNOSTIC_HEAD: ${{ inputs.expected_head }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Checkout reviewed diagnostics only
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          ref: ${{ inputs.expected_head }}
+          path: diagnostic-checkout
+          persist-credentials: false
+      - name: Verify diagnostic checkout and copy outside source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:EXPECTED_DIAGNOSTIC_HEAD -cnotmatch '^[a-f0-9]{40}$') { throw 'Expected diagnostic SHA must be 40 lowercase hexadecimal characters.' }
+          $actual = git -C diagnostic-checkout rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:EXPECTED_DIAGNOSTIC_HEAD) { throw 'Diagnostic checkout identity mismatch.' }
+          $report = Join-Path $env:RUNNER_TEMP 'pear-ebusy-report'
+          $diagnostics = Join-Path $env:RUNNER_TEMP 'pear-ebusy-diagnostics'
+          New-Item -ItemType Directory -Path $report,$diagnostics | Out-Null
+          Copy-Item -Path 'diagnostic-checkout/scripts/diagnostics/scrobbler-ebusy/*' -Destination $diagnostics
+          "PEAR_EBUSY_DIAGNOSTIC_ROOT=$diagnostics" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PEAR_EBUSY_ARTIFACT_ROOT=$report" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $actual | Out-File -FilePath (Join-Path $report 'diagnostic-head.txt') -Encoding utf8
+      - name: Checkout exact unchanged signed source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: 1c2319c386e33c4032a4d45a7f77b6fc9ab0dd29
+          path: source
           persist-credentials: false
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
         with:
           version: 11
+          run_install: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
           node-version: 24.x
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
+          cache-dependency-path: source/pnpm-lock.yaml
+      - name: Frozen original dependency install (runner only)
+        working-directory: source
+        run: pnpm install --frozen-lockfile
+      - name: Original test browser provisioning (runner only)
+        working-directory: source
         run: pnpm exec playwright install --with-deps chromium
-      - name: Install virtual display
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
-      - run: pnpm build
-      - name: Run Linux tests in a virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm test
-      - name: Run macOS and Windows tests
-        if: runner.os != 'Linux'
-        run: pnpm test
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
+      - name: Original build (runner only)
+        working-directory: source
+        run: pnpm build
+      - name: One full original suite then one focused diagnostic context
+        run: |
+          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT
+          exit $LASTEXITCODE
+      - name: Preserve safe raw diagnostic evidence unconditionally
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: windows-scrobbler-ebusy-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/pear-ebusy-report/*.json
+            ${{ runner.temp }}/pear-ebusy-report/*.jsonl
+            ${{ runner.temp }}/pear-ebusy-report/*.log
+            ${{ runner.temp }}/pear-ebusy-report/*.txt
+            ${{ runner.temp }}/pear-ebusy-report/*.diagnostic-error
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,15 @@
+{
+  "head": "1c2319c386e33c4032a4d45a7f77b6fc9ab0dd29",
+  "tree": "5e25d905e3c1643c9796a3c2a7452e0ae56cd4e2",
+  "sourceSha256": {
+    "tests/helpers/scrobbler-auth-native.ts": "aab62d52a9b56f9ff316fa6d8fc8004c14bce5929f73fa6a27be08f1e4838462",
+    "tests/helpers/electron-startup.js": "47d330895de882cbb95b7297e0557cda892080d3cefaa1452812a93786d540e2",
+    "tests/helpers/electron-startup-observer.cjs": "8581f0b3171f094830ba28970278585bcf34f7308538744c22c12fde0abf4f83",
+    "tests/scrobbler-auth-window-native.test.ts": "3c461e272e9341783f66dc4502f273e0f21af787ca8bbc763375e44023dcef7b",
+    "src/plugins/scrobbler/services/ws-auth-window.ts": "b631269141888518a6f3e35d936fab69eb5560e021456bedc3df52b85496ff84",
+    "src/plugins/scrobbler/services/ws-auth.ts": "3d3bbe6edc68185c64c2e84a5ff58f3d62fc45db64ee1f53295a0b16fab0db04",
+    ".github/workflows/tests.yml": "e737f0892a7cc5bb2433f4fcfa85775600a8b3fd351c4de49c9957f8dfddec5c",
+    "package.json": "973f6e067390931c6b0e2a8d9dfe3df74c99418070b352be717f34cdd7d16c8c",
+    "pnpm-lock.yaml": "1ae9556e7a67d8bc67a67a5c09f87203f98ef739f945e8d62db9410cf38239a6"
+  }
+}
