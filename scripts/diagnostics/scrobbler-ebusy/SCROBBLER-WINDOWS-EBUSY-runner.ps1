@@ -94,6 +94,13 @@ $collector=$null; $collectorStdout=$null; $collectorStderr=$null; $copyOut=$null
 $oldNodeOptions=$env:NODE_OPTIONS; $oldReportRoot=$env:PEAR_EBUSY_REPORT_ROOT
 $fullCode=$null; $focusedCode=$null; $sourceValid=$false; $diagnosticHealthy=$false
 $carrierQualified=$false
+$collectorStarted=$false; $fullInvoked=$false; $focusedInvoked=$false; $primaryFailureStage=$null
+$admissionClock=[Diagnostics.Stopwatch]::StartNew()
+$collectorStartup=@{schema=1; parentPid=$PID; clockOriginUtc=[DateTime]::UtcNow.ToString('o'); admissionLimitMs=30000;
+  launchAttempted=$false; launchSucceeded=$false; childPid=$null; launchAttemptUtc=$null; launchAttemptMonoMs=$null;
+  launchSuccessUtc=$null; launchSuccessMonoMs=$null; waitStartUtc=$null; waitStartMonoMs=$null;
+  deadlineUtc=$null; deadlineMonoMs=$null; readyDetectedUtc=$null; readyDetectedMonoMs=$null;
+  waitElapsedMs=$null; outcome='not-attempted'; endedUtc=$null; endedMonoMs=$null; errorType=$null; failureStage=$null}
 $driverStage='source-scope'
 try {
   if ($ReportRoot -ieq $SourceRoot -or $ReportRoot.StartsWith($SourceRoot+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Report root must be outside source.' }
@@ -146,31 +153,65 @@ try {
   $collector=[Diagnostics.Process]::new(); $collector.StartInfo=$info
   $collectorStdout=[IO.FileStream]::new((Join-Path $ReportRoot 'collector.stdout.log'),[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
   $collectorStderr=[IO.FileStream]::new((Join-Path $ReportRoot 'collector.stderr.log'),[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
-  [void]$collector.Start(); $copyOut=$collector.StandardOutput.BaseStream.CopyToAsync($collectorStdout); $copyErr=$collector.StandardError.BaseStream.CopyToAsync($collectorStderr)
+  $collectorStartup.launchAttempted=$true; $collectorStartup.outcome='launching'
+  $collectorStartup.launchAttemptUtc=[DateTime]::UtcNow.ToString('o'); $collectorStartup.launchAttemptMonoMs=$admissionClock.Elapsed.TotalMilliseconds
+  $collectorStarted=[bool]$collector.Start()
+  if (-not $collectorStarted) { throw 'Collector launch returned false.' }
+  $collectorStartup.launchSucceeded=$true; $collectorStartup.childPid=$collector.Id
+  $collectorStartup.launchSuccessUtc=[DateTime]::UtcNow.ToString('o'); $collectorStartup.launchSuccessMonoMs=$admissionClock.Elapsed.TotalMilliseconds
+  $copyOut=$collector.StandardOutput.BaseStream.CopyToAsync($collectorStdout); $copyErr=$collector.StandardError.BaseStream.CopyToAsync($collectorStderr)
   $driverStage='collector-ready-wait'
-  $readyDeadline=[DateTime]::UtcNow.AddSeconds(10)
-  while (-not (Test-Path -LiteralPath (Join-Path $ReportRoot 'collector.ready'))) {
-    if ($collector.HasExited -or [DateTime]::UtcNow -ge $readyDeadline) { throw 'Collector failed to become ready.' }
+  # Startup admission ONLY: parent monotonic 30 seconds; no retry or late-ready success.
+  $waitStartUtc=[DateTime]::UtcNow
+  $collectorStartup.waitStartUtc=$waitStartUtc.ToString('o'); $collectorStartup.waitStartMonoMs=$admissionClock.Elapsed.TotalMilliseconds
+  $collectorStartup.deadlineUtc=$waitStartUtc.AddMilliseconds($collectorStartup.admissionLimitMs).ToString('o')
+  $collectorStartup.deadlineMonoMs=$collectorStartup.waitStartMonoMs+$collectorStartup.admissionLimitMs
+  $collectorStartup.outcome='waiting'
+  while ($true) {
+    if ($collector.HasExited) { $collectorStartup.outcome='collector-exited'; throw 'Collector exited before startup admission.' }
+    if (Test-Path -LiteralPath (Join-Path $ReportRoot 'collector.ready')) {
+      $collectorStartup.readyDetectedUtc=[DateTime]::UtcNow.ToString('o'); $collectorStartup.readyDetectedMonoMs=$admissionClock.Elapsed.TotalMilliseconds
+      $collectorStartup.waitElapsedMs=$collectorStartup.readyDetectedMonoMs-$collectorStartup.waitStartMonoMs
+      if ($collectorStartup.readyDetectedMonoMs -ge $collectorStartup.deadlineMonoMs) { $collectorStartup.outcome='late-ready-rejected'; throw 'Collector readiness observed after startup admission bound.' }
+      if ($collector.HasExited) { $collectorStartup.outcome='collector-exited'; throw 'Collector exited at readiness detection.' }
+      $collectorStartup.outcome='ready-admitted'; break
+    }
+    $collectorStartup.waitElapsedMs=$admissionClock.Elapsed.TotalMilliseconds-$collectorStartup.waitStartMonoMs
+    if ($admissionClock.Elapsed.TotalMilliseconds -ge $collectorStartup.deadlineMonoMs) { $collectorStartup.outcome='admission-timeout'; throw 'Collector failed to become ready within startup admission bound.' }
     Start-Sleep -Milliseconds 100
   }
+  $collectorStartup.endedUtc=[DateTime]::UtcNow.ToString('o'); $collectorStartup.endedMonoMs=$admissionClock.Elapsed.TotalMilliseconds
+  JsonFile 'collector-startup.json' $collectorStartup
   # Full original command FIRST. The collector/preload are observational only.
   $driverStage='full-suite'
+  $fullInvoked=$true
   $fullResult=NativeRun 'full-suite' 'pnpm test'
   if ($fullResult -isnot [int]) { throw 'Full-suite NativeRun result is not a scalar Int32.' }
   $fullCode=[int]$fullResult
   # One focused context, even after full-suite failure. Never another full suite.
   $driverStage='focused'
+  $focusedInvoked=$true
   $focusedResult=NativeRun 'focused' 'pnpm exec playwright test tests/scrobbler-auth-window-native.test.ts --grep "^a guestless SSO child load failure while still owned retires authentication$" --workers=1 --retries=0 --reporter=line'
   if ($focusedResult -isnot [int]) { throw 'Focused NativeRun result is not a scalar Int32.' }
   $focusedCode=[int]$focusedResult
-} catch { JsonFile 'driver-error.json' (DriverFailure $_ $driverStage) }
+} catch {
+  $primaryFailureStage=$driverStage
+  if ($collectorStartup.outcome -in @('launching','waiting')) { $collectorStartup.outcome='startup-error' }
+  if ($collectorStartup.outcome -ne 'ready-admitted') {
+    $collectorStartup.failureStage=$driverStage; $collectorStartup.errorType=$_.Exception.GetType().Name
+    $collectorStartup.endedUtc=[DateTime]::UtcNow.ToString('o'); $collectorStartup.endedMonoMs=$admissionClock.Elapsed.TotalMilliseconds
+    if ($null -ne $collectorStartup.waitStartMonoMs) { $collectorStartup.waitElapsedMs=$collectorStartup.endedMonoMs-$collectorStartup.waitStartMonoMs }
+    JsonFile 'collector-startup.json' $collectorStartup
+  }
+  JsonFile 'driver-error.json' (DriverFailure $_ $driverStage)
+}
 finally {
   $env:NODE_OPTIONS=$oldNodeOptions; $env:PEAR_EBUSY_REPORT_ROOT=$oldReportRoot
   [IO.File]::WriteAllText((Join-Path $ReportRoot 'collector.stop'),'stop',$utf8)
   if ($null -ne $collector) {
     # Bounded teardown of the collector only; never kill Electron/test/lock owners.
-    if (-not $collector.WaitForExit(15000)) { JsonFile 'collector-stop-timeout.json' @{timeoutMs=15000; collectorPid=$collector.Id}; $collector.Kill(); [void]$collector.WaitForExit(2000) }
-    if ($collector.HasExited) { [IO.File]::WriteAllText((Join-Path $ReportRoot 'collector.exit.txt'),([string]$collector.ExitCode+"`n"),$utf8) }
+    if ($collectorStarted -and -not $collector.WaitForExit(15000)) { JsonFile 'collector-stop-timeout.json' @{timeoutMs=15000; collectorPid=$collector.Id}; $collector.Kill(); [void]$collector.WaitForExit(2000) }
+    if ($collectorStarted -and $collector.HasExited) { [IO.File]::WriteAllText((Join-Path $ReportRoot 'collector.exit.txt'),([string]$collector.ExitCode+"`n"),$utf8) }
     if ($null -ne $copyOut -and $copyOut.IsCompleted) { try { [void]$copyOut.GetAwaiter().GetResult() } catch {} }
     if ($null -ne $copyErr -and $copyErr.IsCompleted) { try { [void]$copyErr.GetAwaiter().GetResult() } catch {} }
     if ($null -ne $collectorStdout) { $collectorStdout.Dispose() }; if ($null -ne $collectorStderr) { $collectorStderr.Dispose() }; $collector.Dispose()
@@ -181,8 +222,11 @@ finally {
     if ($sourceValid) { foreach ($name in $before.sha256.Keys) { if (-not $after.sha256.ContainsKey($name) -or $before.sha256[$name] -cne $after.sha256[$name]) { $sourceValid=$false; break } } }
   } catch { JsonFile 'source-verification-error.json' (DriverFailure $_ 'source-after') }
   try {
-    if (-not $carrierQualified) {
-      JsonFile 'diagnostic-health.json' @{healthy=$false; carrierQualified=$false; originalSuite1745With2WorkersObserved=$false; workerLogs=0; originalSuiteStarted=$false; focusedStarted=$false; reason='Carrier gate did not pass; no original/native coverage claimed.'}
+    if (-not $fullInvoked) {
+      JsonFile 'diagnostic-health.json' @{healthy=$false; carrierQualified=[bool]$carrierQualified; originalSuite1745With2WorkersObserved=$false;
+        originalCoverage=$false; fullSuiteInvoked=[bool]$fullInvoked; focusedInvoked=[bool]$focusedInvoked;
+        fullSuiteExit=$fullCode; focusedExit=$focusedCode; primaryFailureStage=$primaryFailureStage;
+        reason='Driver failed before original full-suite invocation; no original/native coverage claimed.'}
     } else {
     $health=Get-Content -LiteralPath (Join-Path $ReportRoot 'collector-health.json') -Raw | ConvertFrom-Json
     $loggerErrors=@(Get-ChildItem -LiteralPath $ReportRoot -Filter '*.diagnostic-error' -File)
@@ -192,10 +236,10 @@ finally {
     $fullRaw=[string](Get-Content -LiteralPath (Join-Path $ReportRoot 'full-suite.stdout.log') -Raw)
     $originalWorkers=[bool]($fullRaw -match 'Running 1745 tests using 2 workers')
     $diagnosticHealthy=[bool]($health.healthy -eq $true -and $loggerErrors.Count -eq 0 -and $allWorkersReady -and $originalWorkers -and -not (Test-Path -LiteralPath (Join-Path $ReportRoot 'collector-stop-timeout.json')))
-    JsonFile 'diagnostic-health.json' @{healthy=$diagnosticHealthy; originalSuite1745With2WorkersObserved=$originalWorkers; workerLogs=$workerLogs.Count; everyWorkerLogReady=$allWorkersReady; loggerErrorFiles=$loggerErrors.Count; collector=$health}
+    JsonFile 'diagnostic-health.json' @{healthy=$diagnosticHealthy; fullSuiteInvoked=[bool]$fullInvoked; focusedInvoked=[bool]$focusedInvoked; primaryFailureStage=$primaryFailureStage; originalSuite1745With2WorkersObserved=$originalWorkers; workerLogs=$workerLogs.Count; everyWorkerLogReady=$allWorkersReady; loggerErrorFiles=$loggerErrors.Count; collector=$health}
     }
   } catch { JsonFile 'diagnostic-health-error.json' (DriverFailure $_ 'diagnostic-health-after') }
-  JsonFile 'outcome.json' @{fullSuiteExit=$fullCode; focusedExit=$focusedCode; sourceUnchanged=[bool]$sourceValid; diagnosticHealthy=[bool]$diagnosticHealthy; carrierQualified=[bool]$carrierQualified; originalBudgetsChanged=$false; fullSuiteFirst=$true; acceptance='Diagnostic evidence only; does not replace failed original PR58 Windows acceptance.'}
+  JsonFile 'outcome.json' @{fullSuiteExit=$fullCode; focusedExit=$focusedCode; fullSuiteInvoked=[bool]$fullInvoked; focusedInvoked=[bool]$focusedInvoked; noOriginalInvocation=(-not $fullInvoked); primaryFailureStage=$primaryFailureStage; collectorStartupOutcome=$collectorStartup.outcome; collectorStartupAdmissionLimitMs=$collectorStartup.admissionLimitMs; sourceUnchanged=[bool]$sourceValid; diagnosticHealthy=[bool]$diagnosticHealthy; carrierQualified=[bool]$carrierQualified; originalBudgetsChanged=$false; fullSuiteFirst=$true; acceptance='Diagnostic evidence only; does not replace failed original PR58 Windows acceptance.'}
 }
 if ($fullCode -ne 0 -or $focusedCode -ne 0 -or -not $sourceValid -or -not $diagnosticHealthy -or (Test-Path -LiteralPath (Join-Path $ReportRoot 'driver-error.json'))) { exit 1 }
 exit 0

@@ -40,7 +40,10 @@ function Seed([long]$ProcessId, [string]$Directory, [string]$Utc) {
 
 # This helper runs only the collector-owned Handle query. Its deadline never
 # terminates Electron, a test worker, or a handle-owning process.
-Add-Type -TypeDefinition @'
+$initializationStartMs=$clock.Elapsed.TotalMilliseconds
+Emit 'collector-initialization' @{stage='add-type'; status='started'; stageElapsedMs=0.0}
+try {
+Add-Type -ErrorAction Stop -WarningAction SilentlyContinue -TypeDefinition @'
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -94,6 +97,17 @@ namespace PearDiagnostic {
  }
 }
 '@
+  Emit 'collector-initialization' @{stage='add-type'; status='succeeded'; stageElapsedMs=($clock.Elapsed.TotalMilliseconds-$initializationStartMs)}
+} catch {
+  # Safe scalars only: never serialize compiler source, command lines or environment.
+  $initializationErrorType=$_.Exception.GetType().Name
+  Emit 'collector-initialization' @{stage='add-type'; status='failed'; stageElapsedMs=($clock.Elapsed.TotalMilliseconds-$initializationStartMs); errorType=$initializationErrorType}
+  $initializationFailure=@{schema=1; healthy=$false; failureStage='add-type'; errorType=$initializationErrorType;
+    collectorPid=$PID; endedUtc=[DateTime]::UtcNow.ToString('o'); monoMs=$clock.Elapsed.TotalMilliseconds;
+    initializationElapsedMs=($clock.Elapsed.TotalMilliseconds-$initializationStartMs); originalCoverage=$false; counts=$counts}
+  [IO.File]::WriteAllText($healthPath,($initializationFailure | ConvertTo-Json -Depth 8),$utf8)
+  exit 2
+}
 
 function CanonicalRoot([string]$Directory,[string]$Context,[string]$EventUtc,[bool]$RetryFailed=$false) {
   if ($canonicalRoots.ContainsKey($Directory)) {
