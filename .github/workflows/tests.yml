@@ -47,6 +47,10 @@ jobs:
           ref: 1c2319c386e33c4032a4d45a7f77b6fc9ab0dd29
           path: source
           persist-credentials: false
+      - name: Exact driver source preflight before dependencies and native work
+        run: |
+          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT -PreflightOnly
+          exit $LASTEXITCODE
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
         with:
           version: 11
