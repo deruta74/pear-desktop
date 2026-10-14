@@ -1,10 +1,10 @@
-name: Manual Windows scrobbler cleanup diagnostic
+name: Manual Windows collector field ingestion replay
 
 on:
   workflow_dispatch:
     inputs:
       expected_head:
-        description: Exact reviewed signed diagnostic branch commit SHA
+        description: Exact reviewed signed isolated replay branch commit SHA
         required: true
         type: string
 
@@ -12,77 +12,53 @@ permissions:
   contents: read
 
 jobs:
-  diagnostic:
+  field-replay:
     if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     defaults:
       run:
         shell: pwsh
     env:
-      EXPECTED_DIAGNOSTIC_HEAD: ${{ inputs.expected_head }}
+      EXPECTED_REPLAY_HEAD: ${{ inputs.expected_head }}
     steps:
-      - name: Checkout reviewed diagnostics only
+      - name: Checkout exact replay inputs only
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ inputs.expected_head }}
-          path: diagnostic-checkout
+          path: replay-checkout
           persist-credentials: false
-      - name: Verify diagnostic checkout and copy outside source
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/diagnostics/windows-collector-field-replay
+          sparse-checkout-cone-mode: false
+      - name: Verify exact dispatch SHA and fixed replay file seal
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:EXPECTED_DIAGNOSTIC_HEAD -cnotmatch '^[a-f0-9]{40}$') { throw 'Expected diagnostic SHA must be 40 lowercase hexadecimal characters.' }
-          $actual = git -C diagnostic-checkout rev-parse HEAD
-          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:EXPECTED_DIAGNOSTIC_HEAD) { throw 'Diagnostic checkout identity mismatch.' }
-          $report = Join-Path $env:RUNNER_TEMP 'pear-ebusy-report'
-          $diagnostics = Join-Path $env:RUNNER_TEMP 'pear-ebusy-diagnostics'
-          New-Item -ItemType Directory -Path $report,$diagnostics | Out-Null
-          Copy-Item -Path 'diagnostic-checkout/scripts/diagnostics/scrobbler-ebusy/*' -Destination $diagnostics
-          "PEAR_EBUSY_DIAGNOSTIC_ROOT=$diagnostics" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "PEAR_EBUSY_ARTIFACT_ROOT=$report" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          $actual | Out-File -FilePath (Join-Path $report 'diagnostic-head.txt') -Encoding utf8
-      - name: Checkout exact unchanged signed source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: 1c2319c386e33c4032a4d45a7f77b6fc9ab0dd29
-          path: source
-          persist-credentials: false
-      - name: Exact driver source preflight before dependencies and native work
+          if ($env:EXPECTED_REPLAY_HEAD -cnotmatch '^[a-f0-9]{40}$' -or $env:GITHUB_SHA -cne $env:EXPECTED_REPLAY_HEAD) { throw 'Replay dispatch must resolve to exact reviewed SHA.' }
+          $inputRoot = Join-Path $env:GITHUB_WORKSPACE 'replay-checkout/scripts/diagnostics/windows-collector-field-replay'
+          $seal = Get-Content -LiteralPath (Join-Path $inputRoot 'REPLAY-SEAL.json') -Raw | ConvertFrom-Json
+          $fixedNames = @('exact-functions.ps1','actual-samples.jsonl','negative-controls.jsonl','SOURCE.json','replay.ps1')
+          if (@($seal.filesSha256.PSObject.Properties).Count -ne $fixedNames.Count) { throw 'Unexpected replay seal member count.' }
+          foreach ($name in $fixedNames) {
+            $expected = $seal.filesSha256.PSObject.Properties[$name]
+            if ($null -eq $expected -or (Get-FileHash -LiteralPath (Join-Path $inputRoot $name) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected.Value) { throw 'Replay fixed input hash mismatch.' }
+          }
+          $report = Join-Path $env:RUNNER_TEMP 'pear-field-replay'
+          [void][IO.Directory]::CreateDirectory($report)
+          [IO.File]::WriteAllText((Join-Path $report 'identity.json'),(@{expectedHead=$env:EXPECTED_REPLAY_HEAD; dispatchHead=$env:GITHUB_SHA; scope='sparse replay inputs only'; sealSha256=(Get-FileHash -LiteralPath (Join-Path $inputRoot 'REPLAY-SEAL.json') -Algorithm SHA256).Hash.ToLowerInvariant()} | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
+      - name: Replay exact collector field functions without native work
         run: |
-          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT -PreflightOnly
+          & (Join-Path $env:GITHUB_WORKSPACE 'replay-checkout/scripts/diagnostics/windows-collector-field-replay/replay.ps1') -OutputRoot (Join-Path $env:RUNNER_TEMP 'pear-field-replay')
           exit $LASTEXITCODE
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
-        with:
-          version: 11
-          run_install: false
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
-        with:
-          node-version: 24.x
-          cache: pnpm
-          cache-dependency-path: source/pnpm-lock.yaml
-      - name: Frozen original dependency install (runner only)
-        working-directory: source
-        run: pnpm install --frozen-lockfile
-      - name: Original test browser provisioning (runner only)
-        working-directory: source
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Original build (runner only)
-        working-directory: source
-        run: pnpm build
-      - name: One full original suite then one focused diagnostic context
-        run: |
-          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT
-          exit $LASTEXITCODE
-      - name: Preserve safe raw diagnostic evidence unconditionally
+      - name: Preserve bounded field replay evidence unconditionally
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: windows-scrobbler-ebusy-${{ github.run_id }}
+          name: windows-collector-field-replay-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/pear-ebusy-report/*.json
-            ${{ runner.temp }}/pear-ebusy-report/*.jsonl
-            ${{ runner.temp }}/pear-ebusy-report/*.log
-            ${{ runner.temp }}/pear-ebusy-report/*.txt
-            ${{ runner.temp }}/pear-ebusy-report/*.diagnostic-error
+            ${{ runner.temp }}/pear-field-replay/identity.json
+            ${{ runner.temp }}/pear-field-replay/summary.json
+            ${{ runner.temp }}/pear-field-replay/field-replay.jsonl
           if-no-files-found: error
           retention-days: 14

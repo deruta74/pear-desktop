@@ -1,0 +1,11 @@
+{"sampleId":"control-foreign-prefix","kind":"negative-control","record":{"event":"rm-begin","directory":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\pear-music-native-aB1234","operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-dot-segment","kind":"negative-control","record":{"event":"rm-begin","directory":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\.\\pear-scrobbler-window-aB1234","operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-relative","kind":"negative-control","record":{"event":"rm-begin","directory":"pear-scrobbler-window-aB1234","operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-trailing-dot","kind":"negative-control","record":{"event":"rm-begin","directory":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\pear-scrobbler-window-aB1234.","operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-short-suffix","kind":"negative-control","record":{"event":"rm-begin","directory":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\pear-scrobbler-window-aB123","operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-null","kind":"negative-control","record":{"event":"rm-begin","directory":null,"operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-number","kind":"negative-control","record":{"event":"rm-begin","directory":17,"operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-boolean","kind":"negative-control","record":{"event":"rm-begin","directory":true,"operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-array","kind":"negative-control","record":{"event":"rm-begin","directory":["C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\pear-scrobbler-window-aB1234"],"operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-object","kind":"negative-control","record":{"event":"rm-begin","directory":{"controlled":true},"operation":"controlled-negative"},"expectedOwned":false}
+{"sampleId":"control-missing","kind":"negative-control","record":{"event":"rm-begin","operation":"controlled-negative"},"expectedOwned":false}

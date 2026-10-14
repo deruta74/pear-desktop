@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "scope": "fixed Windows field-ingestion replay payload only",
+  "filesSha256": {
+    "exact-functions.ps1": "916296a6a1e734e6d3758ce0a0e8898652077a6b56765287ec6bb516d7bb7189",
+    "actual-samples.jsonl": "44cac4b8b8193de2033c906d65c73848e3c9519b9b2a4092799a5f0fead1dcd0",
+    "negative-controls.jsonl": "c5244bb27a14fcef949c07c9bc4d7c2f776aa999e19e383cfdb7955f00fd9ce7",
+    "SOURCE.json": "eb0cb21c12ce8b0ca3425ac69ce9b485667f0a3f24ea7c824de2afeca60c94e7",
+    "replay.ps1": "53219adc08cfcf6d738ca5030d2c7b36541091abce44610e9cd339d3c0dfd6d6"
+  }
+}
