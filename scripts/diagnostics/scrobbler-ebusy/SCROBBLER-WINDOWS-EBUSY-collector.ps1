@@ -1,5 +1,7 @@
-param([Parameter(Mandatory)][string]$ReportRoot, [Parameter(Mandatory)][string]$HandlePath)
+param([Parameter(Mandatory)][string]$ReportRoot, [Parameter(Mandatory)][string]$HandlePath,
+  [ValidateSet('scrobbler-window','music-native-c1-f2')][string]$Scope='scrobbler-window')
 Set-StrictMode -Version Latest
+if ($Scope -cnotin @('scrobbler-window','music-native-c1-f2')) { throw 'Unsupported exact diagnostic scope.' }
 $ErrorActionPreference = 'Stop'
 $ReportRoot = [IO.Path]::GetFullPath($ReportRoot)
 $eventPath = Join-Path $ReportRoot 'collector.jsonl'
@@ -35,7 +37,9 @@ function OwnedDirectory($Value) {
   # Ordinary drive paths only; keep the literal short alias for downstream cache/OS qualification.
   if ($Value -cnotmatch '\A[A-Za-z]:\\(?:[^\\/:*?"<>|\x00-\x1F]+\\)*[^\\/:*?"<>|\x00-\x1F]+\z') { return $null }
   if ($Value -match '[ .](?:\\|\z)') { return $null }
-  if ([IO.Path]::GetFileName($Value) -cnotmatch '\Apear-scrobbler-window-[A-Za-z0-9]{6}\z') { return $null }
+    if ($Scope -ceq 'music-native-c1-f2') {
+      if ([IO.Path]::GetFileName($Value) -cnotmatch '\Apear-music-native-[A-Za-z0-9]{6}\z') { return $null }
+    } elseif ([IO.Path]::GetFileName($Value) -cnotmatch '\Apear-scrobbler-window-[A-Za-z0-9]{6}\z') { return $null }
   return $Value
 }
 
@@ -290,7 +294,7 @@ function ReadTails {
   }
 }
 try {
-  Emit 'collector-ready' @{handlePath=$HandlePath; contract='exact-root read-only handles; no fixture cleanup or process termination'; queryDeadlineMs=2000; queryTerminationGraceMs=1000}
+  Emit 'collector-ready' @{scope=$Scope; handlePath=$HandlePath; contract='exact-root read-only handles; no fixture cleanup or process termination'; queryDeadlineMs=2000; queryTerminationGraceMs=1000}
   [IO.File]::WriteAllText((Join-Path $ReportRoot 'collector.ready'),[DateTime]::UtcNow.ToString('o'),$utf8)
   while ($true) {
     ReadTails
@@ -325,7 +329,7 @@ try {
   foreach ($state in $tails.Values) { if ($state.tail.Length -gt 0) { Fault 'incomplete-final-worker-line' } }
 } catch { try { Fault ('collector-unhandled-' + $_.Exception.GetType().Name) } catch {} }
 finally {
-  $summary=@{schema=1; healthy=($healthErrors.Count -eq 0 -and $counts.polls -gt 0 -and $counts.events -gt 0 -and $counts.rmBegin -gt 0 -and $counts.handleCompleted -gt 0); endedUtc=[DateTime]::UtcNow.ToString('o'); counts=$counts; errors=$healthErrors.ToArray(); remainingHandleRequests=$queue.Count; remainingDelayedRequests=$delayed.Count; processIdentitiesObserved=$graph.Count; fixturesObserved=$directories.Count; canonicalRoots=@($canonicalRoots.Values); canonicalAttempts=@($canonicalAttempts.Values | ForEach-Object {$_.ToArray()})}
+  $summary=@{schema=1; scope=$Scope; healthy=($healthErrors.Count -eq 0 -and $counts.polls -gt 0 -and $counts.events -gt 0 -and $counts.rmBegin -gt 0 -and $counts.handleCompleted -gt 0); endedUtc=[DateTime]::UtcNow.ToString('o'); counts=$counts; errors=$healthErrors.ToArray(); remainingHandleRequests=$queue.Count; remainingDelayedRequests=$delayed.Count; processIdentitiesObserved=$graph.Count; fixturesObserved=$directories.Count; canonicalRoots=@($canonicalRoots.Values); canonicalAttempts=@($canonicalAttempts.Values | ForEach-Object {$_.ToArray()})}
   [IO.File]::WriteAllText($healthPath,($summary | ConvertTo-Json -Depth 8),$utf8)
 }
 if (-not $summary.healthy) { exit 2 }

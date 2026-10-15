@@ -7,6 +7,14 @@ on:
         description: Exact reviewed signed diagnostic branch commit SHA
         required: true
         type: string
+      measurement_scope:
+        description: Music scope is discovery-only until separately admitted
+        required: true
+        type: choice
+        default: scrobbler-window
+        options:
+          - scrobbler-window
+          - music-native-c1-f2
 
 permissions:
   contents: read
@@ -21,6 +29,7 @@ jobs:
         shell: pwsh
     env:
       EXPECTED_DIAGNOSTIC_HEAD: ${{ inputs.expected_head }}
+      MEASUREMENT_SCOPE: ${{ inputs.measurement_scope }}
     steps:
       - name: Checkout reviewed diagnostics only
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -49,7 +58,7 @@ jobs:
           persist-credentials: false
       - name: Exact driver source preflight before dependencies and native work
         run: |
-          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT -PreflightOnly
+          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT -Scope $env:MEASUREMENT_SCOPE -PreflightOnly
           exit $LASTEXITCODE
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
         with:
@@ -69,12 +78,13 @@ jobs:
       - name: Original build (runner only)
         working-directory: source
         run: pnpm build
-      - name: One focused-only diagnostic context after exact discovery
+      - name: Reviewed scrobbler focus or music discovery-only gate
         run: |
-          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT
+          $listOnly = $env:MEASUREMENT_SCOPE -ceq 'music-native-c1-f2'
+          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT -Scope $env:MEASUREMENT_SCOPE -ListOnly:$listOnly
           exit $LASTEXITCODE
       - name: Preserve safe raw diagnostic evidence unconditionally
-        if: always()
+        if: always() && inputs.measurement_scope == 'scrobbler-window'
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: windows-scrobbler-ebusy-${{ github.run_id }}
@@ -85,4 +95,28 @@ jobs:
             ${{ runner.temp }}/pear-ebusy-report/*.txt
             ${{ runner.temp }}/pear-ebusy-report/*.diagnostic-error
           if-no-files-found: error
+          retention-days: 14
+      - name: Preserve only reviewed safe music evidence
+        if: always() && inputs.measurement_scope == 'music-native-c1-f2'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: windows-music-native-discovery-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/pear-ebusy-report/preflight-result.json
+            ${{ runner.temp }}/pear-ebusy-report/preflight-source-manifest.json
+            ${{ runner.temp }}/pear-ebusy-report/source-before.json
+            ${{ runner.temp }}/pear-ebusy-report/source-after.json
+            ${{ runner.temp }}/pear-ebusy-report/source-verification-error.json
+            ${{ runner.temp }}/pear-ebusy-report/driver-error.json
+            ${{ runner.temp }}/pear-ebusy-report/diagnostic-files.json
+            ${{ runner.temp }}/pear-ebusy-report/resolved-environment.json
+            ${{ runner.temp }}/pear-ebusy-report/host-carrier-0.json
+            ${{ runner.temp }}/pear-ebusy-report/host-carrier-7.json
+            ${{ runner.temp }}/pear-ebusy-report/carrier-health.json
+            ${{ runner.temp }}/pear-ebusy-report/focused-discovery-health.json
+            ${{ runner.temp }}/pear-ebusy-report/focused-discovery-stream-health.json
+            ${{ runner.temp }}/pear-ebusy-report/diagnostic-health.json
+            ${{ runner.temp }}/pear-ebusy-report/outcome.json
+            ${{ runner.temp }}/pear-ebusy-report/diagnostic-head.txt
+          if-no-files-found: warn
           retention-days: 14

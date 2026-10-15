@@ -10,6 +10,8 @@ const expectedKeys = ['--expected-exit', '--node-major', '--preload', '--literal
 assert.equal(args.length, expectedKeys.length * 2);
 for (let i = 0; i < expectedKeys.length; i++) assert.equal(args[i * 2], expectedKeys[i]);
 const values = Object.fromEntries(expectedKeys.map((key, i) => [key, args[i * 2 + 1]]));
+const scope = process.env.PEAR_EBUSY_DIAGNOSTIC_SCOPE ?? 'scrobbler-window';
+assert(['scrobbler-window', 'music-native-c1-f2'].includes(scope), 'Scope is not admitted.');
 const code = Number(values['--expected-exit']);
 assert(code === 0 || code === 7);
 const expectedMajor = Number(values['--node-major']);
@@ -18,7 +20,9 @@ assert.equal(Number(process.versions.node.split('.')[0]), expectedMajor);
 assert.equal(process.versions.electron, undefined);
 assert.equal(values['--literal'], 'owned argument with spaces');
 assert.equal(values['--literal-backslash'], 'owned\\argument');
-assert.equal(values['--grep'], 'a guestless SSO child load failure while still owned retires authentication$');
+assert.equal(values['--grep'], scope === 'music-native-c1-f2'
+  ? 'F2 actual native canceled-job and capture reentry preserve adopted source artifacts$'
+  : 'a guestless SSO child load failure while still owned retires authentication$');
 const preload = values['--preload'];
 assert(path.isAbsolute(preload));
 assert(!preload.includes('\\'), 'NODE_OPTIONS carrier uses a forward-slash absolute path');
@@ -35,9 +39,10 @@ const first = JSON.parse(fs.readFileSync(log, 'utf8').split('\n')[0]);
 assert.equal(first.event, 'preload-ready');
 assert.equal(first.hostPid, process.pid);
 assert.equal(first.nodeVersion, process.versions.node);
+assert.equal(first.scope, scope);
 assert(!fs.existsSync(path.join(report, `worker-${process.pid}.diagnostic-error`)));
 const trace = { schema: 1, mode: 'host-node-carrier-only', healthy: true, expectedExit: code,
-  nodeVersion: process.versions.node, expectedNodeMajor: expectedMajor, hostPid: process.pid,
+  nodeVersion: process.versions.node, expectedNodeMajor: expectedMajor, hostPid: process.pid, scope,
   loadedExactPreload: true, preloadRequireCacheKey: resolved, forwardSlashPreloadPath: preload,
   workerReadyObserved: true, literalArgumentMatched: true, backslashLiteralMatched: true, grepArgumentMatched: true, outputArgumentMatched: true,
   nativeFixtureOrElectronStarted: false, rawEnvironmentOrCommandLineDumped: false };
