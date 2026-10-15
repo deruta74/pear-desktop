@@ -1,52 +1,362 @@
-name: Regression tests
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
+# DIAGNOSTIC ONLY. Concrete schema/source preparation; fresh workflow MAIN/root admission still required.
+# Root-source acceptance is not approval of these workflow bytes or permission to dispatch.
+# C has sole parent F; root supplies signed full C and external workflow SHA after exact review.
+name: Focused Windows native CIM witness (diagnostic only)
+'on':
   workflow_dispatch:
-
+    inputs:
+      expected_carrier_sha:
+        description: Root-reviewed signed full C SHA; C has sole parent F
+        type: string
+        required: true
+      expected_workflow_sha256:
+        description: SHA256 of this exact instantiated workflow blob, supplied externally
+        type: string
+        required: true
 permissions:
   contents: read
-
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
+  group: windows-native-cim-focused-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+  focused-windows:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'deruta74/pear-desktop' && github.repository_id == '1102020449' && github.ref == 'refs/heads/diagnostic/windows-native-cim-focused' && github.sha == inputs.expected_carrier_sha && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TEMPLATE_READY: 'true'
+      ROOT_SOURCE_ACCEPTED: 'true'
+      NATIVE_SCHEMA_BOUND: 'true'
+      EXPECTED_SOURCE_SHA: '35301248839db0a42cfa427230cf3a0c7a6a55bb'
+      EXPECTED_SOURCE_PARENT_SHA: '768a7bdc2b750676ceb1dbc13410331118b40545'
+      EXPECTED_CARRIER_SHA: ${{ inputs.expected_carrier_sha }}
+      EXPECTED_WORKFLOW_SHA256: ${{ inputs.expected_workflow_sha256 }}
+      EXPECTED_HASHES_JSON: '{"tests/api-music-comments-native.test.ts":"62086dee2bf8e025a5a87a2fb5c19ac03b908fbaf2e2dfe764b5aefdd04dfc60","tests/api-music-queue-actions-native.test.ts":"6acdce0483cd0bd5096d702e12227b41879cf210f7ed455fb85ac7a18e4dcccd","tests/api-music-queue-actions.test.ts":"e03e4e632c3c2f7440c693ed9b4218310f5066f24d445f0ea5778c5a754e9d4f","package.json":"973f6e067390931c6b0e2a8d9dfe3df74c99418070b352be717f34cdd7d16c8c","pnpm-lock.yaml":"1ae9556e7a67d8bc67a67a5c09f87203f98ef739f945e8d62db9410cf38239a6","pnpm-workspace.yaml":"46d0deb6f6f25bc4dded4e13e419113750bcdb2d4c187144ea8b3583b8e48eb1"}'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
+      - name: Bind exact source and carrier before dependency or native work
+        id: preflight
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raw = Join-Path $env:RUNNER_TEMP 'focused-raw'
+          $bounded = Join-Path $env:RUNNER_TEMP 'focused-bounded'
+          if ((Test-Path $raw) -or (Test-Path $bounded)) { throw 'NONFRESH_OUTPUT' }
+          New-Item -ItemType Directory $raw, $bounded, (Join-Path $raw 'COM'), (Join-Path $raw 'Q4') | Out-Null
+          $helper = @'
+          'use strict';
+          // Concrete diagnostic helper; prepared for independent review only. Never loads candidate modules or queries processes.
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+          const {execFileSync} = require('node:child_process');
+          const BASE = '768a7bdc2b750676ceb1dbc13410331118b40545';
+          const REPO = 'deruta74/pear-desktop';
+          const REF = 'refs/heads/diagnostic/windows-native-cim-focused';
+          const WORKFLOW = '.github/workflows/tests.yml';
+          const SOURCE = ['tests/api-music-comments-native.test.ts','tests/api-music-queue-actions-native.test.ts','tests/api-music-queue-actions.test.ts'];
+          const IDENTITIES = [
+            [SOURCE[0], 'COM actual REST IPC native comments and explicit owned WEB fallback preserve useful source-bound pages'],
+            [SOURCE[1], 'Q4 actual REST IPC canonical queue native dispatch and physical cancellation'],
+          ];
+          const KNOWN_FILES = ['PREPARED-FIXTURE.json','ACTUAL-NATIVE-FACTS.json','CLEANUP-FACTS.json'];
+          const equal = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+          function demand(ok, code) { if (!ok) throw Error(code); }
+          function bindings(v) {
+            demand(v.ready === true && v.rootSourceAccepted === true && v.schemaBound === true, 'NOT_READY');
+            demand(v.event === 'workflow_dispatch' && v.repo === REPO && v.repoId === '1102020449' && v.ref === REF && v.attempt === '1' && /^\d+$/.test(v.runId) && v.platform === 'win32', 'REF_REPO_EVENT');
+            demand(/^[a-f0-9]{40}$/.test(v.carrier) && v.carrier === v.expectedCarrier && v.head === v.carrier && v.carrier !== F, 'CARRIER_SHA');
+            demand(/^[a-f0-9]{40}$/.test(v.source) && v.source === v.expectedSource && v.source === F && v.source !== BASE, 'SOURCE_SHA');
+            demand(/^[a-f0-9]{40}$/.test(v.expectedSourceParent) && v.expectedSourceParent === BASE && equal(v.sourceParents,[BASE]) && v.sourceTree === F_TREE, 'F_PARENT');
+            demand(equal(v.carrierParents,[v.source]), 'C_SOLE_PARENT_F');
+            demand(v.baseAncestor === true && v.oldDiagnosticAncestors.length === 2 && v.oldDiagnosticAncestors.every(x => x === false), 'ANCESTRY');
+            demand(equal([...v.carrierDiff].sort(),[WORKFLOW]), 'OVERLAY_ONLY');
+            demand(equal([...v.sourceDiff].sort(),[...SOURCE].sort()), 'SOURCE_THREE_PATHS');
+            demand(/^[a-f0-9]{64}$/.test(v.expectedWorkflowHash) && v.workflowHash === v.expectedWorkflowHash, 'WORKFLOW_HASH');
+            demand(equal(v.hashes.map(h=>h.file).sort(),[...SOURCE,'package.json','pnpm-lock.yaml','pnpm-workspace.yaml'].sort()) && v.hashes.every(h => /^[a-f0-9]{64}$/.test(h.expected) && h.expected === CANONICAL_HASHES[h.file] && h.actual === h.expected && h.parent === h.expected), 'SOURCE_PACKAGE_LOCK_HASHES');
+            return {carrier:v.carrier, source:v.source, sourceParent:v.expectedSourceParent, sourceTree:v.sourceTree, workflowSHA256:v.workflowHash, runId:v.runId, runAttempt:v.attempt, platform:v.platform, repository:v.repo, ref:v.ref, hashes:v.hashes};
+          }
+          function reporter(r) {
+            demand(r && Array.isArray(r.suites) && Array.isArray(r.errors) && r.errors.length === 0, 'REPORT_STRUCTURE_ERRORS');
+            demand(r.config&&r.config.version==='1.61.1'&&r.config.workers===1&&r.config.maxFailures===1&&Array.isArray(r.config.projects)&&r.config.projects.length===1,'REPORT_CONFIG');
+            const project=r.config.projects[0]; demand(project.retries===0&&project.repeatEach===1&&project.timeout===30000&&typeof project.id==='string'&&typeof project.name==='string','REPORT_PROJECT_TIMEOUT');
+            const specs=[];
+            function walk(suites) { for (const suite of suites) { demand(Array.isArray(suite.specs ?? []) && Array.isArray(suite.suites ?? []), 'SUITE_STRUCTURE'); specs.push(...(suite.specs ?? [])); walk(suite.suites ?? []); } }
+            walk(r.suites);
+            demand(specs.length === 2, 'TEST_COUNT');
+            const seen = new Set();
+            for (const spec of specs) {
+              const file=String(spec.file || '').replaceAll('\\','/').replace(/^.*?\/(tests\/)/,'$1');
+              const i=IDENTITIES.findIndex(([f,t]) => f === file && t === spec.title);
+              demand(i >= 0 && !seen.has(i), 'TEST_IDENTITY'); seen.add(i);
+              demand(spec.ok === true && Array.isArray(spec.tests) && spec.tests.length === 1, 'TEST_PROJECT_COUNT');
+              const t=spec.tests[0];
+              demand(t.expectedStatus === 'passed' && t.status === 'expected' && Array.isArray(t.annotations) && t.annotations.length === 0, 'STATUS_SKIP_ANNOTATIONS');
+              demand(Array.isArray(t.results) && t.results.length === 1 && t.results[0].retry === 0, 'RETRY');
+              demand(t.projectId===project.id&&t.projectName===project.name,'REPORT_PROJECT_IDENTITY');
+              const result=t.results[0]; demand(result.workerIndex===0&&result.parallelIndex===0,'REPORT_WORKER');
+              demand(result.status === 'passed' && !result.error && (!result.errors || result.errors.length === 0) && Number.isSafeInteger(result.duration) && result.duration > 0 && result.duration <= 30000, 'RESULT_STATUS_DURATION');
+            }
+            demand(r.stats && r.stats.expected === 2 && r.stats.unexpected === 0 && r.stats.flaky === 0 && r.stats.skipped === 0, 'REPORT_STATS');
+            return {exactFullCases:2,retries:0,skips:0,identities:IDENTITIES};
+          }
+          const CANONICAL_HASHES = {"tests/api-music-comments-native.test.ts":"62086dee2bf8e025a5a87a2fb5c19ac03b908fbaf2e2dfe764b5aefdd04dfc60","tests/api-music-queue-actions-native.test.ts":"6acdce0483cd0bd5096d702e12227b41879cf210f7ed455fb85ac7a18e4dcccd","tests/api-music-queue-actions.test.ts":"e03e4e632c3c2f7440c693ed9b4218310f5066f24d445f0ea5778c5a754e9d4f","package.json":"973f6e067390931c6b0e2a8d9dfe3df74c99418070b352be717f34cdd7d16c8c","pnpm-lock.yaml":"1ae9556e7a67d8bc67a67a5c09f87203f98ef739f945e8d62db9410cf38239a6","pnpm-workspace.yaml":"46d0deb6f6f25bc4dded4e13e419113750bcdb2d4c187144ea8b3583b8e48eb1"};
+          const NATIVE_SOURCE_HASHES = {"COM":{"src/providers/music-actions.ts":"2bdf523c834065e4ef9457ebcd5da40fa286e0bfcafe55bcb666c29462dcfc07","src/providers/music-renderer.ts":"8828978ef9e206174f8d005fb08287b120695b9bd5102896bd3324229d48e46a","src/renderer.ts":"5b4868dd7c698c1ca665b79eeedcb0e8173410ff5b276a526fe75ec86cb1724d","src/plugins/api-server/music-types.ts":"80660d29ae06ce473ba737821885ef38b9dfcc05d1bc72a00dcec25f5ac861f2","src/plugins/api-server/backend/music-service.ts":"10d109e5853cd317107ed1db7c5d851911e22ce2e3bdc57a3f51c95938707eb6","src/plugins/api-server/backend/music-operations.ts":"52e258be704b9aedc5fc9177d2f42b7402b2cfb7001d1b856c04f5db98386f3a","src/plugins/api-server/backend/scheme/music.ts":"1796e57abf4fe25df7c33fa81b3844f64250a84404936062992dda54e3c7f399","src/plugins/api-server/backend/routes/music.ts":"552c94258913bae11d5ff01ac1644bca5c8badd4f6dcf46f20be0b22580008b7","tests/api-music-comments-native.test.ts":"62086dee2bf8e025a5a87a2fb5c19ac03b908fbaf2e2dfe764b5aefdd04dfc60","tests/api-music-comments.test.ts":"a272bf51712f71d4163a9880e21d1650de31a5ac299a7d0ef53a71ea3065e26a","src/providers/music-comments.ts":"f72479beb8449f9a89cb7c275175bf6a87721de0d7970242e86edd4d2aba7e5a","src/providers/music-request.ts":"98f4335bfbabc990a95093dee588254d01f11ac57ae44df3ff42cddaf29e979d","src/plugins/api-server/backend/music-comments-web.ts":"694d2fb54c397ade773d5c243941a6f11c2d9afa2910d2c033e25f501bb7ec0b","src/providers/music-queue.ts":"917479f0ed0831f1706872c4a46bf0985ab87ccee3c70a536e6dd03e3df92624","src/providers/queue-playlist-renderer.ts":"96429db38aa4739da6ee9ff9018d685bfae19f3b3f8c19c928c484e20a4fa855","src/plugins/api-server/music-menu.ts":"4baf074f951f4f6243587ba1bf9f8bafd9d657bd412e31a35ef314e1ec64dcf9","tests/helpers/api-music-native.ts":"ae8936fb83432bd7ba057cf418f46ad1a23e16d8b9c8e51fe2a0bb4aaa687e49","tests/helpers/electron-startup-observer.cjs":"8581f0b3171f094830ba28970278585bcf34f7308538744c22c12fde0abf4f83"},"Q4":{"src/providers/music-actions.ts":"2bdf523c834065e4ef9457ebcd5da40fa286e0bfcafe55bcb666c29462dcfc07","src/providers/music-renderer.ts":"8828978ef9e206174f8d005fb08287b120695b9bd5102896bd3324229d48e46a","src/renderer.ts":"5b4868dd7c698c1ca665b79eeedcb0e8173410ff5b276a526fe75ec86cb1724d","src/plugins/api-server/music-types.ts":"80660d29ae06ce473ba737821885ef38b9dfcc05d1bc72a00dcec25f5ac861f2","src/plugins/api-server/backend/music-service.ts":"10d109e5853cd317107ed1db7c5d851911e22ce2e3bdc57a3f51c95938707eb6","src/plugins/api-server/backend/music-operations.ts":"52e258be704b9aedc5fc9177d2f42b7402b2cfb7001d1b856c04f5db98386f3a","src/plugins/api-server/backend/scheme/music.ts":"1796e57abf4fe25df7c33fa81b3844f64250a84404936062992dda54e3c7f399","src/plugins/api-server/backend/routes/music.ts":"552c94258913bae11d5ff01ac1644bca5c8badd4f6dcf46f20be0b22580008b7","tests/api-music-queue-actions-native.test.ts":"6acdce0483cd0bd5096d702e12227b41879cf210f7ed455fb85ac7a18e4dcccd","src/providers/music-queue.ts":"917479f0ed0831f1706872c4a46bf0985ab87ccee3c70a536e6dd03e3df92624","src/providers/queue-playlist-renderer.ts":"96429db38aa4739da6ee9ff9018d685bfae19f3b3f8c19c928c484e20a4fa855","src/plugins/api-server/music-menu.ts":"4baf074f951f4f6243587ba1bf9f8bafd9d657bd412e31a35ef314e1ec64dcf9","tests/helpers/api-music-native.ts":"ae8936fb83432bd7ba057cf418f46ad1a23e16d8b9c8e51fe2a0bb4aaa687e49","tests/helpers/electron-startup-observer.cjs":"8581f0b3171f094830ba28970278585bcf34f7308538744c22c12fde0abf4f83"}};
+          const F = '35301248839db0a42cfa427230cf3a0c7a6a55bb';
+          const F_TREE = '2bf85187dc963063880631bbecb694dd7d6ed52e';
+          const AMENDMENT_SHA256 = '895230998321a045a783aaaed0ce7f4e6fd0cd5f85cc343bda232a30a49e2bb3';
+          const finite = x => typeof x === 'number' && Number.isFinite(x);
+          const positiveInt = x => Number.isSafeInteger(x) && x > 0;
+          const hash = x => typeof x === 'string' && /^[0-9a-f]{64}$/.test(x);
+          // Coherence only: at most a few IEEE-754 adds/subtracts reconstruct common anchors.
+          // This roundoff allowance never relaxes any inequality/deadline predicate.
+          const sameNumber = (a,b) => finite(a) && finite(b) && Math.abs(a-b) <= Number.EPSILON * 16 * Math.max(1,Math.abs(a),Math.abs(b));
+          function caseResult(r,index) {
+            const specs=[];const walk=s=>{for(const x of s){specs.push(...(x.specs||[]));walk(x.suites||[])}};walk(r.suites);
+            const [file,title]=IDENTITIES[index];
+            return specs.find(s=>String(s.file).replaceAll('\\','/').replace(/^.*?\/(tests\/)/,'$1')===file&&s.title===title).tests[0].results[0];
+          }
+          function stdoutReceipts(result,label) {
+            demand(Array.isArray(result.stdout),'MISSING_STDOUT');
+            let text='';
+            for(const x of result.stdout){demand(x&&typeof x.text==='string'&&!('buffer' in x),'STDOUT_ENCODING');text+=x.text;demand(Buffer.byteLength(text)<=1048576,'STDOUT_BOUND');}
+            const queries=[],timings=[];
+            for(const line of text.split('\n')) {
+              const p=label+'_OWNED_QUERY ',t=label+'_OWNED_TIMING ';
+              if(line.startsWith(p)||line.startsWith(t)) {
+                demand(Buffer.byteLength(line)<=262144,'STDOUT_LINE_BOUND');
+                const q=JSON.parse(line.slice(line.startsWith(p)?p.length:t.length));
+                (line.startsWith(p)?queries:timings).push(q);
+              } else demand(!/^(COM|Q4)_OWNED_(QUERY|TIMING) /.test(line),'CROSS_CASE_STDOUT');
+            }
+            demand(queries.length===4&&timings.length===1,'STDOUT_RECEIPT_COUNT');
+            return {queries,timing:timings[0]};
+          }
+          function timingAcceptance(t,c) {
+            demand(t&&t.schema===1&&t.clock==='host-performance.now'&&t.complete===true&&t.reason===null,'TIMING_SCHEMA_COMPLETE');
+            const names=['caseStartedAtMono','nativeStartedAtMono','subjectClosedAtMono','nativeWorkEndedAtMono','cleanupStartedAtMono','cleanupEndedAtMono','assertionsEndedAtMono'];
+            const a=names.map(k=>t[k]);demand(a.every(x=>finite(x)&&x>=0),'TIMING_ANCHORS');
+            demand(a.every((x,i)=>i===0||x>=a[i-1]),'TIMING_ORDER');
+            const [s,n,close,w,cs,ce,end]=a;
+            demand(w<Math.min(n+25000,s+27000)&&ce-cs<2000&&end-ce<=1000&&s+30000-ce>=1000&&end<s+30000,'LOCAL_TIMING_BUDGET');
+            const derived={caseElapsedMs:end-s,nativeElapsedMs:w-n,cleanupElapsedMs:ce-cs,postElapsedMs:end-ce,remainingCaseAtCleanupEndMs:s+30000-ce,remainingCaseAtAssertionsEndMs:s+30000-end};
+            demand(Object.entries(derived).every(([k,v])=>sameNumber(t[k],v))&&t.postReserveMs===1000,'TIMING_DERIVED');
+            demand(c.startedAtMono===cs&&c.endedAtMono===ce,'CLEANUP_ANCHOR');
+            demand(c.nativeTiming&&names.slice(0,-1).every(k=>c.nativeTiming[k]===t[k]),'CLEANUP_NATIVE_TIMING');
+            return {...derived,clock:t.clock};
+          }
+          function queryAcceptance(q,t,previous) {
+            const phases=['cohort','leader','taskkill','absence'];const index=phases.indexOf(q.phase);
+            demand(index>=0&&q.id===index+1,'QUERY_PHASE_ID');
+            demand(q.commandKind===(index===0?'owned-cim-cohort':index===2?'owned-taskkill':'owned-cim-identities'),'QUERY_FIXED_KIND');
+            const cap=index<2?5000:1000,reserve=[8000,2500,1000,250][index];
+            demand(q.capMs===cap&&positiveInt(q.timeoutMs)&&q.timeoutMs<=cap&&q.closeGraceMs===500,'QUERY_CAP');
+            for(const k of ['spawned','callbackObserved','physicalClosed','exitObserved','logicalSettled']) demand(q[k]===true,'QUERY_CLOSE_CALLBACK');
+            for(const k of ['pending','cancelled','closeUncertain','errorObserved','killRequested','killRequestFailed','killed','timeout']) demand(q[k]===false,'QUERY_TERMINAL_FAILURE');
+            demand(q.failureReason===null&&q.code===null&&q.signal===null&&q.exitCode===0&&q.closeCode===0&&q.exitSignal===null&&q.closeSignal===null,'QUERY_PROTOCOL');
+            demand(positiveInt(q.pid)&&[q.stdoutBytes,q.stderrBytes,q.elapsedMs].every(x=>Number.isSafeInteger(x)&&x>=0)&&q.stdoutBytes<=262144&&q.stderrBytes<=262144,'QUERY_BOUNDED_METADATA');
+            demand([q.callbackElapsedMs,q.closeElapsedMs,q.settledElapsedMs,q.terminalAt,q.remainingCaseMs,q.remainingNativeMs].every(finite),'QUERY_TIME_FIELDS');
+            demand(q.callbackElapsedMs>=0&&q.closeElapsedMs>=0&&q.settledElapsedMs>=q.callbackElapsedMs&&q.settledElapsedMs>=q.closeElapsedMs&&q.settledElapsedMs<q.timeoutMs+500,'QUERY_TERMINAL_CLOSE');
+            const start=t.caseStartedAtMono+30000-q.remainingCaseMs;
+            demand(sameNumber(start,t.nativeStartedAtMono+25000-q.remainingNativeMs)&&sameNumber(q.terminalAt,start+q.timeoutMs+500),'QUERY_CLOCK_COHERENCE');
+            const cleanup=index===3;
+            let remaining;
+            if(cleanup){demand(finite(q.remainingCleanupMs)&&q.remainingCleanupMs>0&&sameNumber(start,t.cleanupStartedAtMono+2000-q.remainingCleanupMs),'QUERY_CLEANUP_CLOCK');remaining=Math.min(q.remainingCleanupMs,q.remainingCaseMs-1000);}
+            else {demand(q.remainingCleanupMs===null&&q.remainingNativeMs>0,'QUERY_NATIVE_CLOCK');remaining=Math.min(q.remainingNativeMs,q.remainingCaseMs-3000);}
+            demand(q.remainingCaseMs>0&&remaining>0&&q.timeoutMs===Math.min(cap,Math.floor(remaining-reserve-500))&&q.timeoutMs+500+reserve<=remaining,'QUERY_CLIP_RESERVE');
+            demand(start>=t.nativeStartedAtMono&&(!previous||start>=previous.end),'QUERY_ORDER');
+            const end=start+q.settledElapsedMs;
+            demand(end<q.terminalAt,'QUERY_ABSOLUTE_TERMINAL');
+            if(cleanup)demand(start>=t.cleanupStartedAtMono&&start>=t.subjectClosedAtMono&&end<=t.cleanupEndedAtMono,'QUERY_CLEANUP_ORDER');
+            else demand(end<=t.nativeWorkEndedAtMono,'QUERY_NATIVE_ORDER');
+            if(index===2)demand(t.subjectClosedAtMono>=start,'SUBJECT_CLOSE_ORDER');
+            return {start,end};
+          }
+          function nativeCaseAcceptance(label,evidence,result,project) {
+            demand(evidence&&evidence.owner&&evidence.prepared&&evidence.actual&&evidence.cleanup,'NATIVE_FILES');
+            const {owner,prepared:p,actual:a,cleanup:c}=evidence;
+            demand(owner.kind==='pear-a1-native'&&owner.project===project,'EVIDENCE_OWNER');
+            demand(p.status==='SELF_CONTAINED_OWNED_NATIVE_FIXTURE'&&typeof p.owned==='string'&&path.win32.isAbsolute(p.owned),'FIXTURE_STATUS_PATH');
+            const prefix=label==='COM'?'pear-comments-native-':'pear-queue-actions-native-';
+            demand(path.win32.basename(p.owned).startsWith(prefix)&&c.owned===p.owned,'FIXTURE_OWNED_SCOPE');
+            demand(equal(Object.keys(p.sourceBindings||{}).sort(),Object.keys(NATIVE_SOURCE_HASHES[label]).sort())&&Object.entries(NATIVE_SOURCE_HASHES[label]).every(([k,v])=>p.sourceBindings[k]===v),'FIXTURE_SOURCE_BINDINGS');
+            const fixtures=['entry.cjs','preload.cjs','main.html','child.html','main-source.ts','renderer-source.ts','source.cjs','renderer.js'];
+            demand(equal(Object.keys(p.fixtureSHA256||{}).sort(),[...fixtures].sort())&&Object.values(p.fixtureSHA256).every(hash)&&p.entrySHA256===p.fixtureSHA256['entry.cjs'],'FIXTURE_HASH_SHAPE');
+            demand(a.facts&&positiveInt(a.spawnedPID)&&a.spawnedPID===a.facts.pid&&a.spawnedPID===c.spawnedPID&&a.facts.visibleWindow===false&&a.facts.userData===path.win32.join(p.owned,'userData'),'ACTUAL_HIDDEN_IDENTITY');
+            demand(c.complete===true&&c.deadlineExpired===false&&c.closed===true&&c.queriesClosed===true&&c.treeEmpty===true&&c.removalRequested===true&&c.removed===true&&c.profileRetained===false,'CLEANUP_COMPLETE_REMOVAL');
+            demand(c.killRequested===null&&c.originalFailure===null&&Array.isArray(c.errors)&&c.errors.length===0&&c.qualifiedGroup===null&&c.forcedFixtureRetirement===true,'CLEANUP_ORIGINAL_FAILURE');
+            demand(c.witnessMeaning==='confirmed fixed taskkill and sampled same-identity cohort absence; not unseen-tree proof','WITNESS_SCOPE');
+            demand(Array.isArray(c.windowsCohort)&&c.windowsCohort.length>0&&c.windowsCohort.length<=4096,'COHORT_SHAPE');
+            const seen=new Set();for(const row of c.windowsCohort){demand(row&&positiveInt(row.pid)&&Number.isSafeInteger(row.parent)&&row.parent>=0&&typeof row.creation==='string'&&row.creation.length>0&&row.creation.length<=128&&!seen.has(row.pid),'COHORT_IDENTITY');seen.add(row.pid);}
+            const leader=c.windowsCohort.find(x=>x.pid===a.spawnedPID);demand(leader&&positiveInt(leader.parent),'COHORT_LEADER');
+            const {queries,timing}=stdoutReceipts(result,label);const local=timingAcceptance(timing,c);
+            demand(Array.isArray(c.queryFacts)&&c.queryFacts.length===4,'QUERY_RECEIPT_COUNT');
+            let previous;for(let i=0;i<4;i++) {
+              demand(c.queryFacts[i].phase===['cohort','leader','taskkill','absence'][i],'QUERY_RECEIPT_ORDER');
+              const snapshot={...c.queryFacts[i]},stdout={...queries[i]};
+              delete snapshot.elapsedMs;delete stdout.elapsedMs;
+              demand(equal(snapshot,stdout),'QUERY_STDOUT_SNAPSHOT');
+              previous=queryAcceptance(c.queryFacts[i],timing,previous);
+              // elapsedMs alone is a rounded snapshot, never a physical-close timestamp.
+              // Math.round's exact half-ms bins bound snapshot/publication coherence only.
+              const start=previous.start,snap=c.queryFacts[i].elapsedMs,published=queries[i].elapsedMs;
+              demand(Number.isSafeInteger(published)&&published>=0&&snap+0.5>=timing.cleanupEndedAtMono-start&&snap-0.5<=timing.assertionsEndedAtMono-start&&published+0.5>=c.queryFacts[i].settledElapsedMs&&published-0.5<=timing.cleanupEndedAtMono-start,'QUERY_SNAPSHOT_ROUNDING');
+            }
+            // F binds these implications: accepted original cohort then singleton identical
+            // pid/parent/creation with liveness on both sides, then fixed taskkill. Raw CIM
+            // result rows for revalidation/absence are intentionally not emitted.
+            return {label,spawnedPID:a.spawnedPID,sampledCohortCount:c.windowsCohort.length,sourceImpliedIdentityRevalidation:true,sourceImpliedSampledSameIdentityAbsence:true,queries:4,profileRemoved:true,localTiming:local,reporterAggregateTimedSlotMs:result.duration,rawReporterMinusLocalMs:result.duration-local.caseElapsedMs,reporterMeaning:'aggregate timeout-slot metadata; no enclosing wall or outside-framework bound'};
+          }
+          function nativeEvidenceAcceptance(v) {
+            reporter(v.report);
+            demand(v.source===F&&v.binding&&v.binding.source===F&&/^[a-f0-9]{40}$/.test(v.binding.carrier)&&/^\d+$/.test(v.binding.runId)&&v.binding.runAttempt==='1'&&v.binding.sourceParent===BASE&&v.binding.sourceTree===F_TREE&&hash(v.binding.workflowSHA256),'NATIVE_RUN_BINDING');
+            demand(typeof v.project==='string'&&path.win32.isAbsolute(v.project),'PROJECT_BINDING');
+            const cases=['COM','Q4'].map((label,i)=>nativeCaseAcceptance(label,v.cases[label],caseResult(v.report,i),v.project));
+            demand(v.cases.COM.prepared.owned!==v.cases.Q4.prepared.owned,'DISTINCT_OWNED_FIXTURES');
+            return {schema:1,amendmentSHA256:AMENDMENT_SHA256,source:F,carrier:v.binding.carrier,runId:v.binding.runId,runAttempt:v.binding.runAttempt,cases,scope:'source-local owned lifecycle only; sampled absence, no unseen-tree or host-wide proof'};
+          }
+          function artifactMetadataAcceptance(s,cap) { demand(s&&s.isFile===true&&s.isSymbolicLink===false&&s.parentIsDirectory===true&&s.parentIsSymbolicLink===false&&Number.isSafeInteger(s.size)&&s.size>0&&s.size<=cap,'BOUNDED_JSON'); return true; }
+          function sha(b) { return crypto.createHash('sha256').update(b).digest('hex'); }
+          function cli(mode) {
+            const tmp=process.env.RUNNER_TEMP;
+            demand(tmp && path.isAbsolute(tmp), 'RUNNER_TEMP');
+            const out=path.join(tmp,'focused-bounded'), raw=path.join(tmp,'focused-raw');
+            fs.mkdirSync(out,{recursive:true}); fs.mkdirSync(raw,{recursive:true});
+            const write=(name,v)=>fs.writeFileSync(path.join(out,name),JSON.stringify(v,null,2)+'\n');
+            const git=(args)=>execFileSync('git',args,{encoding:'utf8',maxBuffer:262144,stdio:['ignore','pipe','pipe']}).trim();
+            const parents=(id)=>git(['show','-s','--format=%P',id]).split(' ').filter(Boolean);
+            const diff=(a,b)=>git(['diff','--name-only',a,b,'--']).split('\n').filter(Boolean);
+            const ancestor=(a,b)=>{try{git(['merge-base','--is-ancestor',a,b]);return true}catch(e){demand(e.status===1,'ANCESTRY_QUERY_ERROR');return false}};
+            function collectBindings() {
+              const source=process.env.EXPECTED_SOURCE_SHA, carrier=process.env.GITHUB_SHA;
+              const expected=JSON.parse(process.env.EXPECTED_HASHES_JSON || '{}');
+              const hashes=[...SOURCE,'package.json','pnpm-lock.yaml','pnpm-workspace.yaml'].map(file=>({file,expected:expected[file],actual:sha(fs.readFileSync(file)),parent:sha(execFileSync('git',['show',source+':'+file],{maxBuffer:1024*1024*8,stdio:['ignore','pipe','pipe']}))}));
+              return bindings({ready:process.env.TEMPLATE_READY==='true',rootSourceAccepted:process.env.ROOT_SOURCE_ACCEPTED==='true',schemaBound:process.env.NATIVE_SCHEMA_BOUND==='true',event:process.env.GITHUB_EVENT_NAME,repo:process.env.GITHUB_REPOSITORY,repoId:process.env.GITHUB_REPOSITORY_ID,ref:process.env.GITHUB_REF,attempt:process.env.GITHUB_RUN_ATTEMPT,runId:process.env.GITHUB_RUN_ID,platform:process.platform,carrier,head:git(['rev-parse','HEAD']),expectedCarrier:process.env.EXPECTED_CARRIER_SHA,source,expectedSource:process.env.EXPECTED_SOURCE_SHA,expectedSourceParent:process.env.EXPECTED_SOURCE_PARENT_SHA,sourceTree:git(['show','-s','--format=%T',source]),sourceParents:parents(source),carrierParents:parents(carrier),baseAncestor:ancestor(BASE,source),oldDiagnosticAncestors:['277b658c38fea3b9034cacf6e4bf70fa5c629f42','80001e357aa4053bafe62ca611b0e6bb711701b0'].map(id=>ancestor(id,source)),carrierDiff:diff(source,carrier),sourceDiff:diff(BASE,source),workflowHash:sha(fs.readFileSync(WORKFLOW)),expectedWorkflowHash:process.env.EXPECTED_WORKFLOW_SHA256,hashes});
+            }
+            function boundedJSON(file,cap) {
+              const s=fs.lstatSync(file),parent=fs.lstatSync(path.dirname(file)); artifactMetadataAcceptance({isFile:s.isFile(),isSymbolicLink:s.isSymbolicLink(),size:s.size,parentIsDirectory:parent.isDirectory(),parentIsSymbolicLink:parent.isSymbolicLink()},cap);
+              const bytes=fs.readFileSync(file); JSON.parse(bytes); return bytes;
+            }
+            function copyJSON(file,name,cap) {const bytes=boundedJSON(file,cap);fs.writeFileSync(path.join(out,name),bytes);return {name,bytes:bytes.length,sha256:sha(bytes)}}
+            let code=0;
+            try {
+              if(mode==='preflight'||mode==='after') {
+                // Prepared schema/source flags are not root workflow/dispatch admission.
+                demand(process.env.TEMPLATE_READY==='true'&&process.env.ROOT_SOURCE_ACCEPTED==='true'&&process.env.NATIVE_SCHEMA_BOUND==='true','NOT_READY');
+                write(mode+'.json',{status:'BOUND',...collectBindings()});
+              } else if(mode==='collect-and-gate') {
+                const files=[]; const failures=[];
+                for(const [label,marker] of [['COM','COM-NATIVE-EVIDENCE-OWNER.json'],['Q4','Q4-NATIVE-EVIDENCE-OWNER.json']]) {
+                  for(const name of [marker,...KNOWN_FILES]) {
+                    try{files.push(copyJSON(path.join(raw,label,name),label+'-'+name,262144))}catch{failures.push(label+'-'+name)}
+                  }
+                }
+                for(const name of ['test-exit.json','tool-versions.json']) {
+                  try{files.push(copyJSON(path.join(raw,name),name,4096))}catch{failures.push(name)}
+                }
+                let report;
+                try {const file=path.join(raw,'playwright.json'); files.push(copyJSON(file,'playwright.json',2097152));report=JSON.parse(fs.readFileSync(file));}catch{failures.push('playwright.json')}
+                try {
+                  const f=path.join(raw,'test-output.log'),s=fs.lstatSync(f);demand(s.isFile()&&!s.isSymbolicLink()&&s.size<=1048576,'LOG_LIMIT');
+                  fs.copyFileSync(f,path.join(out,'test-output.log'));files.push({name:'test-output.log',bytes:s.size,sha256:sha(fs.readFileSync(f))});
+                }catch{failures.push('test-output.log')}
+                write('artifact-manifest.json',{schema:1,source:F,carrier:process.env.GITHUB_SHA,workflowSHA256:process.env.EXPECTED_WORKFLOW_SHA256,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,files,missingOrInvalid:failures});
+                demand(failures.length===0,'MISSING_INVALID_EVIDENCE');
+                const exit=JSON.parse(fs.readFileSync(path.join(raw,'test-exit.json')));
+                demand(exit.exitCode===0,'TEST_COMMAND_FAILED');
+                const versions=JSON.parse(fs.readFileSync(path.join(raw,'tool-versions.json')));
+                demand(versions.node==='v24.21.0'&&/^11\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(versions.pnpm),'TOOL_VERSION');
+                const before=JSON.parse(fs.readFileSync(path.join(out,'preflight.json'))),after=JSON.parse(fs.readFileSync(path.join(out,'after.json')));
+                demand(before.status==='BOUND'&&equal(before,after),'AFTER_BINDING');
+                const generic=reporter(report);
+                const cases={}; for(const [label,marker] of [['COM','COM-NATIVE-EVIDENCE-OWNER.json'],['Q4','Q4-NATIVE-EVIDENCE-OWNER.json']]) {const read=name=>JSON.parse(fs.readFileSync(path.join(raw,label,name)));cases[label]={owner:read(marker),prepared:read('PREPARED-FIXTURE.json'),actual:read('ACTUAL-NATIVE-FACTS.json'),cleanup:read('CLEANUP-FACTS.json')}}
+                const native=nativeEvidenceAcceptance({report,cases,source:before.source,binding:before,project:fs.realpathSync(process.cwd())});
+                write('gate.json',{status:'PASS',generic,native,source:before.source,carrier:before.carrier,runId:before.runId,runAttempt:before.runAttempt});
+              } else throw Error('UNKNOWN_MODE');
+            } catch(e) {code=1;write(mode==='collect-and-gate'?'gate.json':mode+'.json',{status:'FAIL',reason:/^[A-Z_]+$/.test(e.message)?e.message:'FIXED_GATE_FAILURE'});}
+            process.exitCode=code;
+          }
+          module.exports={artifactMetadataAcceptance,bindings,reporter,nativeEvidenceAcceptance,nativeCaseAcceptance,timingAcceptance,queryAcceptance,stdoutReceipts,CANONICAL_HASHES,NATIVE_SOURCE_HASHES,F,F_TREE,AMENDMENT_SHA256,BASE,REPO,REF,WORKFLOW,SOURCE,IDENTITIES};
+          if(require.main===module)cli(process.argv[2]);
+          '@
+          [IO.File]::WriteAllText((Join-Path $env:RUNNER_TEMP 'focused-gates.cjs'), $helper, [Text.UTF8Encoding]::new($false))
+          & node (Join-Path $env:RUNNER_TEMP 'focused-gates.cjs') preflight
+          exit $LASTEXITCODE
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
         with:
           version: 11
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
-          node-version: 24.x
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install virtual display
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
-      - run: pnpm build
-      - name: CI test grouping contracts
-        run: node --test scripts/ci-test-groups.node.cjs
-      - name: Run Linux tests in a virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/run-ci-tests.cjs
-      - name: Run macOS and Windows tests
-        if: runner.os != 'Linux'
-        run: node scripts/run-ci-tests.cjs
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
+          node-version: 24.21.0
+      - name: Fresh hosted frozen dependency setup and app build
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nodeVersion = & node --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $pnpmVersion = & pnpm --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $versions = @{ node = "$nodeVersion".Trim(); pnpm = "$pnpmVersion".Trim() } | ConvertTo-Json
+          [IO.File]::WriteAllText((Join-Path $env:RUNNER_TEMP 'focused-raw/tool-versions.json'), $versions)
+          & pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & pnpm build
+          exit $LASTEXITCODE
+      - name: Both full COM and Q4 native cases once; no functional filter
+        id: native
+        timeout-minutes: 2
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/focused-raw/playwright.json
+          PEAR_COM_EVIDENCE_DIRECTORY: ${{ runner.temp }}/focused-raw/COM
+          PEAR_Q4_EVIDENCE_DIRECTORY: ${{ runner.temp }}/focused-raw/Q4
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PEAR_COM_PREPARE_ONLY = $null
+          $env:PEAR_Q4_PREPARE_ONLY = $null
+          $env:PEAR_COM_PREPARED_FIXTURE = $null
+          $env:PEAR_Q4_PREPARED_FIXTURE = $null
+          $env:PEAR_MUSIC_NATIVE_TRACE = $null
+          & pnpm exec playwright test tests/api-music-comments-native.test.ts tests/api-music-queue-actions-native.test.ts --workers=1 --retries=0 --max-failures=1 --reporter=line,json *> (Join-Path $env:RUNNER_TEMP 'focused-raw/test-output.log')
+          $testExit = $LASTEXITCODE
+          [IO.File]::WriteAllText((Join-Path $env:RUNNER_TEMP 'focused-raw/test-exit.json'), ('{"exitCode":' + $testExit + '}'))
+          exit $testExit
+      - name: Recheck exact hashes and ancestry after setup/test
+        if: always() && steps.preflight.outcome == 'success'
+        run: |
+          & node (Join-Path $env:RUNNER_TEMP 'focused-gates.cjs') after
+          exit $LASTEXITCODE
+      - name: Stage bounded explicit evidence and require both cases plus native proof
+        if: always() && steps.preflight.outcome == 'success'
+        run: |
+          & node (Join-Path $env:RUNNER_TEMP 'focused-gates.cjs') collect-and-gate
+          exit $LASTEXITCODE
+      - name: Preserve bounded evidence even when setup/test/gate fails
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: windows-native-cim-focused-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/focused-bounded/preflight.json
+            ${{ runner.temp }}/focused-bounded/after.json
+            ${{ runner.temp }}/focused-bounded/tool-versions.json
+            ${{ runner.temp }}/focused-bounded/test-exit.json
+            ${{ runner.temp }}/focused-bounded/playwright.json
+            ${{ runner.temp }}/focused-bounded/test-output.log
+            ${{ runner.temp }}/focused-bounded/artifact-manifest.json
+            ${{ runner.temp }}/focused-bounded/gate.json
+            ${{ runner.temp }}/focused-bounded/COM-COM-NATIVE-EVIDENCE-OWNER.json
+            ${{ runner.temp }}/focused-bounded/COM-PREPARED-FIXTURE.json
+            ${{ runner.temp }}/focused-bounded/COM-ACTUAL-NATIVE-FACTS.json
+            ${{ runner.temp }}/focused-bounded/COM-CLEANUP-FACTS.json
+            ${{ runner.temp }}/focused-bounded/Q4-Q4-NATIVE-EVIDENCE-OWNER.json
+            ${{ runner.temp }}/focused-bounded/Q4-PREPARED-FIXTURE.json
+            ${{ runner.temp }}/focused-bounded/Q4-ACTUAL-NATIVE-FACTS.json
+            ${{ runner.temp }}/focused-bounded/Q4-CLEANUP-FACTS.json
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: false
