@@ -1370,3 +1370,170 @@ for (const boundary of ['scope', 'authorization'] as const)
         await f.close();
       }
     });
+
+test('distinct local REST remote REST MCP grants share global4 perGrant2 FIFO8 without cross-audience authentication', async () => {
+  const f = await fixture(true);
+  const accepted = { version: 1, phase: 'owned_control_dispatch' };
+  try {
+    const rest = await f.store.issue(
+      'Local REST',
+      'rest',
+      f.service.resource,
+      ['playback.control'],
+      () => true,
+    );
+    const remoteResource =
+      'http://music-http.fixture.invalid:26538/api/v1/music';
+    f.service.configure({
+      ...f.config,
+      musicApiRemoteEnabled: true,
+      musicApiRemoteResource: remoteResource,
+    });
+    const remote = await f.store.issue(
+      'Explicit remote REST',
+      'rest',
+      remoteResource,
+      ['playback.control'],
+      () => true,
+    );
+    const sequence = [
+      'M',
+      'M',
+      'L',
+      'R',
+      'M',
+      'R',
+      'L',
+      'R',
+      'L',
+      'M',
+      'R',
+      'L',
+      'M',
+    ];
+    const invocations = sequence.map((audience, i) =>
+      audience === 'M'
+        ? f.invocation({
+            session: { id: 'stable-mcp-' + i, current: () => true },
+          })
+        : f.invocation({
+            token: audience === 'L' ? rest.token : remote.token,
+            transport: 'rest',
+            resource: audience === 'L' ? f.service.resource : remoteResource,
+            session: undefined,
+          }),
+    );
+    const inputs: any[] = [];
+    for (let i = 0; i < invocations.length; i++) {
+      const command = { action: 'set_volume', volume: i };
+      const prepared = await f.service.prepareFor(invocations[i], command);
+      inputs.push({ ...command, operationId: prepared.operationId });
+    }
+    const pending: Promise<any>[] = [];
+    for (let i = 0; i < 4; i++) {
+      pending.push(outcome(f.service.controlFor(invocations[i], inputs[i])));
+      await start(f, pending[i], i + 1);
+    }
+    expect(f.broker.stats()).toEqual({ dispatched: 4, queued: 0 });
+    for (let i = 4; i < 12; i++)
+      pending.push(outcome(f.service.controlFor(invocations[i], inputs[i])));
+    await expect.poll(() => f.broker.stats().queued).toBe(8);
+    expect(queries(f)).toHaveLength(4);
+    await expect(f.service.currentFor(invocations[12])).rejects.toMatchObject({
+      code: 'busy',
+    });
+    expect(f.broker.stats()).toEqual({ dispatched: 4, queued: 8 });
+    // Free only a REST slot. Strict head-of-line MCP is still at its grant cap.
+    f.settled(f.challenge(2), { ok: true, value: accepted });
+    expect((await pending[2]).value.status).toBe('accepted');
+    expect(queries(f)).toHaveLength(4);
+    expect(f.broker.stats()).toEqual({ dispatched: 3, queued: 8 });
+    f.settled(f.challenge(0), { ok: true, value: accepted });
+    await expect.poll(() => queries(f).length).toBe(6);
+    f.ready(f.challenge(4));
+    f.ready(f.challenge(5));
+    const reads = () =>
+      f.sent.filter((p: any[]) => p[0] === 'peard:music-read');
+    expect(
+      reads()
+        .slice(4)
+        .map((p: any[]) => p[1].input.command.volume),
+    ).toEqual([4, 5]);
+    // Retire one queued session. It cannot release any of the four physical holds.
+    f.service.retireSession(invocations[9].session);
+    expect((await pending[9]).code).toBe('retired');
+    expect(f.broker.stats().dispatched).toBe(4);
+    const settled = new Set([0, 2]);
+    while (settled.size < queries(f).length || f.broker.stats().queued) {
+      const index = Array.from({ length: queries(f).length }, (_, i) => i).find(
+        (i) => !settled.has(i),
+      );
+      expect(index).toBeDefined();
+      settled.add(index!);
+      f.settled(f.challenge(index), { ok: true, value: accepted });
+      for (let i = 0; i < queries(f).length; i++) {
+        if (
+          !reads().some(
+            (p: any[]) => p[1].requestId === f.challenge(i).requestId,
+          )
+        )
+          f.ready(f.challenge(i));
+      }
+      await Promise.resolve();
+    }
+    const results = await Promise.all(pending);
+    expect(
+      results.filter((r: any) => r.value?.status === 'accepted'),
+    ).toHaveLength(11);
+    expect(reads().map((p: any[]) => p[1].input.command.volume)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11,
+    ]);
+    expect(f.broker.stats()).toEqual({ dispatched: 0, queued: 0 });
+    // Cross-audience tokens cannot acquire work.
+    await expect(
+      f.service.currentFor(f.invocation({ token: rest.token })),
+    ).rejects.toMatchObject({ code: 'unauthorized' });
+    await expect(
+      f.service.currentFor(
+        f.invocation({
+          transport: 'rest',
+          resource: f.service.resource,
+          session: undefined,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'unauthorized' });
+    for (const [token, transport, audience] of [
+      [rest.token, 'rest', remoteResource],
+      [remote.token, 'rest', f.service.resource],
+      [remote.token, 'mcp', resource],
+      [f.grant.token, 'rest', remoteResource],
+    ] as const) {
+      await expect(
+        f.service.currentFor(
+          f.invocation({
+            token,
+            transport,
+            resource: audience,
+            session: transport === 'rest' ? undefined : f.session,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'unauthorized' });
+      expect(f.broker.stats()).toEqual({ dispatched: 0, queued: 0 });
+    }
+    for (const i of [2, 3]) {
+      const command = { action: 'pause' };
+      const prepared = await f.service.prepareFor(invocations[i], command);
+      const result = await f.finish(
+        f.service.controlFor(invocations[i], {
+          ...command,
+          operationId: prepared.operationId,
+        }),
+        accepted,
+      );
+      expect(result.status).toBe('accepted');
+    }
+    expect(await healthy(f)).toEqual(snapshot);
+  } finally {
+    await f.close();
+  }
+});

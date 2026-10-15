@@ -23,6 +23,12 @@ import {
   type PublicCommentsWeb,
 } from './music-comments-web';
 import {
+  localMusicHttpResource,
+  musicHttpResources,
+  musicHttpListenerSupports,
+  type MusicHttpListenerOwner,
+} from './music-http-policy';
+import {
   musicOperationLedger,
   type MusicOperationLedger,
   type MusicOperationRow,
@@ -173,31 +179,19 @@ export interface MusicRuntime {
   broker?: MusicRequestBroker;
   now?: () => number;
   commentsWeb?: PublicCommentsWeb;
+  restListenerOwner?(): MusicHttpListenerOwner | undefined;
   resolveAccessOwner?(
     transport: 'rest' | 'mcp',
     resource: string,
   ): MusicAccessOwner | undefined;
 }
 const services = new WeakMap<BrowserWindow, MusicService>();
-export function getMusicService(window: BrowserWindow) {
+export function getMusicService(window: BrowserWindow, resource?: string) {
   const service = services.get(window);
-  return service?.enabled ? service : undefined;
+  return service?.restAvailable(resource) ? service : undefined;
 }
 export function localMusicResource(config: APIServerConfig): string {
-  const hostname = config.hostname.toLowerCase();
-  if (
-    !['127.0.0.1', 'localhost', '::1', '0.0.0.0', '::'].includes(hostname) ||
-    !Number.isInteger(config.port) ||
-    config.port < 1 ||
-    config.port > 65535
-  )
-    return failMusic('unavailable');
-  const host = hostname === '::1' || hostname === '::' ? '[::1]' : '127.0.0.1';
-  const advertised = hostname === 'localhost' ? 'localhost' : host;
-  const https = config.useHttps && !!config.certPath && !!config.keyPath;
-  return new URL(
-    `${https ? 'https' : 'http'}://${advertised}:${config.port}/api/v1/music`,
-  ).href;
+  return localMusicHttpResource(config) ?? failMusic('unavailable');
 }
 const opaque = (prefix: string) =>
   `${prefix}_${randomBytes(32).toString('base64url')}`;
@@ -292,31 +286,54 @@ export class MusicService {
     services.set(runtime.window, this);
   }
   get enabled() {
-    if (
-      this.stopped ||
-      this.config.enabled !== true ||
-      this.config.musicApiEnabled !== true
-    )
-      return false;
-    try {
-      localMusicResource(this.config);
-      return true;
-    } catch {
-      return false;
-    }
+    const resources = musicHttpResources(this.config);
+    return [resources.local, resources.remote].some(
+      (resource) => resource !== undefined && this.restAvailable(resource),
+    );
   }
   get resource() {
     return localMusicResource(this.config);
   }
-  captureNativeOwner() {
-    const revision = this.revision,
-      admission = this.broker.capture();
+  restAvailable(resource?: string): boolean {
+    try {
+      return (
+        this.restAccess(resource ?? this.resource)?.owner.current() === true
+      );
+    } catch {
+      return false;
+    }
+  }
+  captureNativeOwner(resource?: string) {
+    const revision = this.revision;
+    let selected: ReturnType<MusicService['restAccess']>;
+    try {
+      selected = this.restAccess(resource ?? this.resource);
+    } catch {
+      /* local discovery remains unavailable */
+    }
+    const admission = this.broker.capture();
     return {
-      signal: this.scope.signal,
-      current: () =>
-        this.enabled &&
-        this.revision === revision &&
-        this.broker.isCurrent(admission),
+      signal: AbortSignal.any([
+        this.scope.signal,
+        ...(selected?.signal ? [selected.signal] : []),
+      ]),
+      current: () => {
+        const unchanged = () =>
+          this.revision === revision && this.sharedAvailable();
+        if (
+          !selected ||
+          !unchanged() ||
+          !selected.owner.current() ||
+          !unchanged()
+        )
+          return false;
+        return (
+          this.broker.isCurrent(admission) &&
+          unchanged() &&
+          selected.owner.current() &&
+          unchanged()
+        );
+      },
     };
   }
   /** Exact main-owned session identity is terminal, regardless of later guard results. */
@@ -375,22 +392,57 @@ export class MusicService {
   private sharedAvailable() {
     return !this.stopped && this.config.enabled === true;
   }
+  /** Capture one REST listener lifetime; only pure owned fixtures omit the seam. */
+  private restAccess(
+    resource: string,
+  ): { owner: MusicAccessOwner; signal?: AbortSignal } | undefined {
+    const identity = this.accessIdentity;
+    const revision = this.revision;
+    const unchanged = () =>
+      this.sharedAvailable() &&
+      this.accessIdentity === identity &&
+      this.revision === revision;
+    if (
+      !unchanged() ||
+      !Object.values(musicHttpResources(this.config)).includes(resource)
+    )
+      return;
+    const production = this.runtime.restListenerOwner !== undefined;
+    const listener = this.runtime.restListenerOwner?.();
+    if (!unchanged() || (production && !listener)) return;
+    const current = () => {
+      if (
+        !unchanged() ||
+        !Object.values(musicHttpResources(this.config)).includes(resource)
+      )
+        return false;
+      if (!production) return unchanged();
+      if (
+        !listener ||
+        !musicHttpListenerSupports(listener, resource) ||
+        !unchanged()
+      )
+        return false;
+      const selected = this.runtime.restListenerOwner?.();
+      return (
+        unchanged() &&
+        selected === listener &&
+        selected.identity === listener.identity &&
+        !listener.signal.aborted
+      );
+    };
+    if (!current()) return;
+    return {
+      owner: { identity: listener?.identity ?? identity, current },
+      ...(listener ? { signal: listener.signal } : {}),
+    };
+  }
   private accessOwner(
     transport: 'rest' | 'mcp',
     resource: string,
   ): MusicAccessOwner | undefined {
     if (!this.sharedAvailable()) return undefined;
-    if (transport === 'rest') {
-      if (!this.enabled || resource !== this.resource) return undefined;
-      const identity = this.accessIdentity;
-      return {
-        identity,
-        current: () =>
-          this.sharedAvailable() &&
-          this.enabled &&
-          this.accessIdentity === identity,
-      };
-    }
+    if (transport === 'rest') return this.restAccess(resource)?.owner;
     return transport === 'mcp'
       ? this.runtime.resolveAccessOwner?.(transport, resource)
       : undefined;
@@ -408,7 +460,11 @@ export class MusicService {
       serviceSignal = this.scope.signal;
     if (session && this.retiredSessions.has(session))
       return failMusic('retired');
-    const owner = this.accessOwner(transport, resource);
+    const rest = transport === 'rest' ? this.restAccess(resource) : undefined;
+    const owner =
+      transport === 'rest'
+        ? rest?.owner
+        : this.accessOwner(transport, resource);
     if (!owner || (transport === 'rest' && session))
       return failMusic('unavailable');
     const access = captureMusicAccess(
@@ -428,6 +484,7 @@ export class MusicService {
     const joined = AbortSignal.any([
       serviceSignal,
       controller.signal,
+      ...(rest?.signal ? [rest.signal] : []),
       ...(signal ? [signal] : []),
     ]);
     // Native retirement advances this same private revision through the broker
