@@ -10,19 +10,56 @@ const MAX_BUFFER=256*1024;
 const BINDING=Object.freeze({sourceHead:'768a7bdc2b750676ceb1dbc13410331118b40545',sourceTree:'463a65e1d42b4bc038e0a3526773dd67226ed603',failedRun:38792484036,failedAttempt:1,failedWindowsJob:116620305604,rawWindowsLogSHA256:'a66fe793a9aae00cca337544d2170d85fcf1e2cabbc80ba6363d03f4c0b8f457',reviewSealSHA256:'9c9a6b35a87b214e85046122bb79c3801f159f56b04e44d1d47c160b709ed980'});
 function validPid(pid){if(!Number.isSafeInteger(pid)||pid<=0||pid>2147483647)throw Error('Invalid owned PID');return pid;}
 function original(pid){validPid(pid);return `$ErrorActionPreference='Stop';$pending=[System.Collections.Generic.Queue[int]]::new();$pending.Enqueue(${pid});$seen=@{};$rows=@();while($pending.Count -gt 0){$id=$pending.Dequeue();if($seen.ContainsKey($id)){continue};$seen[$id]=$true;$p=Get-CimInstance Win32_Process -Filter ("ProcessId = "+$id);if($null -ne $p){$rows+=@{pid=[int]$p.ProcessId;parent=[int]$p.ParentProcessId;creation=$p.CreationDate.ToUniversalTime().ToString('o')};foreach($c in @(Get-CimInstance Win32_Process -Filter ("ParentProcessId = "+$id))){$pending.Enqueue([int]$c.ProcessId)}}};ConvertTo-Json -InputObject @($rows) -Compress`;}
-function plan(pid){const script=original(pid);return [
- {kind:'original-cold-1000',timeoutMs:1000,script,format:'rows',byteEquivalent:true},
- {kind:'original-after-first-8000',timeoutMs:8000,script,format:'rows',byteEquivalent:true},
- {kind:'shell-no-cim-baseline',timeoutMs:8000,script:"$ErrorActionPreference='Stop';ConvertTo-Json -InputObject @{shellVersion=$PSVersionTable.PSVersion.ToString()} -Compress",format:'baseline',byteEquivalent:false},
- {kind:'instrumented-cim-body',timeoutMs:8000,script:"$ErrorActionPreference='Stop';$sw=[System.Diagnostics.Stopwatch]::StartNew();$ownedRows= & {"+script+"};$sw.Stop();ConvertTo-Json -InputObject @{bodyElapsedMs=$sw.Elapsed.TotalMilliseconds;rows=@(ConvertFrom-Json -InputObject $ownedRows)} -Compress",format:'instrumented',byteEquivalent:false},
- {kind:'original-warm-1000',timeoutMs:1000,script,format:'rows',byteEquivalent:true}
-];}
+function plan(pid){return [{kind:'original-cim-structure-8000',timeoutMs:8000,script:original(pid),format:'structure',byteEquivalent:true}];}
 function parseOwned(text,pid,parent){
  if(typeof text!=='string'||Buffer.byteLength(text)>MAX_BUFFER)throw Error('Output limit');
  const value=JSON.parse(text);
  if(!Array.isArray(value)||value.length>1)throw Error('Owned cardinality');
  for(const r of value){if(!r||typeof r!=='object'||Object.keys(r).sort().join(',')!=='creation,parent,pid'||r.pid!==pid||r.parent!==parent||typeof r.creation!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{1,7}Z$/.test(r.creation)||!Number.isFinite(Date.parse(r.creation)))throw Error('Invalid owned row');}
  return value;
+}
+// Fixed structural metadata only. Payload values never leave this function.
+function classifyStructure(text,pid,parent,{heldSubjectLive=false,queryFailed=false}={}){
+ validPid(pid);validPid(parent);
+ const summary={outputWithinCap:null,jsonValid:null,topLevelArray:null,rowCountCapped:null,rowCountOverflow:null,ownedLeaderCount:null,allRowsObjects:null,allRowsExactExpectedKeys:null,unknownKeysPresent:null,allNativeBasicTypes:null,allCohortPidsPositive:null,allCreationNonempty:null,leaderFound:null,leaderParentMatchesOwnedCollector:null,leaderCreationString:null,leaderUtcFormat:null,leaderDateParseable:null,allRowsAreOwnedSubject:null,extraRowsPresent:null,nativeBasicSchemaWouldPass:null,sourceFirstCohortChecksWouldPass:null,strictDiagnosticWouldPass:null,firstStrictReason:'query_error',heldSubjectLive:heldSubjectLive===true,ownedIdentityValidated:false,nativeRevalidationPerformed:false,completeRetirement:false};
+ if(queryFailed)return summary;
+ summary.outputWithinCap=typeof text==='string'&&Buffer.byteLength(text)<=MAX_BUFFER;
+ if(!summary.outputWithinCap){summary.firstStrictReason='output_limit';return summary;}
+ let rows;try{rows=JSON.parse(text);summary.jsonValid=true;}catch{summary.jsonValid=false;summary.firstStrictReason='invalid_json';return summary;}
+ summary.topLevelArray=Array.isArray(rows);
+ if(!summary.topLevelArray){summary.strictDiagnosticWouldPass=false;summary.nativeBasicSchemaWouldPass=false;summary.sourceFirstCohortChecksWouldPass=false;summary.firstStrictReason='not_array';return summary;}
+ summary.rowCountCapped=Math.min(rows.length,32);summary.rowCountOverflow=rows.length>32;summary.extraRowsPresent=rows.length>1;
+ if(summary.rowCountOverflow){summary.strictDiagnosticWouldPass=false;summary.firstStrictReason='cardinality';return summary;}
+ const object=r=>r!==null&&typeof r==='object'&&!Array.isArray(r);
+ const keys=['creation','parent','pid'];
+ const exact=r=>object(r)&&Object.keys(r).sort().join(',')==='creation,parent,pid';
+ const basic=r=>object(r)&&Number.isSafeInteger(r.pid)&&Number.isSafeInteger(r.parent)&&typeof r.creation==='string'&&!!r.creation;
+ const utc=r=>typeof r.creation==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{1,7}Z$/.test(r.creation);
+ summary.allRowsObjects=rows.every(object);summary.allRowsExactExpectedKeys=rows.every(exact);summary.unknownKeysPresent=rows.some(r=>object(r)&&Object.keys(r).some(k=>!keys.includes(k)));
+ summary.allNativeBasicTypes=rows.every(r=>object(r)&&Number.isSafeInteger(r.pid)&&Number.isSafeInteger(r.parent)&&typeof r.creation==='string');
+ summary.allCohortPidsPositive=rows.every(r=>object(r)&&Number.isSafeInteger(r.pid)&&r.pid>0);
+ summary.allCreationNonempty=rows.every(r=>object(r)&&typeof r.creation==='string'&&!!r.creation);
+ summary.nativeBasicSchemaWouldPass=rows.every(basic);
+ const leaders=rows.filter(r=>object(r)&&r.pid===pid);summary.ownedLeaderCount=leaders.length>1?'many':leaders.length;summary.leaderFound=leaders.length>0;
+ const first=leaders[0];summary.sourceFirstCohortChecksWouldPass=summary.heldSubjectLive&&summary.nativeBasicSchemaWouldPass&&summary.allCohortPidsPositive&&!!first&&first.parent===parent&&!!first.creation;
+ if(leaders.length===1){summary.leaderParentMatchesOwnedCollector=first.parent===parent;summary.leaderCreationString=typeof first.creation==='string';summary.leaderUtcFormat=utc(first);summary.leaderDateParseable=typeof first.creation==='string'&&Number.isFinite(Date.parse(first.creation));}
+ summary.allRowsAreOwnedSubject=rows.every(r=>object(r)&&r.pid===pid);
+ let reason=rows.length>1?'cardinality':'accepted';
+ if(reason==='accepted')for(const r of rows){
+  if(!object(r))reason='row_not_object';
+  else if(!exact(r))reason='unexpected_keys';
+  else if(!Number.isSafeInteger(r.pid))reason='invalid_pid';
+  else if(r.pid!==pid)reason='pid_mismatch';
+  else if(!Number.isSafeInteger(r.parent))reason='invalid_parent';
+  else if(r.parent!==parent)reason='parent_mismatch';
+  else if(typeof r.creation!=='string')reason='creation_type';
+  else if(!utc(r))reason='creation_format';
+  else if(!Number.isFinite(Date.parse(r.creation)))reason='creation_value';
+  if(reason!=='accepted')break;
+ }
+ summary.firstStrictReason=reason;summary.strictDiagnosticWouldPass=reason==='accepted';
+ summary.ownedIdentityValidated=summary.strictDiagnosticWouldPass&&leaders.length===1&&summary.heldSubjectLive;
+ return summary;
 }
 function safeCode(x){return x==null?null:Number.isSafeInteger(x)?x:['ENOENT','EACCES','EPERM','ESRCH','ETIMEDOUT','ERR_CHILD_PROCESS_STDIO_MAXBUFFER'].includes(x)?x:'other';}
 function safeSignal(x){return x==null?null:['SIGTERM','SIGKILL','SIGINT','SIGABRT'].includes(x)?x:'other';}
@@ -42,7 +79,7 @@ function createRegistry(){
  }
  return {admit,owners,snapshot:()=>owners.map(x=>({...x.record})),allClosed:()=>owners.every(x=>x.record.closed),waitAllClosed:()=>Promise.all(owners.map(x=>x.closedPromise)),killQueries(){for(const x of owners)if(x.record.kind==='query')x.requestKill()}};
 }
-function runQuery(spec,{exec=execFile,pid,parent,signal,abortGraceMs=1000,registry=createRegistry(),onUncertainty=()=>{}}={}){
+function runQuery(spec,{exec=execFile,pid,parent,signal,abortGraceMs=1000,registry=createRegistry(),onUncertainty=()=>{},heldSubjectLive=()=>false}={}){
  return new Promise(resolve=>{
  const started=performance.now();let child,owner,spawnAt=null,settled=false,aborted=false,uncertain=false,callbackSeen=false,callbackAt=null,callbackError=null,stdout='',stderr='',completion='callback',graceTimer,callbackTimer;
  const finish=()=>{
@@ -50,14 +87,8 @@ function runQuery(spec,{exec=execFile,pid,parent,signal,abortGraceMs=1000,regist
   settled=true;clearTimeout(graceTimer);clearTimeout(callbackTimer);signal?.removeEventListener('abort',abort);
   const elapsed=performance.now()-started;
   const r={kind:spec.kind,resourceId:owner?.record.id??null,byteEquivalentToOriginalCommand:spec.byteEquivalent,timeoutMs:spec.timeoutMs,spawnLatencyMs:spawnAt===null?null:spawnAt-started,callbackElapsedMs:callbackAt===null?null:callbackAt-started,totalElapsedMs:elapsed,exit:child?.exitCode??null,signal:safeSignal(callbackError?.signal??child?.signalCode),code:safeCode(callbackError?.code),killed:callbackError?.killed===true||child?.killed===true,timeout:callbackError?.killed===true&&callbackAt!==null&&callbackAt-started>=spec.timeoutMs,timeoutInterpretation:'inferred-from-killed-and-deadline-elapsed',cancelled:aborted,completion,callbackObserved:callbackSeen,physicalClosed:owner?.record.closed===true,closeUncertain:uncertain,stdoutBytes:Buffer.byteLength(stdout),stderrBytes:Buffer.byteLength(stderr),parseStatus:callbackError?'query-error':'not-parsed'};
-  if(callbackSeen&&!callbackError)try{
-   if(Buffer.byteLength(stdout)>MAX_BUFFER)throw Error('Output limit');
-   if(spec.format==='rows')r.rows=parseOwned(stdout,pid,parent);
-   else {const v=JSON.parse(stdout);if(!v||typeof v!=='object'||Array.isArray(v))throw Error('Object required');
-    if(spec.format==='baseline'){if(Object.keys(v).join(',')!=='shellVersion'||typeof v.shellVersion!=='string'||!/^\d{1,3}(\.\d{1,6}){1,3}$/.test(v.shellVersion))throw Error('Version rejected');r.shellVersion=v.shellVersion;}
-    else {if(Object.keys(v).sort().join(',')!=='bodyElapsedMs,rows'||typeof v.bodyElapsedMs!=='number'||!Number.isFinite(v.bodyElapsedMs)||v.bodyElapsedMs<0||v.bodyElapsedMs>8000)throw Error('Timing rejected');r.bodyElapsedMs=v.bodyElapsedMs;r.rows=parseOwned(JSON.stringify(v.rows),pid,parent);}
-   }r.parseStatus='accepted';
-  }catch{r.parseStatus='rejected';}
+  try{const queryFailed=!callbackSeen||!!callbackError;r.structure=classifyStructure(stdout,pid,parent,{queryFailed,heldSubjectLive:heldSubjectLive()&&r.physicalClosed&&!r.closeUncertain});r.parseStatus=queryFailed?'query-error':r.structure.ownedIdentityValidated?'accepted':'rejected';}
+  catch{r.structure=classifyStructure('',pid,parent,{queryFailed:true});r.parseStatus='rejected';}
   resolve(r);
  };
  const fail=(reason)=>{
@@ -98,7 +129,7 @@ async function main(){
  if(process.platform!=='win32'||process.argv.length!==4||process.argv[2]!=='--output')throw Error('Windows explicit output invocation required');
  const output=path.resolve(process.argv[3]);if(fs.existsSync(output))throw Error('Output must not exist');
  const started=performance.now(),controller=new AbortController(),registry=createRegistry();
- const result={schema:2,diagnosticOnly:true,notPRGreen:true,binding:BINDING,collectorSHA256:createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),carrierCommit:/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA||'')?process.env.GITHUB_SHA:null,diagnosticRun:/^\d+$/.test(process.env.GITHUB_RUN_ID||'')?process.env.GITHUB_RUN_ID:null,metadata:{platform:process.platform,osRelease:os.release(),node:process.version,arch:process.arch,logicalCpuCount:os.availableParallelism()},limits:{queries:5,queryMaxMs:8000,wholeAbortMs:80000,hardExitMs:89000,maxBuffer:MAX_BUFFER},queries:[],owned:null,retirement:null,failedMeasurement:false,hardDeadlineReached:false};
+ const result={schema:3,probeProtocol:'owned-cim-structure-v1',diagnosticBaseCarrier:'80001e357aa4053bafe62ca611b0e6bb711701b0',priorDiagnosticRun:38802434706,priorRejectionCause:'UNKNOWN',originalFailureCause:'UNKNOWN',diagnosticOnly:true,notPRGreen:true,binding:BINDING,collectorSHA256:createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),carrierCommit:/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA||'')?process.env.GITHUB_SHA:null,diagnosticRun:/^\d+$/.test(process.env.GITHUB_RUN_ID||'')?process.env.GITHUB_RUN_ID:null,metadata:{platform:process.platform,osRelease:os.release(),node:process.version,arch:process.arch,logicalCpuCount:os.availableParallelism()},limits:{queries:1,queryMaxMs:8000,wholeAbortMs:80000,hardExitMs:89000,maxBuffer:MAX_BUFFER},queries:[],owned:null,retirement:null,failedMeasurement:false,hardDeadlineReached:false,ownedIdentityValidated:false,nativeRevalidationPerformed:false,completeRetirement:false,retirementScope:'direct-node-handle-only'};
  let owned,ownedOwner,measuring=true,written=false,resolveHard;
  const hardReached=new Promise(resolve=>{resolveHard=resolve});
  const fail=reason=>{result.failedMeasurement=true;result.failureReason??=reason;controller.abort();registry.killQueries()};
@@ -119,18 +150,20 @@ async function main(){
   owned.on('exit',()=>{if(measuring)fail('owned-child-exited')});
   const admitted=await new Promise(resolve=>{owned.once('spawn',()=>resolve(true));owned.once('error',()=>resolve(false))});
   if(!admitted||!Number.isSafeInteger(owned.pid))throw Error('Owned child admission failed');
-  result.owned={pid:owned.pid,parent:process.pid,creationSource:'successful-owned-CIM-row-only',fixture:'direct-node-stdin-held-no-descendants',electronEquivalent:false};
+  result.owned={pid:owned.pid,parent:process.pid,creationSource:'transient-structural-check-only',fixture:'direct-node-stdin-held-no-descendants',electronEquivalent:false};
   for(const spec of plan(owned.pid)){
    if(result.failedMeasurement||controller.signal.aborted||ownedOwner.record.closed||ownedOwner.record.exitObserved)break;
-   const observation=await runQuery(spec,{pid:owned.pid,parent:process.pid,signal:controller.signal,registry,onUncertainty:reason=>fail(reason)});result.queries.push(observation);
+   const observation=await runQuery(spec,{pid:owned.pid,parent:process.pid,signal:controller.signal,registry,onUncertainty:reason=>fail(reason),heldSubjectLive:()=>!ownedOwner.record.closed&&!ownedOwner.record.exitObserved&&owned.exitCode===null&&owned.signalCode===null});result.queries.push(observation);
    if(observation.closeUncertain||!observation.physicalClosed){fail('query-close-uncertain');break;}
+   result.ownedIdentityValidated=observation.structure?.ownedIdentityValidated===true;
+   if(!result.ownedIdentityValidated){fail('owned-identity-not-validated');break;}
   }
  }catch{result.collectorFailure='fixed-metadata-failure';fail('collector-failure')}
  finally{
   measuring=false;
   if(ownedOwner)result.retirement=await retireOwned(owned,{owner:ownedOwner});
   if(!result.retirement?.closed)fail('subject-close-uncertain');
-  if(result.queries.length!==5)fail('partial-observations');
+  if(result.queries.length!==1)fail('partial-observations');
   // Never remove the last whole bound merely because a logical result settled.
   if(!registry.allClosed())await Promise.race([registry.waitAllClosed(),hardReached]);
   if(!registry.allClosed()&&!result.hardDeadlineReached)throw Error('Unbounded ownership');
@@ -140,5 +173,5 @@ async function main(){
   write();
  }
 }
-module.exports={BINDING,original,plan,parseOwned,createRegistry,runQuery,retireOwned};
+module.exports={BINDING,original,plan,parseOwned,classifyStructure,createRegistry,runQuery,retireOwned};
 if(require.main===module)main().catch(()=>{process.stderr.write('COLLECTOR_FIXED_FAILURE\n');process.exitCode=2});

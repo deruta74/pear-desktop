@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   owned-cim-latency:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/diagnostic/pr61-owned-cim-latency' && github.sha == inputs.expected_carrier_sha
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/diagnostic/pr61-owned-cim-structure' && github.sha == inputs.expected_carrier_sha
     runs-on: windows-latest
     timeout-minutes: 3
     steps:
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
           node-version: 24.21.0
-      - name: Five bounded owned-only PowerShell latency observations
+      - name: One bounded owned-only structural observation
         shell: cmd
         run: node .github/diagnostics/pr61-owned-cim-latency.cjs --output "%RUNNER_TEMP%\pr61-owned-cim-latency.json"
       - name: Preserve diagnostic evidence (not PR regression result)
