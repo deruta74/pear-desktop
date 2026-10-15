@@ -1,4 +1,4 @@
-name: Manual Windows scrobbler cleanup diagnostic
+name: Manual admitted Windows music-native body
 
 on:
   workflow_dispatch:
@@ -7,14 +7,6 @@ on:
         description: Exact reviewed signed diagnostic branch commit SHA
         required: true
         type: string
-      measurement_scope:
-        description: Music scope is discovery-only until separately admitted
-        required: true
-        type: choice
-        default: scrobbler-window
-        options:
-          - scrobbler-window
-          - music-native-c1-f2
 
 permissions:
   contents: read
@@ -29,7 +21,7 @@ jobs:
         shell: pwsh
     env:
       EXPECTED_DIAGNOSTIC_HEAD: ${{ inputs.expected_head }}
-      MEASUREMENT_SCOPE: ${{ inputs.measurement_scope }}
+      MEASUREMENT_SCOPE: music-native-c1-f2
     steps:
       - name: Checkout reviewed diagnostics only
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -78,45 +70,209 @@ jobs:
       - name: Original build (runner only)
         working-directory: source
         run: pnpm build
-      - name: Reviewed scrobbler focus or music discovery-only gate
+      - name: One admitted music body after repeated exact discovery
         run: |
-          $listOnly = $env:MEASUREMENT_SCOPE -ceq 'music-native-c1-f2'
-          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT -Scope $env:MEASUREMENT_SCOPE -ListOnly:$listOnly
+          & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT -Scope 'music-native-c1-f2' -ExpectedMusicTestId '95eb0fe82350e44664b4-118f3d147d63f0bbeb00'
           exit $LASTEXITCODE
-      - name: Preserve safe raw diagnostic evidence unconditionally
-        if: always() && inputs.measurement_scope == 'scrobbler-window'
+      - name: Stage only closed-schema safe body evidence
+        if: always()
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference='Stop'
+          function GetBodyEvidenceSchemas {
+            return ConvertFrom-Json -InputObject @'
+          {"profiles":{"f:host-carrier-0.json":{"schema":"num","mode":"mode","healthy":"bool","expectedExit":"num","nodeVersion":"version","expectedNodeMajor":"num","hostPid":"num","scope":"scope","loadedExactPreload":"bool","preloadRequireCacheKey":"reportPath","forwardSlashPreloadPath":"reportPath","workerReadyObserved":"bool","literalArgumentMatched":"bool","backslashLiteralMatched":"bool","grepArgumentMatched":"bool","outputArgumentMatched":"bool","nativeFixtureOrElectronStarted":"bool","rawEnvironmentOrCommandLineDumped":"bool"},"f:focused-discovery-health.json":{"file":"testFile","column":"num","selectedSpecs":"num","selectedTests":"num","bodyAdmitted":"bool","healthy":"bool","scope":"scope","line":"num","id":"testId","outputDirectory":"reportPath","title":"testTitle","executedResults":"num"},"f:diagnostic-health.json":{"primaryFailureStage":"nullable:stage","fullSuiteExit":"nullable:int","discoveryQualified":"bool","focusedExit":"nullable:int","originalSuite1745With2WorkersObserved":"bool","originalCoverage":"bool","mode":"mode","healthy":"bool","carrierQualified":"bool","focusedInvoked":"bool","fullSuiteInvoked":"bool","reason":"drop","workerLogs":"num","everyWorkerLogReady":"bool","loggerErrorFiles":"num","collector":"collectorHealth"},"f:outcome.json":{"scope":"scope","trackedSourceUnchanged":"bool","carrierQualified":"bool","diagnosticHealthy":"bool","sourceVerificationComplete":"bool","fullSuiteFirst":"bool","originalBudgetsChanged":"bool","discoveryQualified":"bool","collectorStartupAdmissionLimitMs":"num","sourceUnchanged":"bool","acceptance":"drop","noOriginalInvocation":"bool","focusedInvoked":"bool","fullSuiteInvoked":"bool","checkoutClean":"bool","mode":"mode","fullSuiteExit":"nullable:int","focusedExit":"nullable:int","collectorStartupOutcome":"outcome","primaryFailureStage":"nullable:stage"},"f:focused-discovery-stream-health.json":{"stderrBytes":"num","overflow":"bool","rawOutputRetained":"bool","stdoutBytes":"num"},"f:preflight-result.json":{"gitExecutable":"drop","mode":"mode","dependenciesStarted":"bool","utc":"time","handleStarted":"bool","tree":"hex40","collectorStarted":"bool","nativeTestsStarted":"bool","sourceManifestFile":"manifestFile","healthy":"bool","head":"hex40","expectedSourceSubsetFiles":"num","sourceClean":"bool","trackedFiles":"num","failure":"failure"},"f:source-before.json":{"hashErrorCount":"num","identityValid":"bool","trackedFiles":"num","trackedHashingComplete":"bool","checkoutClean":"bool","sha256":"knownHashes","opaquePathSchema":"opaqueSchema","tree":"nullable:hex40","head":"nullable:hex40","statusClassification":"sourceStatus","opaqueSha256":"opaqueHashes","hashedFiles":"num","verificationErrors":"sourceErrors"},"f:source-after.json":{"hashErrorCount":"num","identityValid":"bool","trackedFiles":"num","trackedHashingComplete":"bool","checkoutClean":"bool","sha256":"knownHashes","opaquePathSchema":"opaqueSchema","tree":"nullable:hex40","head":"nullable:hex40","statusClassification":"sourceStatus","opaqueSha256":"opaqueHashes","hashedFiles":"num","verificationErrors":"sourceErrors"},"f:host-carrier-7.json":{"schema":"num","mode":"mode","healthy":"bool","expectedExit":"num","nodeVersion":"version","expectedNodeMajor":"num","hostPid":"num","scope":"scope","loadedExactPreload":"bool","preloadRequireCacheKey":"reportPath","forwardSlashPreloadPath":"reportPath","workerReadyObserved":"bool","literalArgumentMatched":"bool","backslashLiteralMatched":"bool","grepArgumentMatched":"bool","outputArgumentMatched":"bool","nativeFixtureOrElectronStarted":"bool","rawEnvironmentOrCommandLineDumped":"bool"},"f:preflight-source-manifest.json":{"trackedFiles":"num","opaquePathSchema":"opaqueSchema","verificationErrors":"sourceErrors","hashErrorCount":"num","hashedFiles":"num","checkoutClean":"bool","identityValid":"bool","tree":"nullable:hex40","opaqueSha256":"opaqueHashes","head":"nullable:hex40","statusClassification":"sourceStatus","trackedHashingComplete":"bool","sha256":"knownHashes"},"f:carrier-health.json":{"controlledArgumentsMatched":"bool","fullOrFocusedTestsRunByCarrier":"bool","previousNodeOptionsPreserved":"bool","scalarExitSeven":"num","scalarExitZero":"num","exactPreloadLoaded":"bool","healthy":"bool","nodeMajorRequired":"num","nativeFixtureOrElectronStartedByCarrier":"bool"},"f:resolved-environment.json":{"electron":"version","sourceTree":"hex40","cpuCount":"num","playwright":"version","node":"version","os":"os","sourceHead":"hex40","pnpm":"version","utc":"time","runnerImageVersion":"imageVersion","runnerImageOS":"image"},"f:collector-startup.json":{"deadlineMonoMs":"nullable:num","readyDetectedMonoMs":"nullable:num","waitElapsedMs":"nullable:num","launchSuccessMonoMs":"nullable:num","launchAttempted":"bool","childPid":"nullable:num","waitStartMonoMs":"nullable:num","errorType":"nullable:errorType","outcome":"outcome","endedUtc":"time","deadlineUtc":"nullable:time","admissionLimitMs":"num","launchSuccessUtc":"nullable:time","launchAttemptUtc":"nullable:time","waitStartUtc":"nullable:time","readyDetectedUtc":"nullable:time","failureStage":"nullable:stage","schema":"num","clockOriginUtc":"time","parentPid":"num","endedMonoMs":"num","launchAttemptMonoMs":"nullable:num","launchSucceeded":"bool"},"f:collector-health.json":{"remainingDelayedRequests":"num","remainingHandleRequests":"num","canonicalRoots":"canonicals","schema":"num","endedUtc":"time","healthy":"bool","fixturesObserved":"num","counts":"counts","errors":"errorCount","canonicalAttempts":"canonicals","processIdentitiesObserved":"num","scope":"scope"},"f:handle-provenance.json":{"signerThumbprint":"hex40","readOnly":"bool","arguments":"dropArray","downloadUrl":"drop","signerSubject":"drop","downloadUtc":"time","signatureStatus":"signature","fileVersion":"version","executableSha256":"hex64","zipSha256":"hex64"},"collectorHealth":{"remainingDelayedRequests":"num","remainingHandleRequests":"num","canonicalRoots":"canonicals","schema":"num","endedUtc":"time","healthy":"bool","fixturesObserved":"num","counts":"counts","errors":"errorCount","canonicalAttempts":"canonicals","processIdentitiesObserved":"num","scope":"scope"},"failure":{"stage":"stage","errorType":"errorType","message":"drop","utc":"time"},"bodyStream":{"DiscardedStdoutBytes":"num","DiscardedStderrBytes":"num","ValidRecords":"num","InvalidFrames":"num","OverflowLines":"num","BeginCount":"num","EndCount":"num","RunEndCount":"num","ProtocolErrors":"num","TestStatus":"status","RunStatus":"status","Healthy":"bool"},"receiptHealth":{"healthy":"bool","resultReceipts":"num","nativeErrorReceipts":"num","parserErrors":"num","preCleanupOrderQualified":"bool","outerAssertionsProvenByReceipt":"bool","ownerQualified":"bool","historicalEBUSYResolved":"bool"},"timeout":{"timeoutMs":"num","collectorPid":"num"},"sourceStatus":{"untrackedEntries":"num","trackedEntries":"num","unclassifiedEntries":"num","knownPlaywrightLastRun":"num","valid":"bool","entries":"num","statusCodes":"statusCodes","checkoutClean":"bool"},"counts":{"polls":"num","events":"num","rmBegin":"num","rmReject":"num","handleCompleted":"num","handleTimedOut":"num","inventories":"num"},"c:collector-initialization":{"stageElapsedMs":"num","collectorPid":"num","stage":"stage","schema":"num","monoMs":"num","utc":"time","event":"fixed:collector-initialization","status":"status"},"c:collector-ready":{"queryTerminationGraceMs":"num","contract":"drop","collectorPid":"num","schema":"num","queryDeadlineMs":"num","monoMs":"num","handlePath":"drop","utc":"time","event":"fixed:collector-ready","scope":"scope"},"c:process-sample":{"elapsedMs":"num","records":"processes","collectorPid":"num","schema":"num","endedUtc":"time","excludedCollectorQueries":"exclusions","monoMs":"num","pollTargetMs":"num","startedUtc":"time","utc":"time","event":"fixed:process-sample","limitation":"drop"},"c:root-canonicalization":{"originalDirectory":"root","errorCode":"int","schema":"num","aliases":"roots","monoMs":"num","collectorPid":"num","validationError":"nullable:validationError","method":"method","originalContainsShortAlias":"bool","startedUtc":"time","elapsedMs":"num","event":"fixed:root-canonicalization","context":"phase","errorType":"nullable:errorType","resolvedAtCreationOrLaunchReceipt":"bool","endedUtc":"time","utc":"time","status":"status","resolvedDirectory":"nullable:root","eventUtc":"time"},"c:owned-process-first-seen":{"parentPid":"num","directories":"roots","schema":"num","monoMs":"num","collectorPid":"num","executable":"exe","identity":"identity","event":"fixed:owned-process-first-seen","pid":"num","createdUtc":"time","crashpad":"bool","utc":"time","lastSeenUtc":"time","chromiumType":"nullable:role"},"c:inventory":{"phase":"phase","schema":"num","monoMs":"num","missing":"bool","collectorPid":"num","startedUtc":"time","directory":"root","elapsedMs":"num","event":"fixed:inventory","truncated":"bool","errorType":"nullable:errorType","entries":"entries","operation":"operation","limitation":"drop","endedUtc":"time","utc":"time"},"c:snapshot-requested":{"receiptUtc":"time","phase":"phase","schema":"num","monoMs":"num","canonicalEndedBeforeSourceEventUtc":"bool","collectorPid":"num","eventUtc":"time","directory":"root","canonicalCacheUsed":"bool","event":"fixed:snapshot-requested","canonical":"canonical","operation":"operation","handleDirectory":"root","utc":"time","timingLimitation":"drop"},"c:handle-start":{"startedUtc":"time","collectorPid":"num","schema":"num","monoMs":"num","id":"guid","utc":"time","event":"fixed:handle-start","request":"request"},"c:handle-result":{"exitCode":"nullable:int","stderrFile":"handleStderr","monoMs":"num","schema":"num","collectorPid":"num","request":"request","startedUtc":"time","event":"fixed:handle-result","stdoutFile":"handleStdout","errorType":"nullable:errorType","queryPid":"nullable:num","limitation":"drop","endedUtc":"time","utc":"time","queryTerminationConfirmed":"bool","timedOut":"bool"},"canonical":{"originalDirectory":"root","errorCode":"int","aliases":"roots","validationError":"nullable:validationError","method":"method","originalContainsShortAlias":"bool","startedUtc":"time","elapsedMs":"num","context":"phase","errorType":"nullable:errorType","resolvedAtCreationOrLaunchReceipt":"bool","endedUtc":"time","status":"status","resolvedDirectory":"nullable:root","eventUtc":"time"},"request":{"canonicalEndedBeforeSourceEventUtc":"bool","operation":"operation","eventUtc":"time","timingLimitation":"drop","handleDirectory":"root","directory":"root","phase":"phase","canonical":"canonical","receiptUtc":"time","canonicalCacheUsed":"bool"},"process":{"parentPid":"num","executable":"exe","identity":"identity","pid":"num","crashpad":"bool","createdUtc":"time","chromiumType":"nullable:role","lastSeenUtc":"time","directories":"roots"},"exclusion":{"reason":"drop","executable":"exe","createdUtc":"time","pid":"num"},"options":{"recursive":"bool","force":"bool","maxRetries":"num","retryDelay":"num"},"fsError":{"code":"fsCode","syscall":"nullable:syscall","errno":"nullable:int","name":"errorName"},"w:preload-ready":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","nodeVersion":"version","platform":"platform","scope":"scope"},"w:fixture-created":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root"},"w:fixture-launcher-spawn":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","executable":"exe","childPid":"nullable:num"},"w:fixture-launcher-exit":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","executable":"exe","childPid":"nullable:num","code":"nullable:int","signal":"nullable:signal"},"w:fixture-launcher-close":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","executable":"exe","childPid":"nullable:num","code":"nullable:int","signal":"nullable:signal"},"w:rm-begin":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","operation":"operation","targetIsRoot":"bool","options":"options"},"w:rm-resolve":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","operation":"operation","elapsedMs":"num"},"w:rm-reject":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","operation":"operation","elapsedMs":"num","error":"fsError"},"w:music-native-result":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","childPid":"nullable:num","validFields":"num","projection":"projection"},"w:music-native-error":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","childPid":"nullable:num","stage":"stage","errorClass":"errorClass"},"w:music-native-parser-error":{"schema":"num","hostPid":"num","sequence":"num","event":"workerEvent","utc":"time","monoMs":"num","directory":"root","code":"parserCode"},"projection":{"coldBefore":"nullable:num","coldAfter":"nullable:num","canceledGetterCalls":"nullable:num","firstA":"nullable:num","firstB":"nullable:num","secondB":"nullable:num","oldStatus":"nullable:num","replayB":"nullable:num","firstC":"nullable:num","secondC":"nullable:num","replayC":"nullable:num","firstD":"nullable:num","failure":"nullable:num","replayD":"nullable:num","retiredBBeforeCurrentReentry":"nullable:bool","healthy":"nullable:bool","currentReentry.outerRefresh":"nullable:bool","currentReentry.retiredNested":"nullable:bool","metadata.isCurrent":"nullable:bool","metadata.retired":"nullable:bool","sourceCMatchesNested":"nullable:bool","sourceDMatchesMetadata":"nullable:bool"},"reporter":{"schema":"num","event":"reporterEvent","scope":"scope","id":"testId","status":"status","durationMs":"num","tests":"num"},"c:handle-unavailable":{"schema":"num","monoMs":"num","collectorPid":"num","event":"fixed:handle-unavailable","utc":"time","directory":"root","operation":"operation","phase":"phase","eventUtc":"time","canonical":"canonical","reason":"drop"},"c:diagnostic-error":{"schema":"num","monoMs":"num","collectorPid":"num","event":"fixed:diagnostic-error","utc":"time","code":"errorCountOne"}},"files":{"host-carrier-0.json":"f:host-carrier-0.json","focused-discovery-health.json":"f:focused-discovery-health.json","diagnostic-health.json":"f:diagnostic-health.json","outcome.json":"f:outcome.json","focused-discovery-stream-health.json":"f:focused-discovery-stream-health.json","preflight-result.json":"f:preflight-result.json","source-before.json":"f:source-before.json","source-after.json":"f:source-after.json","host-carrier-7.json":"f:host-carrier-7.json","preflight-source-manifest.json":"f:preflight-source-manifest.json","diagnostic-files.json":"diagnostics","carrier-health.json":"f:carrier-health.json","resolved-environment.json":"f:resolved-environment.json","collector-startup.json":"f:collector-startup.json","collector-health.json":"f:collector-health.json","handle-provenance.json":"f:handle-provenance.json","source-verification-error.json":"failure","driver-error.json":"failure","diagnostic-health-error.json":"failure","focused-stream-health.json":"bodyStream","music-receipt-health.json":"receiptHealth","collector-stop-timeout.json":"timeout"},"testId":"95eb0fe82350e44664b4-118f3d147d63f0bbeb00","diagnostics":{"SCROBBLER-WINDOWS-EBUSY-SOURCE-MANIFEST.json":"bee228f382730a4e190583d5e7a2539b00710b8d93510c5aa7774317c7ae0652","SCROBBLER-WINDOWS-EBUSY-collector.ps1":"9dacf02034a72d1b1e22b3995e292d6d3e0378e39595779a3d119076b19070b7","WINDOWS-MUSIC-NATIVE-safe-reporter.cjs":"379b495075b926a84298e8283595fafc44283686a729ce4bbd7c81b139f00317","SCROBBLER-WINDOWS-EBUSY-runner.ps1":"a3949e0492ae2ebb500adfd7b70a6497d2be0881c08dc3706d70af909fa5d095","SCROBBLER-WINDOWS-EBUSY-carrier.cjs":"482d04050333fec6cd4e2b176bf8421800e764efd858bfa3b98e321b672c04dd","SCROBBLER-WINDOWS-EBUSY-qualify-preload.cjs":"9dcf07a71ceca325e5c40dbca160fd99929ca3b54cf02f3a204bf00b10d041b5","SCROBBLER-WINDOWS-EBUSY-preload.cjs":"07f98ab17411d496aac567ccc7b8474633e1437b236c24948e42b734a84e5e2b"},"publicSourceNames":[".github/workflows/tests.yml","pnpm-lock.yaml","src/plugins/scrobbler/services/ws-auth-window.ts","tests/scrobbler-auth-window-native.test.ts","package.json","tests/helpers/electron-startup-observer.cjs","tests/helpers/scrobbler-auth-native.ts","src/plugins/scrobbler/services/ws-auth.ts","tests/helpers/electron-startup.js"]}
+          '@ -AsHashtable
+          }
+          function AssertUniqueJson($Element) {
+            if ($Element.ValueKind -eq [Text.Json.JsonValueKind]::Object) {
+              $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+              foreach($property in $Element.EnumerateObject()) { if(-not $names.Add($property.Name)){throw 'Evidence JSON keys are ambiguous.'}; AssertUniqueJson $property.Value }
+            } elseif($Element.ValueKind -eq [Text.Json.JsonValueKind]::Array) { foreach($item in $Element.EnumerateArray()){AssertUniqueJson $item} }
+          }
+          function ReadEvidenceJson([string]$Text) {
+            try { $doc=[Text.Json.JsonDocument]::Parse($Text);try{AssertUniqueJson $doc.RootElement}finally{$doc.Dispose()};return ConvertFrom-Json -InputObject $Text -AsHashtable -ErrorAction Stop }
+            catch { throw 'Evidence JSON protocol rejected.' }
+          }
+          function AssertMatch($Value,[string]$Pattern) {if($Value -isnot [string] -or $Value -cnotmatch $Pattern){throw 'Evidence value rejected.'};return $Value}
+          function AssertEnum($Value,[string[]]$Allowed) {if($Value -isnot [string] -or $Allowed -cnotcontains $Value){throw 'Evidence enum rejected.'};return $Value}
+          function ProjectEvidence($Value,[string]$Profile) {
+            if($Value -isnot [Collections.IDictionary] -or -not $script:EvidenceSchemas.profiles.Contains($Profile)){throw 'Unknown evidence object schema.'}
+            $fields=$script:EvidenceSchemas.profiles[$Profile];$safe=[ordered]@{}
+            $required=@($fields.Keys|Where-Object{$fields[$_] -cne 'drop'})
+            if($Profile -ceq 'f:preflight-result.json'){$required=@('healthy','mode');if($Value.healthy){$required+=@('head','tree','trackedFiles','sourceClean')}else{$required+='failure'}}
+            if($Profile -ceq 'f:diagnostic-health.json'){$required=@('healthy','focusedInvoked','fullSuiteInvoked','mode')}
+            if($Profile -ceq 'w:music-native-parser-error'){$required=@('schema','event','utc','hostPid','sequence','code','monoMs')}
+            if($Profile -ceq 'options'){$required=@('recursive','force')}
+            foreach($key in $required){if($Value.Keys -cnotcontains $key){throw 'Incomplete evidence object schema.'}}
+            if($Profile -cin @('f:preflight-source-manifest.json','f:source-before.json','f:source-after.json') -and $Value.identityValid -eq $true -and ($null -eq $Value.head -or $null -eq $Value.tree)){throw 'Valid source identity cannot be null.'}
+            if($Profile -ceq 'f:collector-startup.json' -and $Value.launchSucceeded -eq $true -and $null -eq $Value.childPid){throw 'Successful collector launch identity cannot be null.'}
+            if($Profile -cin @('canonical','c:root-canonicalization') -and $Value.status -ceq 'resolved' -and $null -eq $Value.resolvedDirectory){throw 'Resolved canonical identity cannot be null.'}
+            foreach($key in $Value.Keys){
+              if($fields.Keys -cnotcontains $key){throw 'Unknown evidence field.'}
+              $rule=$fields[$key]
+              if($rule -ceq 'drop'){if($Value[$key] -isnot [string]){throw 'Discarded evidence field has wrong type.'};continue}
+              if($rule -ceq 'dropArray'){if($Value[$key] -isnot [array]){throw 'Discarded evidence array has wrong type.'};foreach($item in $Value[$key]){if($item -isnot [string]){throw 'Discarded evidence array element has wrong type.'}};continue}
+              $projected=ProjectEvidenceValue $Value[$key] $rule
+              if($rule -ceq 'entries'){$safe.entryCounts=$projected}
+              elseif($rule -ceq 'errorCount'){$safe.errorsObservedCount=$projected}
+              elseif($rule -ceq 'errorCountOne'){$safe.errorCodeWithheld=$true}
+              else{$safe[$key]=$projected}
+            }
+            if($Value.Contains('schema') -and $Value.schema -ne 1){throw 'Unknown evidence schema version.'}
+            if($Profile -ceq 'projection' -and $Value.Count -ne 22){throw 'Incomplete native projection.'}
+            return $safe
+          }
+          function ProjectEvidenceValue($Value,[string]$Rule) {
+            if($Rule.StartsWith('nullable:')){
+              if($null -eq $Value){return $null}
+              return ProjectEvidenceValue $Value $Rule.Substring(9)
+            }
+            if($null -eq $Value){throw 'Nonnullable evidence value is null.'}
+            if($script:EvidenceSchemas.profiles.Contains($Rule)){return ProjectEvidence $Value $Rule}
+            if($Rule.StartsWith('fixed:')){return AssertEnum $Value @($Rule.Substring(6))}
+            switch -CaseSensitive ($Rule) {
+              'bool' {if($Value -isnot [bool]){throw 'Expected evidence boolean.'};return $Value}
+              'num' {if($Value -is [bool] -or $Value -isnot [ValueType] -or -not [double]::IsFinite([double]$Value) -or [double]$Value -lt 0 -or [double]$Value -gt 1000000000000000){throw 'Expected bounded evidence number.'};return $Value}
+              'int' {if($Value -is [bool] -or $Value -isnot [ValueType] -or -not [double]::IsFinite([double]$Value) -or [math]::Truncate([double]$Value) -ne [double]$Value -or [double]$Value -lt -2147483648 -or [double]$Value -gt 2147483647){throw 'Expected evidence integer.'};return $Value}
+              'time' {if($Value -is [DateTime]){return $Value.ToUniversalTime().ToString('o')};return AssertMatch $Value '\A(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,7})?Z|[0-9]{1,2}/[0-9]{1,2}/[0-9]{4} [0-9]{1,2}:[0-9]{2}:[0-9]{2})\z'}
+              'hex40' {return AssertMatch $Value '\A[a-fA-F0-9]{40}\z'}
+              'hex64' {return AssertMatch $Value '\A[a-f0-9]{64}\z'}
+              'testId' {return AssertEnum $Value @('95eb0fe82350e44664b4-118f3d147d63f0bbeb00')}
+              'guid' {return AssertMatch $Value '\A[a-f0-9]{32}\z'}
+              'scope' {return AssertEnum $Value @('music-native-c1-f2')}
+              'root' {return AssertMatch $Value '\A(?i:C:\\Users\\(?:RUNNER~1|runneradmin)\\AppData\\Local\\Temp\\)pear-music-native-[A-Za-z0-9]{6}\z'}
+              'roots' {return ,@($Value|ForEach-Object{ProjectEvidenceValue $_ 'root'})}
+              'reportPath' {
+                $path=AssertMatch $Value '\A[A-Za-z]:[\\/][^\x00-\x1F]*\z';$path=$path.Replace('/','\')
+                $base=$script:EvidenceReportRoot.TrimEnd('\');$matched=$false
+                foreach($leaf in @('SCROBBLER-WINDOWS-EBUSY-preload.cjs','playwright-output')){if([string]::Equals($base+'\'+$leaf,$path,[StringComparison]::OrdinalIgnoreCase)){$matched=$true}}
+                if(-not $matched){throw 'Unowned report path.'};return $path
+              }
+              'version' {return AssertMatch $Value '\Av?[0-9]{1,3}(?:\.[0-9]{1,6}){1,3}\z'}
+              'os' {return AssertMatch $Value '\A(?:Microsoft )?Windows NT [0-9.]+\z'}
+              'image' {return AssertMatch $Value '\Awin[0-9]{2}-vs[0-9]{4}\z'}
+              'imageVersion' {return AssertMatch $Value '\A[0-9.]{1,40}\z'}
+              'manifestFile' {return AssertEnum $Value @('preflight-source-manifest.json')}
+              'opaqueSchema' {return AssertEnum $Value @('sha256-path-v1')}
+              'signature' {return AssertEnum $Value @('Valid')}
+              'testFile' {return AssertEnum $Value @('tests/api-music-collections-native.test.ts')}
+              'testTitle' {return AssertEnum $Value @('F2 actual native canceled-job and capture reentry preserve adopted source artifacts')}
+              'method' {return AssertEnum $Value @('GetLongPathNameW-read-only-metadata')}
+              'validationError' {return AssertEnum $Value @('resolved-root-scope-mismatch')}
+              'mode' {return AssertEnum $Value @('PreflightOnly','host-node-carrier-only','discovery-only','focused-only')}
+              'platform' {return AssertEnum $Value @('win32')}
+              'phase' {return AssertEnum $Value @('fixture-created','fixture-launcher-spawn','rm-begin','rm-reject','first-ebusy-plus-1s')}
+              'stage' {return AssertEnum $Value @('ready','task','shutdown','other','add-type','source-scope','source-before','diagnostic-file-copy','resolved-environment','carrier-environment','carrier-exit-zero','carrier-exit-seven','focused-discovery','handle-provision','collector-start','collector-ready-wait','focused','source-after','diagnostic-health-after','preflight-report-scope','preflight-source-manifest','preflight-expected-source-sha256')}
+              'outcome' {return AssertEnum $Value @('not-attempted','launching','waiting','ready-admitted','collector-exited','late-ready-rejected','admission-timeout','startup-error')}
+              'status' {return AssertEnum $Value @('started','succeeded','failed','resolved','unavailable','running','passed','timedOut','timedout','skipped','interrupted','invalid')}
+              'errorType' {return AssertEnum $Value @('music-diagnostic-error','Win32Exception','IOException','UnauthorizedAccessException','DirectoryNotFoundException','FileNotFoundException','InvalidOperationException','ArgumentException','ArgumentNullException','ObjectDisposedException','TimeoutException','TaskCanceledException','OperationCanceledException','RuntimeException','MethodInvocationException','JsonException','JsonReaderException','FormatException','NotSupportedException','InvalidDataException','EntryPointNotFoundException')}
+              'exe' {if($Value -isnot [string]){throw 'Invalid executable label.'};return AssertEnum $Value.ToLowerInvariant() @('electron.exe','cmd.exe','conhost.exe','powershell.exe','pwsh.exe','handle64.exe','handle.exe','crashpad_handler.exe','werfault.exe','wermgr.exe','shell-launch','unknown-executable')}
+              'role' {return AssertEnum $Value @('renderer','gpu-process','utility','zygote','broker','crashpad-handler')}
+              'signal' {return AssertEnum $Value @('SIGTERM','SIGKILL','SIGINT','SIGABRT','SIGSEGV')}
+              'operation' {return AssertMatch $Value '\A[0-9]+:[0-9]+\z'}
+              'identity' {return AssertMatch $Value '\A[0-9]+\|[0-9TZ:.\-]+\z'}
+              'handleStdout' {return AssertMatch $Value '\Ahandle-[a-f0-9]{32}\.stdout\.log\z'}
+              'handleStderr' {return AssertMatch $Value '\Ahandle-[a-f0-9]{32}\.stderr\.log\z'}
+              'errorClass' {return AssertEnum $Value @('missing-owned-reentry-observation','explicit-menu-copy-missing','unexpected-recipe','unexpected-native-remote-request','unclassified-native-error')}
+              'parserCode' {return AssertEnum $Value @('created-root-scope','duplicate-result','result-json','result-object','result-fields','missing-stream','stream-type','stream-frame','stream-overflow','stream-observer','incomplete-stream-line','observer-init')}
+              'fsCode' {return AssertEnum $Value @('EBUSY','ENOTEMPTY','ENOENT','EPERM','EACCES','EIO','EINVAL','unclassified-fs-error')}
+              'errorName' {return AssertEnum $Value @('Error','unclassified-error')}
+              'syscall' {return AssertEnum $Value @('rmdir','unlink','scandir','rm')}
+              'workerEvent' {return AssertEnum $Value @($script:EvidenceSchemas.profiles.Keys|Where-Object{$_.StartsWith('w:')}|ForEach-Object{$_.Substring(2)})}
+              'reporterEvent' {return AssertEnum $Value @('test-begin','test-end','run-end','protocol-error')}
+              'errorCountOne' {if($Value -isnot [string]){throw 'Invalid error marker.'};return 1}
+              'errorCount' {if($Value -isnot [array]){throw 'Invalid error array.'};foreach($v in $Value){if($v -isnot [string]){throw 'Invalid error entry.'}};return $Value.Count}
+              'sourceErrors' {return ,@($Value|ForEach-Object{AssertEnum $_ @('head-query','tree-query','tracked-list','tracked-file-hash','tracked-path-identity-collision-or-duplicate','status-protocol','status-query','trusted-source-manifest')})}
+              'entries' {
+                if($Value -isnot [array] -or $Value.Count -gt 200){throw 'Invalid inventory entries.'};$dirs=0;$reparse=0
+                foreach($item in $Value){if($item -isnot [Collections.IDictionary] -or $item.Count -ne 3 -or $item.Keys -cnotcontains 'name' -or $item.Keys -cnotcontains 'directory' -or $item.Keys -cnotcontains 'reparsePoint' -or $item.name -isnot [string] -or $item.directory -isnot [bool] -or $item.reparsePoint -isnot [bool]){throw 'Invalid inventory entry schema.'};if($item.directory){$dirs++};if($item.reparsePoint){$reparse++}}
+                return @{observedEntries=$Value.Count;directoryEntries=$dirs;reparseEntries=$reparse;entryNamesRetained=$false}
+              }
+              {$_ -cin @('canonicals','processes','exclusions')} {
+                if($Value -isnot [array]){throw 'Invalid evidence array.'};$target=@{canonicals='canonical';processes='process';exclusions='exclusion'}[$Rule]
+                return ,@($Value|ForEach-Object{ProjectEvidence $_ $target})
+              }
+              {$_ -cin @('knownHashes','opaqueHashes','statusCodes','diagnostics')} {
+                if($Value -isnot [Collections.IDictionary]){throw 'Invalid evidence map.'};$safe=[ordered]@{}
+                foreach($key in $Value.Keys){
+                  if($Rule -ceq 'knownHashes'){if($script:EvidenceSchemas.publicSourceNames -cnotcontains $key){throw 'Unknown public source name.'};$safe[$key]=ProjectEvidenceValue $Value[$key] 'nullable:hex64'}
+                  elseif($Rule -ceq 'opaqueHashes'){[void](AssertMatch $key '\Asha256-path-v1:[a-f0-9]{64}\z');$safe[$key]=ProjectEvidenceValue $Value[$key] 'nullable:hex64'}
+                  elseif($Rule -ceq 'statusCodes'){[void](AssertMatch $key '\A[ MTADRCU?!]{2}\z');$safe[$key]=ProjectEvidenceValue $Value[$key] 'num'}
+                  else{if($script:EvidenceSchemas.diagnostics.Keys -cnotcontains $key -or $Value[$key] -cne $script:EvidenceSchemas.diagnostics[$key]){throw 'Diagnostic byte identity mismatch.'};$safe[$key]=$Value[$key]}
+                }
+                if($Rule -ceq 'diagnostics' -and $Value.Count -ne 7){throw 'Incomplete diagnostic byte map.'};return $safe
+              }
+              default {throw 'Unknown projection rule.'}
+            }
+          }
+          function ReadEvidenceFile([string]$Path) {
+            $item=Get-Item -LiteralPath $Path -ErrorAction Stop
+            if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $item.Length -gt 8388608){throw 'Unsafe evidence file.'}
+            $bytes=[IO.File]::ReadAllBytes($Path)
+            if($bytes.Length -gt 8388608){throw 'Unsafe evidence file size.'}
+            # All unchanged producers write UTF-8 without BOM. No BOM sniffing or UTF-16/32 fallback.
+            if(($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) -or
+               ($bytes.Length -ge 2 -and (($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) -or ($bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF))) -or
+               ($bytes.Length -ge 4 -and $bytes[0] -eq 0 -and $bytes[1] -eq 0 -and $bytes[2] -eq 0xFE -and $bytes[3] -eq 0xFF)){throw 'Evidence BOM is not admitted.'}
+            return [Text.UTF8Encoding]::new($false,$true).GetString($bytes)
+          }
+          function WriteSafeEvidence([string]$Path,$Value) {[IO.File]::WriteAllText($Path,(ConvertTo-Json -InputObject $Value -Depth 40),[Text.UTF8Encoding]::new($false))}
+          function StageMusicEvidence([string]$ReportRoot,[string]$EvidenceRoot,[string]$ExpectedHead) {
+            $script:EvidenceReportRoot=$ReportRoot.Replace('/',[char]92);$script:EvidenceSchemas=GetBodyEvidenceSchemas
+            if(Test-Path -LiteralPath $EvidenceRoot){throw 'Evidence staging directory must be fresh.'}
+            [void][IO.Directory]::CreateDirectory($EvidenceRoot)
+            $health=@{healthy=$true;rejectedInputs=0;stagedFiles=0;unknownOrExcludedFiles=0;rawHandleOutputRetained=$false;positiveOwnerLineProofRetained=$false}
+            $handleSummaries=[Collections.Generic.List[object]]::new()
+            $allowed=@($script:EvidenceSchemas.files.Keys)+@('diagnostic-head.txt','focused.exit.txt','collector.exit.txt','focused.safe.jsonl','collector.jsonl')
+            foreach($file in @(Get-ChildItem -LiteralPath $ReportRoot -File -ErrorAction SilentlyContinue)) {
+              $name=$file.Name
+              if($allowed -cnotcontains $name -and $name -cnotmatch '\Aworker-[0-9]+\.jsonl\z'){$health.unknownOrExcludedFiles++;continue}
+              try {
+                $text=ReadEvidenceFile $file.FullName
+                if($script:EvidenceSchemas.files.Keys -ccontains $name){$safe=ProjectEvidenceValue (ReadEvidenceJson $text) $script:EvidenceSchemas.files[$name];WriteSafeEvidence (Join-Path $EvidenceRoot $name) $safe}
+                elseif($name -ceq 'diagnostic-head.txt'){$head=$text.Trim();if($head -cne $ExpectedHead -or $head -cnotmatch '\A[a-f0-9]{40}\z'){throw 'Diagnostic head mismatch.'};[IO.File]::WriteAllText((Join-Path $EvidenceRoot $name),$head+"`n")}
+                elseif($name.EndsWith('.exit.txt')){$code=$text.Trim();[void](AssertMatch $code '\A-?[0-9]{1,11}\z');[IO.File]::WriteAllText((Join-Path $EvidenceRoot $name),$code+"`n")}
+                else {
+                  $rows=[Collections.Generic.List[string]]::new();$first=$true;$previous=0
+                  foreach($line in $text.Split("`n")){if([string]::IsNullOrWhiteSpace($line)){continue};$row=ReadEvidenceJson $line
+                    if($name -ceq 'collector.jsonl'){$profile='c:'+$row.event}
+                    elseif($name -ceq 'focused.safe.jsonl'){$profile='reporter'}
+                    else{$profile='w:'+$row.event;if($row.hostPid -ne [long]($name.Substring(7).Split('.')[0]) -or $row.sequence -le $previous){throw 'Worker identity/order mismatch.'};if($first -and ($row.event -cne 'preload-ready' -or $row.scope -cne 'music-native-c1-f2')){throw 'Worker scope readiness mismatch.'};$previous=$row.sequence}
+                    $safe=ProjectEvidence $row $profile
+                    if($profile -ceq 'c:handle-result'){
+                      $guid=$row.stdoutFile.Substring(7,32)
+                      if($row.stderrFile -cne ('handle-'+$guid+'.stderr.log')){throw 'Handle stream identity mismatch.'}
+                      $sizes=@{}
+                      foreach($kind in @('stdout','stderr')){
+                        $raw=Get-Item -LiteralPath (Join-Path $ReportRoot ('handle-'+$guid+'.'+$kind+'.log')) -ErrorAction Stop
+                        if($raw.PSIsContainer -or ($raw.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Unsafe withheld Handle stream.'}
+                        $sizes[$kind+'Bytes']=[long]$raw.Length
+                      }
+                      [void]$handleSummaries.Add(@{queryId=$guid;queryPid=$safe.queryPid;startedUtc=$safe.startedUtc;endedUtc=$safe.endedUtc;exitCode=$safe.exitCode;timedOut=$safe.timedOut;queryTerminationConfirmed=$safe.queryTerminationConfirmed;errorType=$safe.errorType;request=$safe.request;stdoutBytes=$sizes.stdoutBytes;stderrBytes=$sizes.stderrBytes;rawOutputRetained=$false;positiveOwnerLineProofRetained=$false})
+                    }
+                    [void]$rows.Add(($safe|ConvertTo-Json -Depth 40 -Compress));$first=$false
+                  }
+                  if($first){throw 'Empty structured evidence.'};$target=if($name -ceq 'collector.jsonl'){'collector.safe.jsonl'}else{$name}
+                  [IO.File]::WriteAllText((Join-Path $EvidenceRoot $target),(($rows -join "`n")+"`n"),[Text.UTF8Encoding]::new($false))
+                }
+                $health.stagedFiles++
+              } catch {$health.healthy=$false;$health.rejectedInputs++}
+            }
+            foreach($required in @('diagnostic-head.txt','diagnostic-files.json','source-before.json','source-after.json','focused-discovery-health.json','focused.safe.jsonl','focused-stream-health.json','focused.exit.txt','collector.safe.jsonl','collector-health.json','collector-startup.json','music-receipt-health.json','outcome.json')){if(-not (Test-Path -LiteralPath (Join-Path $EvidenceRoot $required))){$health.healthy=$false}}
+            WriteSafeEvidence (Join-Path $EvidenceRoot 'staging-health.json') $health
+            WriteSafeEvidence (Join-Path $EvidenceRoot 'handle-evidence-summary.json') $handleSummaries.ToArray()
+            WriteSafeEvidence (Join-Path $EvidenceRoot 'handle-evidence-limits.json') @{rawStdoutRetained=$false;rawStderrRetained=$false;positiveOwnerLineProofRetained=$false;handleExitAndTimingAreNotOwnerProof=$true;inventoryEntryNamesRetained=$false}
+            return [bool]$health.healthy
+          }
+          $report=Join-Path $env:RUNNER_TEMP 'pear-ebusy-report'
+          $evidence=Join-Path $env:RUNNER_TEMP 'pear-music-body-evidence'
+          if(-not (StageMusicEvidence $report $evidence $env:EXPECTED_DIAGNOSTIC_HEAD)){exit 1}
+      - name: Preserve safe body evidence including staging health
+        if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: windows-scrobbler-ebusy-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/pear-ebusy-report/*.json
-            ${{ runner.temp }}/pear-ebusy-report/*.jsonl
-            ${{ runner.temp }}/pear-ebusy-report/*.log
-            ${{ runner.temp }}/pear-ebusy-report/*.txt
-            ${{ runner.temp }}/pear-ebusy-report/*.diagnostic-error
+          name: windows-music-native-body-${{ github.run_id }}
+          path: ${{ runner.temp }}/pear-music-body-evidence
           if-no-files-found: error
-          retention-days: 14
-      - name: Preserve only reviewed safe music evidence
-        if: always() && inputs.measurement_scope == 'music-native-c1-f2'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
-        with:
-          name: windows-music-native-discovery-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/pear-ebusy-report/preflight-result.json
-            ${{ runner.temp }}/pear-ebusy-report/preflight-source-manifest.json
-            ${{ runner.temp }}/pear-ebusy-report/source-before.json
-            ${{ runner.temp }}/pear-ebusy-report/source-after.json
-            ${{ runner.temp }}/pear-ebusy-report/source-verification-error.json
-            ${{ runner.temp }}/pear-ebusy-report/driver-error.json
-            ${{ runner.temp }}/pear-ebusy-report/diagnostic-files.json
-            ${{ runner.temp }}/pear-ebusy-report/resolved-environment.json
-            ${{ runner.temp }}/pear-ebusy-report/host-carrier-0.json
-            ${{ runner.temp }}/pear-ebusy-report/host-carrier-7.json
-            ${{ runner.temp }}/pear-ebusy-report/carrier-health.json
-            ${{ runner.temp }}/pear-ebusy-report/focused-discovery-health.json
-            ${{ runner.temp }}/pear-ebusy-report/focused-discovery-stream-health.json
-            ${{ runner.temp }}/pear-ebusy-report/diagnostic-health.json
-            ${{ runner.temp }}/pear-ebusy-report/outcome.json
-            ${{ runner.temp }}/pear-ebusy-report/diagnostic-head.txt
-          if-no-files-found: warn
           retention-days: 14
