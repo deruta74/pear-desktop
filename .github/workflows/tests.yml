@@ -1,52 +1,42 @@
-name: Regression tests
+name: PR61 owned CIM latency diagnostic (not regression CI)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
   workflow_dispatch:
+    inputs:
+      expected_carrier_sha:
+        description: Exact reviewed signed diagnostic carrier commit (40 hex)
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: pr61-owned-cim-latency-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+  owned-cim-latency:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/diagnostic/pr61-owned-cim-latency' && github.sha == inputs.expected_carrier_sha
+    runs-on: windows-latest
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
-        with:
-          version: 11
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
-          node-version: 24.x
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install virtual display
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
-      - run: pnpm build
-      - name: CI test grouping contracts
-        run: node --test scripts/ci-test-groups.node.cjs
-      - name: Run Linux tests in a virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/run-ci-tests.cjs
-      - name: Run macOS and Windows tests
-        if: runner.os != 'Linux'
-        run: node scripts/run-ci-tests.cjs
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
+          node-version: 24.21.0
+      - name: Five bounded owned-only PowerShell latency observations
+        shell: cmd
+        run: node .github/diagnostics/pr61-owned-cim-latency.cjs --output "%RUNNER_TEMP%\pr61-owned-cim-latency.json"
+      - name: Preserve diagnostic evidence (not PR regression result)
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: pr61-owned-cim-latency-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pr61-owned-cim-latency.json
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: false
