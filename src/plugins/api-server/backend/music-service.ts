@@ -16,6 +16,7 @@ import {
   type MusicInvocation,
   type MusicAccessOwner,
   type MusicAccessBinding,
+  type MusicSessionOwner,
 } from './music-access';
 import {
   createPublicCommentsWeb,
@@ -212,7 +213,12 @@ function waitOwned<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
     signal.reason instanceof MusicServiceError
       ? signal.reason
       : new MusicServiceError('retired');
-  if (signal.aborted) return Promise.reject(reason());
+  if (signal.aborted) {
+    // The action may synchronously retire its lease before returning a rejected
+    // promise. Observe that promise even though its caller is already retired.
+    promise.catch(() => {});
+    return Promise.reject(reason());
+  }
   return new Promise((resolve, reject) => {
     const abort = () => reject(reason());
     signal.addEventListener('abort', abort, { once: true });
@@ -240,6 +246,11 @@ export class MusicService {
   private cacheTimer?: ReturnType<typeof setTimeout>;
   private readonly cursors = new Map<string, Cursor>();
   private readonly references = new Map<string, TargetReference>();
+  private readonly retiredSessions = new WeakSet<MusicSessionOwner>();
+  private readonly sessionLeases = new Map<
+    MusicSessionOwner,
+    Set<AbortController>
+  >();
   constructor(private readonly runtime: MusicRuntime) {
     this.config = { ...runtime.config };
     this.grants = runtime.grants;
@@ -306,6 +317,19 @@ export class MusicService {
         this.revision === revision &&
         this.broker.isCurrent(admission),
     };
+  }
+  /** Exact main-owned session identity is terminal, regardless of later guard results. */
+  retireSession(owner: MusicSessionOwner): void {
+    this.retiredSessions.add(owner);
+    const controllers = this.sessionLeases.get(owner);
+    this.sessionLeases.delete(owner);
+    for (const controller of controllers ?? []) controller.abort();
+    for (const [id, cursor] of this.cursors)
+      if (cursor.access.session === owner) this.cursors.delete(id);
+    for (const [id, reference] of this.references)
+      if (reference.access.session === owner) this.references.delete(id);
+    this.scheduleCacheCleanup();
+    // Session-bound mutation receipts do not exist until the phase 3 ledger migration.
   }
   configure(config: APIServerConfig) {
     this.operations.retire(this);
@@ -399,6 +423,8 @@ export class MusicService {
     const { token, transport, resource, signal, session } = invocation;
     const revision = this.revision,
       serviceSignal = this.scope.signal;
+    if (session && this.retiredSessions.has(session))
+      return failMusic('retired');
     const owner = this.accessOwner(transport, resource);
     if (!owner || (transport === 'rest' && session))
       return failMusic('unavailable');
@@ -406,7 +432,10 @@ export class MusicService {
       { token, transport, resource, signal, session },
       owner,
     );
-    if (!musicAccessCurrent(access)) return failMusic('unavailable');
+    const accessCurrent = musicAccessCurrent(access);
+    if (session && this.retiredSessions.has(session))
+      return failMusic('retired');
+    if (!accessCurrent) return failMusic('unavailable');
     const admission = this.broker.capture(),
       deadline = Math.min(
         this.now() + (currentRead ? 5000 : 15000),
@@ -423,6 +452,7 @@ export class MusicService {
     const unchanged = () =>
       !joined.aborted &&
       !signal.aborted &&
+      (!session || !this.retiredSessions.has(session)) &&
       this.sharedAvailable() &&
       revision === this.revision &&
       this.scope.signal === serviceSignal;
@@ -445,6 +475,12 @@ export class MusicService {
     let detach = () => {},
       timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      if (session) {
+        const controllers =
+          this.sessionLeases.get(session) ?? new Set<AbortController>();
+        controllers.add(controller);
+        this.sessionLeases.set(session, controllers);
+      }
       timer = setTimeout(
         () => controller.abort(new MusicServiceError('timeout')),
         Math.max(0, deadline - this.now()),
@@ -537,6 +573,11 @@ export class MusicService {
     } finally {
       clearTimeout(timer);
       detach();
+      if (session) {
+        const controllers = this.sessionLeases.get(session);
+        controllers?.delete(controller);
+        if (controllers?.size === 0) this.sessionLeases.delete(session);
+      }
     }
   }
   private async native(lease: Lease, input: MusicReadInput) {
@@ -552,7 +593,8 @@ export class MusicService {
       },
     );
     const owner = this.broker.resultOwner(value);
-    if (!lease.current() || !owner?.current()) return failMusic('retired');
+    if (!lease.current() || !owner?.current() || !lease.current())
+      return failMusic('retired');
     return { value, owner };
   }
   prepare(
@@ -1030,6 +1072,7 @@ export class MusicService {
       this.retireMetadata(binding);
       return failMusic('retired');
     }
+    if (!lease.current()) return failMusic('retired');
   }
   lyrics(
     token: unknown,
@@ -1038,11 +1081,22 @@ export class MusicService {
     deadlineAt?: number,
   ): Promise<LyricsResult> {
     const target = parseMusicLyricsInput(value);
-    return this.admitted(
-      token,
+    return this.lyricsFor(
+      this.localInvocation(token, signal),
+      target,
+      deadlineAt,
+    );
+  }
+  lyricsFor(
+    invocation: MusicInvocation,
+    value: unknown,
+    deadlineAt?: number,
+  ): Promise<LyricsResult> {
+    const target = parseMusicLyricsInput(value);
+    return this.admittedFor(
+      invocation,
       'catalog.read',
       [],
-      signal,
       false,
       async (lease) => {
         const captured = await this.native(lease, {
@@ -1064,11 +1118,22 @@ export class MusicService {
     deadlineAt?: number,
   ): Promise<MusicPage> {
     const input = parseMusicRelatedInput(value);
-    return this.admitted(
-      token,
+    return this.relatedFor(
+      this.localInvocation(token, signal),
+      input,
+      deadlineAt,
+    );
+  }
+  relatedFor(
+    invocation: MusicInvocation,
+    value: unknown,
+    deadlineAt?: number,
+  ): Promise<MusicPage> {
+    const input = parseMusicRelatedInput(value);
+    return this.admittedFor(
+      invocation,
       'catalog.read',
       [],
-      signal,
       false,
       async (lease) => {
         if ('cursor' in input)
@@ -1108,14 +1173,20 @@ export class MusicService {
     maxRequests = 5,
   ) {
     await this.probeMetadata(lease, binding, owner);
-    if (!lease.current() || !owner.current()) return failMusic('retired');
+    if (!lease.current() || !owner.current() || !lease.current())
+      return failMusic('retired');
     const result = await this.broker.runOwned(
       lease.admission,
       lease.principal.id,
       async (context) => {
         const check = () => {
           if (this.now() >= lease.deadline) return failMusic('timeout');
-          if (!context.current() || !lease.current() || !owner.current())
+          if (
+            !context.current() ||
+            !lease.current() ||
+            !owner.current() ||
+            !lease.current()
+          )
             return failMusic('retired');
         };
         check();
@@ -1141,10 +1212,11 @@ export class MusicService {
       {
         signal: lease.signal,
         deadline: lease.deadline,
-        isCurrent: () => lease.current() && owner.current(),
+        isCurrent: () => lease.current() && owner.current() && lease.current(),
       },
     );
-    if (!lease.current() || !owner.current()) return failMusic('retired');
+    if (!lease.current() || !owner.current() || !lease.current())
+      return failMusic('retired');
     await this.probeMetadata(lease, binding, owner);
     return parseNativeCommentsMetadata(result);
   }
@@ -1155,12 +1227,23 @@ export class MusicService {
     deadlineAt?: number,
   ): Promise<CommentPage> {
     const input = parseMusicCommentsInput(value);
+    return this.commentsFor(
+      this.localInvocation(token, signal),
+      input,
+      deadlineAt,
+    );
+  }
+  commentsFor(
+    invocation: MusicInvocation,
+    value: unknown,
+    deadlineAt?: number,
+  ): Promise<CommentPage> {
+    const input = parseMusicCommentsInput(value);
     const deadline = Math.min(this.now() + 15000, deadlineAt ?? Infinity);
-    return this.admitted(
-      token,
+    return this.admittedFor(
+      invocation,
       'comments.read',
       [],
-      signal,
       false,
       async (lease) => {
         if ('cursor' in input)
@@ -1212,7 +1295,8 @@ export class MusicService {
     offset: number,
     limit: number,
   ): CommentPage {
-    if (!lease.current() || !owner.current()) return failMusic('retired');
+    if (!lease.current() || !owner.current() || !lease.current())
+      return failMusic('retired');
     const comments = source.comments.slice(offset, offset + limit);
     let page: CommentPage;
     for (;;) {
@@ -1271,7 +1355,7 @@ export class MusicService {
         ) +
         musicAccessBytes(cursor.access) +
         64;
-      this.allocate(cursor);
+      this.allocate(cursor, lease);
     }
     this.scheduleCacheCleanup();
     return structuredClone(page);
@@ -1301,7 +1385,9 @@ export class MusicService {
       cursor.admission.frame !== lease.admission.frame ||
       cursor.admission.generation !== lease.admission.generation ||
       !cursor.owner.current() ||
-      !this.grants.isCurrent(cursor.principal, cursor.scope)
+      !lease.current() ||
+      !this.grants.isCurrent(cursor.principal, cursor.scope) ||
+      !lease.current()
     )
       return failMusic('retired');
     if (limit !== cursor.limit) return failMusic('invalid');
@@ -1309,6 +1395,7 @@ export class MusicService {
     cursor.busy = true;
     try {
       await this.probeMetadata(lease, cursor.binding, cursor.owner);
+      if (!lease.current()) return failMusic('retired');
       if (cursor.replay) return structuredClone(cursor.replay);
       let source = cursor.source,
         offset = cursor.offset;
@@ -1333,7 +1420,8 @@ export class MusicService {
           });
           if (
             captured.owner.epoch !== cursor.owner.epoch ||
-            !cursor.owner.current()
+            !cursor.owner.current() ||
+            !lease.current()
           )
             return failMusic('retired');
           result = parseNativeCommentsMetadata(captured.value);
@@ -1400,11 +1488,18 @@ export class MusicService {
     signal?: AbortSignal,
   ): Promise<QueuePage> {
     const input = parseMusicQueueInput(value);
-    return this.admitted(
-      token,
+    return this.queueFor(this.localInvocation(token, signal), input);
+  }
+  queueFor(
+    invocation: MusicInvocation,
+    value: unknown,
+    deadlineAt?: number,
+  ): Promise<QueuePage> {
+    const input = parseMusicQueueInput(value);
+    return this.admittedFor(
+      invocation,
       'playback.read',
       [],
-      signal,
       true,
       async (lease) => {
         if (!input.cursor) {
@@ -1434,9 +1529,12 @@ export class MusicService {
           !musicAccessCurrent(cursor.access) ||
           !lease.current() ||
           !cursor.owner.current() ||
+          !lease.current() ||
           !this.grants.isCurrent(cursor.principal, cursor.scope) ||
+          !lease.current() ||
           (cursor.issuerScope !== undefined &&
-            !this.grants.isCurrent(cursor.principal, cursor.issuerScope))
+            !this.grants.isCurrent(cursor.principal, cursor.issuerScope)) ||
+          !lease.current()
         )
           return failMusic('retired');
         if (input.limit !== cursor.limit) return failMusic('invalid');
@@ -1449,6 +1547,7 @@ export class MusicService {
             fresh.queueRevision !== cursor.source.queueRevision ||
             captured.owner.epoch !== cursor.owner.epoch ||
             !cursor.owner.current() ||
+            !lease.current() ||
             JSON.stringify(fresh) !== JSON.stringify(cursor.source)
           )
             return failMusic('retired');
@@ -1472,6 +1571,7 @@ export class MusicService {
           cursor.busy = false;
         }
       },
+      deadlineAt,
     );
   }
   private queuePage(
@@ -1481,7 +1581,8 @@ export class MusicService {
     offset: number,
     limit: number,
   ): QueuePage {
-    if (!lease.current() || !owner.current()) return failMusic('retired');
+    if (!lease.current() || !owner.current() || !lease.current())
+      return failMusic('retired');
     const items = source.items
       .slice(offset, offset + limit)
       .map((item, index) => ({
@@ -1528,7 +1629,7 @@ export class MusicService {
         utf8Bytes(JSON.stringify({ ...cursor, access: undefined })) +
         musicAccessBytes(cursor.access) +
         64;
-      this.allocate(cursor);
+      this.allocate(cursor, lease);
       this.scheduleCacheCleanup();
     }
     return structuredClone(result);
@@ -1546,32 +1647,54 @@ export class MusicService {
   browse(token: unknown, value: unknown, signal?: AbortSignal) {
     return this.catalog(token, parseMusicInput(value, 'browse'), signal);
   }
+  browseFor(invocation: MusicInvocation, value: unknown, deadlineAt?: number) {
+    return this.catalogFor(
+      invocation,
+      parseMusicInput(value, 'browse'),
+      deadlineAt,
+    );
+  }
   home(
     token: unknown,
     value: unknown,
     signal?: AbortSignal,
   ): Promise<MusicPage> {
-    return this.collection(token, value, 'home', signal);
+    const input = parseMusicCollectionInput(value);
+    return this.homeFor(this.localInvocation(token, signal), input);
+  }
+  homeFor(
+    invocation: MusicInvocation,
+    value: unknown,
+    deadlineAt?: number,
+  ): Promise<MusicPage> {
+    return this.collectionFor(invocation, value, 'home', deadlineAt);
   }
   library(
     token: unknown,
     value: unknown,
     signal?: AbortSignal,
   ): Promise<MusicPage> {
-    return this.collection(token, value, 'library', signal);
+    const input = parseMusicCollectionInput(value);
+    return this.libraryFor(this.localInvocation(token, signal), input);
   }
-  private collection(
-    token: unknown,
+  libraryFor(
+    invocation: MusicInvocation,
+    value: unknown,
+    deadlineAt?: number,
+  ): Promise<MusicPage> {
+    return this.collectionFor(invocation, value, 'library', deadlineAt);
+  }
+  private collectionFor(
+    invocation: MusicInvocation,
     value: unknown,
     route: 'home' | 'library',
-    signal?: AbortSignal,
+    deadlineAt?: number,
   ): Promise<MusicPage> {
     const input = parseMusicCollectionInput(value);
-    return this.admitted(
-      token,
+    return this.admittedFor(
+      invocation,
       route === 'home' ? 'personalized.read' : 'library.read',
       [],
-      signal,
       false,
       async (lease) => {
         if (input.cursor)
@@ -1592,6 +1715,7 @@ export class MusicService {
           seenPlaylistIds,
         );
       },
+      deadlineAt,
     );
   }
   /** Bounded playlist-only first-occurrence projection; preserve shelf intersections. */
@@ -1686,12 +1810,15 @@ export class MusicService {
               !musicAccessCurrent(reference.access) ||
               !lease.current() ||
               !reference.owner.current() ||
+              !lease.current() ||
               !this.grants.isCurrent(reference.principal, reference.scope) ||
+              !lease.current() ||
               (reference.issuerScope !== undefined &&
                 !this.grants.isCurrent(
                   reference.principal,
                   reference.issuerScope,
-                ))
+                )) ||
+              !lease.current()
             )
               return failMusic('retired');
             if (reference.busy) return failMusic('busy');
@@ -1714,12 +1841,15 @@ export class MusicService {
               current: () =>
                 originLease.current() &&
                 reference.owner.current() &&
+                originLease.current() &&
                 this.grants.isCurrent(reference.principal, reference.scope) &&
+                originLease.current() &&
                 (!reference.issuerScope ||
-                  this.grants.isCurrent(
+                  (this.grants.isCurrent(
                     reference.principal,
                     reference.issuerScope,
-                  )),
+                  ) &&
+                    originLease.current())),
             };
             nativeInput = {
               operation: 'browse',
@@ -1803,8 +1933,10 @@ export class MusicService {
     );
     this.cacheTimer.unref?.();
   }
-  private allocate(cursor: Cursor) {
+  private allocate(cursor: Cursor, lease: Lease) {
     this.sweep();
+    // Grant guards in sweep can synchronously retire the issuing session.
+    if (!lease.current()) return failMusic('retired');
     if (
       this.cursors.size >= MUSIC_LIMITS.globalCursors ||
       [...this.cursors.values()].filter(
@@ -1824,7 +1956,8 @@ export class MusicService {
     limit: number,
     seenPlaylistIds?: string[],
   ): MusicPage {
-    if (!lease.current() || !owner.current()) return failMusic('retired');
+    if (!lease.current() || !owner.current() || !lease.current())
+      return failMusic('retired');
     const sliced = sliceMusicSource(source, offset, limit);
     const recipeByIndex = new Map(
       source.targetRecipes.map((recipe) => [recipe.itemIndex, recipe]),
@@ -1937,8 +2070,9 @@ export class MusicService {
         MUSIC_LIMITS.cacheBytes
       )
         return failMusic('budget');
-      this.allocate(cursor);
+      this.allocate(cursor, lease);
     }
+    if (!lease.current()) return failMusic('retired');
     for (const reference of newReferences)
       this.references.set(reference.id, reference);
     this.scheduleCacheCleanup();
@@ -1968,9 +2102,12 @@ export class MusicService {
       !musicAccessCurrent(cursor.access) ||
       !lease.current() ||
       !cursor.owner.current() ||
+      !lease.current() ||
       !this.grants.isCurrent(cursor.principal, cursor.scope) ||
+      !lease.current() ||
       (cursor.issuerScope !== undefined &&
-        !this.grants.isCurrent(cursor.principal, cursor.issuerScope))
+        !this.grants.isCurrent(cursor.principal, cursor.issuerScope)) ||
+      !lease.current()
     )
       return failMusic('retired');
     if (limit !== cursor.limit) return failMusic('invalid');
@@ -1982,12 +2119,14 @@ export class MusicService {
         issuerScope: cursor.issuerScope,
         current: () =>
           originLease.current() &&
-          this.grants.isCurrent(cursor.principal, cursor.issuerScope!),
+          this.grants.isCurrent(cursor.principal, cursor.issuerScope!) &&
+          originLease.current(),
       };
     cursor.busy = true;
     try {
       if ('binding' in cursor.context && cursor.context.binding)
         await this.probeMetadata(lease, cursor.context.binding, cursor.owner);
+      if (!lease.current()) return failMusic('retired');
       if (cursor.replay) return structuredClone(cursor.replay);
       let seenPlaylistIds = cursor.seenPlaylistIds;
       let source = cursor.source,
@@ -2030,7 +2169,11 @@ export class MusicService {
             captured.value,
             source.continuation.endpoint,
           );
-        if (owner.epoch !== captured.owner.epoch || !owner.current())
+        if (
+          owner.epoch !== captured.owner.epoch ||
+          !owner.current() ||
+          !lease.current()
+        )
           return failMusic('retired');
         if (cursor.context.route === 'library') {
           const projected = this.librarySource(source, seenPlaylistIds ?? []);
