@@ -93,7 +93,12 @@ if (!process.versions.electron && process.env.PEAR_EBUSY_REPORT_ROOT) {
     const child = Reflect.apply(originalSpawn, this, args);
     const options = Array.isArray(args[1]) ? args[2] : args[1];
     const directory = fixtureRoot(options?.cwd);
-    if (directory) observe(child, 'fixture-launcher', { directory, executable: path.basename(String(args[0])) });
+    if (directory) {
+      const basename = typeof args[0] === 'string' && !options?.shell ? path.basename(args[0]) : null;
+      const executable = options?.shell ? 'shell-launch'
+        : basename && /^[A-Za-z0-9._-]{1,80}$/.test(basename) ? basename : 'unknown-executable';
+      observe(child, 'fixture-launcher', { directory, executable });
+    }
     return child;
   };
   const originalExecFile = cp.execFile;

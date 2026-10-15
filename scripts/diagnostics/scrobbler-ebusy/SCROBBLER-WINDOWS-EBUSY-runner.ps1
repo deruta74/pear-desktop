@@ -7,29 +7,105 @@ $utf8=[Text.UTF8Encoding]::new($false)
 [void][IO.Directory]::CreateDirectory($ReportRoot)
 function JsonFile([string]$Name,$Value) { [IO.File]::WriteAllText((Join-Path $ReportRoot $Name),($Value | ConvertTo-Json -Depth 16),$utf8) }
 $script:sourceGitExecutable=$null
-function InvokeSourceGit([string[]]$GitArgs) {
+function InvokeSourceGit([string[]]$GitArgs,[switch]$Raw) {
   if ([string]::IsNullOrWhiteSpace($script:sourceGitExecutable)) {
     $application=Get-Command -Name 'git.exe' -CommandType Application -ErrorAction Stop | Select-Object -First 1
     $script:sourceGitExecutable=$application.Source
     if (-not [IO.Path]::IsPathFullyQualified($script:sourceGitExecutable)) { throw 'External Git application path is not absolute.' }
   }
-  # Absolute Application path bypasses PowerShell function/alias resolution.
-  $value=& $script:sourceGitExecutable -C $SourceRoot @GitArgs 2>&1
-  if ($LASTEXITCODE -ne 0) { throw 'Source Git query failed.' }
-  return ($value -join "`n").Trim()
+  # Preserve NUL-delimited filenames without native line splitting or shell quoting.
+  $info=[Diagnostics.ProcessStartInfo]::new(); $info.FileName=$script:sourceGitExecutable
+  $info.UseShellExecute=$false; $info.RedirectStandardOutput=$true; $info.RedirectStandardError=$true
+  $info.StandardOutputEncoding=[Text.UTF8Encoding]::new($false,$true)
+  foreach ($arg in @('-C',$SourceRoot)+$GitArgs) { $info.ArgumentList.Add($arg) }
+  $child=[Diagnostics.Process]::new(); $child.StartInfo=$info
+  try {
+    [void]$child.Start()
+    $stdout=$child.StandardOutput.ReadToEndAsync(); $stderr=$child.StandardError.ReadToEndAsync()
+    [void]$child.WaitForExit(); $value=$stdout.GetAwaiter().GetResult(); [void]$stderr.GetAwaiter().GetResult()
+    if ($child.ExitCode -ne 0) { throw 'Source Git query failed.' }
+    if ($Raw) { return $value }
+    return $value.Trim()
+  } finally { $child.Dispose() }
+}
+function GitPaths([string]$Raw) {
+  if ($Raw.Length -eq 0) { return }
+  if ($Raw[$Raw.Length-1] -ne [char]0) { throw 'Invalid source Git path protocol.' }
+  $parts=$Raw.Split([char]0)
+  for ($i=0; $i -lt $parts.Length-1; $i++) {
+    if ($parts[$i].Length -eq 0) { throw 'Invalid source Git path protocol.' }
+    $parts[$i]
+  }
+}
+function ClassifySourceStatus([string]$Raw,[string[]]$Tracked) {
+  $result=@{valid=$true; checkoutClean=($Raw.Length -eq 0); entries=0; trackedEntries=0; untrackedEntries=0;
+    knownPlaywrightLastRun=0; unclassifiedEntries=0; statusCodes=@{}}
+  $known=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach ($path in $Tracked) { [void]$known.Add($path) }
+  try {
+    $parts=@(GitPaths $Raw)
+    for ($i=0; $i -lt $parts.Count; $i++) {
+      $record=$parts[$i]
+      if ($record.Length -lt 4 -or $record[2] -ne ' ') { throw 'Invalid status record.' }
+      $code=$record.Substring(0,2); $path=$record.Substring(3)
+      if ($code -cnotmatch '\A[ MTADRCU?!]{2}\z' -or $code -in @('  ','!!') -or
+          (($code.Contains('?') -or $code.Contains('!')) -and $code -cne '??')) { throw 'Invalid status code.' }
+      if ($code.Contains('R') -or $code.Contains('C')) {
+        $i++; if ($i -ge $parts.Count) { throw 'Missing status paired path.' }
+      }
+      $result.entries++
+      if (-not $result.statusCodes.ContainsKey($code)) { $result.statusCodes[$code]=0 }; $result.statusCodes[$code]++
+      if ($code -ceq '??') {
+        $result.untrackedEntries++
+        if ($path -ceq 'test-results/.last-run.json') { $result.knownPlaywrightLastRun++ }
+        else { $result.unclassifiedEntries++ }
+      } elseif ($known.Contains($path)) { $result.trackedEntries++ }
+      else { $result.unclassifiedEntries++ }
+    }
+  } catch { $result.valid=$false; $result.checkoutClean=$false }
+  return $result
 }
 function SourceManifest {
-  $head=InvokeSourceGit -GitArgs @('rev-parse','HEAD'); $tree=InvokeSourceGit -GitArgs @('rev-parse','HEAD^{tree}')
-  if ($head -cne '1c2319c386e33c4032a4d45a7f77b6fc9ab0dd29' -or $tree -cne '5e25d905e3c1643c9796a3c2a7452e0ae56cd4e2') { throw 'Source identity does not match exact reviewed source.' }
-  $status=InvokeSourceGit -GitArgs @('status','--porcelain=v1')
-  if ($status) { throw 'Source checkout is not clean.' }
-  $hashes=@{}
-  foreach ($relative in (InvokeSourceGit -GitArgs @('ls-files')).Split("`n")) {
-    $hashes[$relative]=(Get-FileHash -LiteralPath (Join-Path $SourceRoot $relative) -Algorithm SHA256).Hash.ToLowerInvariant()
+  $errors=[Collections.Generic.List[string]]::new(); $head=$null; $tree=$null; $tracked=@(); $listed=$false
+  # Only the pinned manifest grants permission to serialize a source path name.
+  $trusted=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  try {
+    $expected=Get-Content -LiteralPath (Join-Path $DiagnosticRoot 'SCROBBLER-WINDOWS-EBUSY-SOURCE-MANIFEST.json') -Raw | ConvertFrom-Json
+    if ($expected.head -cne '1c2319c386e33c4032a4d45a7f77b6fc9ab0dd29' -or $expected.tree -cne '5e25d905e3c1643c9796a3c2a7452e0ae56cd4e2') { throw 'Trusted source manifest identity mismatch.' }
+    foreach ($property in $expected.sourceSha256.PSObject.Properties) { [void]$trusted.Add($property.Name) }
+  } catch { $errors.Add('trusted-source-manifest'); $trusted.Clear() }
+  try { $head=InvokeSourceGit -GitArgs @('rev-parse','HEAD') } catch { $errors.Add('head-query') }
+  try { $tree=InvokeSourceGit -GitArgs @('rev-parse','HEAD^{tree}') } catch { $errors.Add('tree-query') }
+  try { $tracked=@(GitPaths (InvokeSourceGit -GitArgs @('ls-files','-z') -Raw)); $listed=$true } catch { $errors.Add('tracked-list') }
+  $hashes=@{}; $opaqueHashes=@{}; $identities=@{}; $hashErrors=0; $hashedFiles=0; $identityErrors=0
+  foreach ($relative in $tracked) {
+    $contentHash=$null
+    try { $contentHash=(Get-FileHash -LiteralPath (Join-Path $SourceRoot $relative) -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant(); $hashedFiles++ }
+    catch { $hashErrors++ }
+    # Git paths cannot contain NUL. The fixed domain plus NUL separates path IDs
+    # from content hashes; the separate map prevents public-name/opaque-key overlap.
+    $identity='sha256-path-v1:'+([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes("pear-desktop-source-path-v1`0"+$relative)))).ToLowerInvariant()
+    if ($identities.ContainsKey($identity)) { $identityErrors++ }
+    else { $identities[$identity]=$relative }
+    if ($trusted.Contains($relative)) { $hashes[$relative]=$contentHash }
+    else { $opaqueHashes[$identity]=$contentHash }
   }
-  return @{head=$head; tree=$tree; sha256=$hashes; trackedFiles=$hashes.Count; statusPorcelain=$status}
+  if ($hashErrors -gt 0) { $errors.Add('tracked-file-hash') }
+  if ($identityErrors -gt 0) { $errors.Add('tracked-path-identity-collision-or-duplicate') }
+  $status=@{valid=$false; checkoutClean=$false}
+  try {
+    $rawStatus=InvokeSourceGit -GitArgs @('status','--porcelain=v1','-z','--untracked-files=all') -Raw
+    $status=ClassifySourceStatus -Raw $rawStatus -Tracked @($trusted)
+    if (-not $status.valid) { $errors.Add('status-protocol') }
+  } catch { $errors.Add('status-query') }
+  return @{head=$head; tree=$tree; sha256=$hashes; opaqueSha256=$opaqueHashes; opaquePathSchema='sha256-path-v1'; trackedFiles=$tracked.Count; hashedFiles=$hashedFiles;
+    identityValid=($head -ceq '1c2319c386e33c4032a4d45a7f77b6fc9ab0dd29' -and $tree -ceq '5e25d905e3c1643c9796a3c2a7452e0ae56cd4e2');
+    trackedHashingComplete=($listed -and $hashErrors -eq 0 -and $identityErrors -eq 0 -and ($hashes.Count+$opaqueHashes.Count) -eq $tracked.Count);
+    checkoutClean=[bool]$status.checkoutClean; statusClassification=$status; hashErrorCount=$hashErrors; verificationErrors=$errors.ToArray()}
 }
 function VerifyExpected($Actual) {
+  if (-not $Actual.identityValid -or -not $Actual.trackedHashingComplete -or $Actual.verificationErrors.Count -ne 0) { throw 'Source verification incomplete or identity mismatch.' }
+  if (-not $Actual.checkoutClean) { throw 'Source checkout is not clean.' }
   $expected=Get-Content -LiteralPath (Join-Path $DiagnosticRoot 'SCROBBLER-WINDOWS-EBUSY-SOURCE-MANIFEST.json') -Raw | ConvertFrom-Json
   if ($expected.head -cne $Actual.head -or $expected.tree -cne $Actual.tree) { throw 'Expected manifest identity mismatch.' }
   foreach ($p in $expected.sourceSha256.PSObject.Properties) {
@@ -57,7 +133,7 @@ if ($PreflightOnly) {
     VerifyExpected $preflight
     JsonFile 'preflight-source-manifest.json' $preflight
     JsonFile 'preflight-result.json' @{healthy=$true; mode='PreflightOnly'; head=$preflight.head; tree=$preflight.tree;
-      sourceClean=([string]::IsNullOrEmpty($preflight.statusPorcelain)); trackedFiles=$preflight.trackedFiles;
+      sourceClean=[bool]$preflight.checkoutClean; trackedFiles=$preflight.trackedFiles;
       expectedSourceSubsetFiles=9; gitExecutable=$script:sourceGitExecutable; sourceManifestFile='preflight-source-manifest.json';
       collectorStarted=$false; handleStarted=$false; dependenciesStarted=$false; nativeTestsStarted=$false; utc=[DateTime]::UtcNow.ToString('o')}
     Write-Host 'Exact source-driver preflight passed; no collector, Handle, dependencies or tests ran in this mode.'
@@ -90,10 +166,35 @@ function NativeRun([string]$Name,[string]$Command) {
   Get-Content -LiteralPath (Join-Path $ReportRoot ($Name+'.stderr.log')) -Tail 10 | Write-Host
   return [int]$code
 }
+function DiscoverySpecs($Suites) {
+  foreach ($suite in $Suites) {
+    if ($null -ne $suite.PSObject.Properties['specs']) { foreach ($spec in $suite.specs) { $spec } }
+    if ($null -ne $suite.PSObject.Properties['suites']) { DiscoverySpecs $suite.suites }
+  }
+}
+function VerifyFocusedDiscovery($Discovery,[string]$OutputDirectory) {
+  $specs=@(DiscoverySpecs $Discovery.suites)
+  if (@($Discovery.errors).Count -ne 0 -or $specs.Count -ne 1) { throw 'Focused discovery did not select exactly one error-free spec.' }
+  $spec=$specs[0]; $tests=@($spec.tests)
+  if ($spec.file -cne 'tests/scrobbler-auth-window-native.test.ts' -or $spec.line -ne 757 -or $spec.column -ne 1 -or
+      $spec.title -cne 'a guestless SSO child load failure while still owned retires authentication' -or
+      $spec.id -cne '9c30ef01ac55434c7d49-f865dd17fb43f24b848a' -or @($spec.tags).Count -ne 0 -or $tests.Count -ne 1) { throw 'Focused discovery identity mismatch.' }
+  if ($tests[0].projectName -cne '' -or @($tests[0].results).Count -ne 0) { throw 'Focused discovery contains an unexpected project or execution result.' }
+  $projects=@($Discovery.config.projects)
+  if ($projects.Count -ne 1 -or -not [IO.Path]::IsPathFullyQualified([string]$projects[0].outputDir) -or
+      -not [string]::Equals([IO.Path]::GetFullPath([string]$projects[0].outputDir),$OutputDirectory,[StringComparison]::OrdinalIgnoreCase)) { throw 'Focused discovery output is not the owned report directory.' }
+  return @{healthy=$true; selectedSpecs=1; selectedTests=1; executedResults=0; file=$spec.file; line=$spec.line; column=$spec.column; id=$spec.id; title=$spec.title; outputDirectory=$OutputDirectory}
+}
+# Preflight artifacts may exist. An earlier measurement must never be reused or deleted.
+foreach ($name in @('source-before.json','collector.ready','collector.stop','playwright-output','focused-discovery.stdout.log','host-carrier-0.json','host-carrier-7.json')) {
+  if (Test-Path -LiteralPath (Join-Path $ReportRoot $name)) { throw 'Diagnostic measurement report directory is not fresh.' }
+}
+if (@(Get-ChildItem -LiteralPath $ReportRoot -Filter 'worker-*.jsonl' -File).Count -ne 0) { throw 'Diagnostic worker evidence already exists.' }
 $collector=$null; $collectorStdout=$null; $collectorStderr=$null; $copyOut=$null; $copyErr=$null
 $oldNodeOptions=$env:NODE_OPTIONS; $oldReportRoot=$env:PEAR_EBUSY_REPORT_ROOT
 $fullCode=$null; $focusedCode=$null; $sourceValid=$false; $diagnosticHealthy=$false
-$carrierQualified=$false
+$trackedSourceUnchanged=$false; $checkoutClean=$false; $sourceVerificationComplete=$false
+$carrierQualified=$false; $discoveryQualified=$false
 $collectorStarted=$false; $fullInvoked=$false; $focusedInvoked=$false; $primaryFailureStage=$null
 $admissionClock=[Diagnostics.Stopwatch]::StartNew()
 $collectorStartup=@{schema=1; parentPid=$PID; clockOriginUtc=[DateTime]::UtcNow.ToString('o'); admissionLimitMs=30000;
@@ -122,10 +223,13 @@ try {
   $preload=Join-Path $ReportRoot 'SCROBBLER-WINDOWS-EBUSY-preload.cjs'
   $preloadForward=$preload.Replace('\','/')
   $carrierForward=(Join-Path $ReportRoot 'SCROBBLER-WINDOWS-EBUSY-carrier.cjs').Replace('\','/')
+  $playwrightOutput=Join-Path $ReportRoot 'playwright-output'
+  if ($playwrightOutput -match '["%!\r\n]') { throw 'Report output path is not safe for the controlled cmd carrier.' }
+  $focusedArguments='tests/scrobbler-auth-window-native.test.ts --grep "a guestless SSO child load failure while still owned retires authentication$" --workers=1 --retries=0 --output "'+$playwrightOutput+'"'
   $env:PEAR_EBUSY_REPORT_ROOT=$ReportRoot
   $env:NODE_OPTIONS=(([string]$oldNodeOptions+' --require="'+$preloadForward+'"').Trim())
   # SAME NativeRun/cmd.exe/env/preload used below by the original tests.
-  $carrierSuffix=' --node-major 24 --preload "'+$preloadForward+'" --literal "owned argument with spaces" --literal-backslash "owned\argument" --grep "^a guestless SSO child load failure while still owned retires authentication$"'
+  $carrierSuffix=' --node-major 24 --preload "'+$preloadForward+'" --literal "owned argument with spaces" --literal-backslash "owned\argument" --grep "a guestless SSO child load failure while still owned retires authentication$" --output "'+$playwrightOutput+'"'
   $driverStage='carrier-exit-zero'
   $carrierZero=NativeRun 'carrier-exit-0' ('node "'+$carrierForward+'" --expected-exit 0'+$carrierSuffix)
   if ($carrierZero -isnot [int] -or $carrierZero -ne 0) { throw 'Host Node carrier zero-exit result is not the expected scalar Int32.' }
@@ -134,9 +238,17 @@ try {
   if ($carrierSeven -isnot [int] -or $carrierSeven -ne 7) { throw 'Host Node carrier controlled-exit result is not the expected scalar Int32.' }
   $carrierTraceZero=Get-Content -LiteralPath (Join-Path $ReportRoot 'host-carrier-0.json') -Raw | ConvertFrom-Json
   $carrierTraceSeven=Get-Content -LiteralPath (Join-Path $ReportRoot 'host-carrier-7.json') -Raw | ConvertFrom-Json
-  if ($carrierTraceZero.healthy -ne $true -or $carrierTraceSeven.healthy -ne $true -or $carrierTraceZero.expectedExit -ne 0 -or $carrierTraceSeven.expectedExit -ne 7) { throw 'Host Node carrier trace validation failed.' }
+  if ($carrierTraceZero.healthy -ne $true -or $carrierTraceSeven.healthy -ne $true -or $carrierTraceZero.expectedExit -ne 0 -or $carrierTraceSeven.expectedExit -ne 7 -or $carrierTraceZero.outputArgumentMatched -ne $true -or $carrierTraceSeven.outputArgumentMatched -ne $true) { throw 'Host Node carrier trace validation failed.' }
   $carrierQualified=$true
   JsonFile 'carrier-health.json' @{healthy=[bool]$carrierQualified; scalarExitZero=[int]$carrierZero; scalarExitSeven=[int]$carrierSeven; nodeMajorRequired=24; exactPreloadLoaded=$true; controlledArgumentsMatched=$true; previousNodeOptionsPreserved=$true; fullOrFocusedTestsRunByCarrier=$false; nativeFixtureOrElectronStartedByCarrier=$false}
+
+  $driverStage='focused-discovery'
+  $discoveryCode=NativeRun 'focused-discovery' ('pnpm exec playwright test '+$focusedArguments+' --list --reporter=json')
+  if ($discoveryCode -isnot [int] -or $discoveryCode -ne 0) { throw 'Focused discovery command did not return scalar exit zero.' }
+  $discovery=Get-Content -LiteralPath (Join-Path $ReportRoot 'focused-discovery.stdout.log') -Raw | ConvertFrom-Json
+  $discoveryHealth=VerifyFocusedDiscovery $discovery $playwrightOutput
+  JsonFile 'focused-discovery-health.json' $discoveryHealth
+  $discoveryQualified=[bool]$discoveryHealth.healthy
 
   $driverStage='handle-provision'
   $toolRoot=Join-Path $ReportRoot 'tool'; [void][IO.Directory]::CreateDirectory($toolRoot)
@@ -182,16 +294,10 @@ try {
   }
   $collectorStartup.endedUtc=[DateTime]::UtcNow.ToString('o'); $collectorStartup.endedMonoMs=$admissionClock.Elapsed.TotalMilliseconds
   JsonFile 'collector-startup.json' $collectorStartup
-  # Full original command FIRST. The collector/preload are observational only.
-  $driverStage='full-suite'
-  $fullInvoked=$true
-  $fullResult=NativeRun 'full-suite' 'pnpm test'
-  if ($fullResult -isnot [int]) { throw 'Full-suite NativeRun result is not a scalar Int32.' }
-  $fullCode=[int]$fullResult
-  # One focused context, even after full-suite failure. Never another full suite.
+  # Exactly one focused body after actual carrier, discovery and collector readiness.
   $driverStage='focused'
   $focusedInvoked=$true
-  $focusedResult=NativeRun 'focused' 'pnpm exec playwright test tests/scrobbler-auth-window-native.test.ts --grep "^a guestless SSO child load failure while still owned retires authentication$" --workers=1 --retries=0 --reporter=line'
+  $focusedResult=NativeRun 'focused' ('pnpm exec playwright test '+$focusedArguments+' --reporter=line')
   if ($focusedResult -isnot [int]) { throw 'Focused NativeRun result is not a scalar Int32.' }
   $focusedCode=[int]$focusedResult
 } catch {
@@ -217,29 +323,37 @@ finally {
     if ($null -ne $collectorStdout) { $collectorStdout.Dispose() }; if ($null -ne $collectorStderr) { $collectorStderr.Dispose() }; $collector.Dispose()
   }
   try {
-    $after=SourceManifest; VerifyExpected $after; JsonFile 'source-after.json' $after
-    $sourceValid=($null -ne (Get-Variable before -ErrorAction SilentlyContinue) -and $before.trackedFiles -eq $after.trackedFiles)
-    if ($sourceValid) { foreach ($name in $before.sha256.Keys) { if (-not $after.sha256.ContainsKey($name) -or $before.sha256[$name] -cne $after.sha256[$name]) { $sourceValid=$false; break } } }
+    $after=SourceManifest; JsonFile 'source-after.json' $after
+    $checkoutClean=[bool]$after.checkoutClean
+    $sourceVerificationComplete=[bool]($after.identityValid -and $after.trackedHashingComplete -and $after.verificationErrors.Count -eq 0)
+    $trackedSourceUnchanged=($null -ne (Get-Variable before -ErrorAction SilentlyContinue) -and $before.trackedHashingComplete -and $after.trackedHashingComplete -and $before.trackedFiles -eq $after.trackedFiles)
+    if ($trackedSourceUnchanged) {
+      foreach ($map in @('sha256','opaqueSha256')) {
+        if ($before[$map].Count -ne $after[$map].Count) { $trackedSourceUnchanged=$false; break }
+        foreach ($name in $before[$map].Keys) { if (-not $after[$map].ContainsKey($name) -or $before[$map][$name] -cne $after[$map][$name]) { $trackedSourceUnchanged=$false; break } }
+        if (-not $trackedSourceUnchanged) { break }
+      }
+    }
+    VerifyExpected $after
+    $sourceValid=[bool]($trackedSourceUnchanged -and $checkoutClean -and $sourceVerificationComplete)
   } catch { JsonFile 'source-verification-error.json' (DriverFailure $_ 'source-after') }
   try {
-    if (-not $fullInvoked) {
+    if (-not $focusedInvoked) {
       JsonFile 'diagnostic-health.json' @{healthy=$false; carrierQualified=[bool]$carrierQualified; originalSuite1745With2WorkersObserved=$false;
         originalCoverage=$false; fullSuiteInvoked=[bool]$fullInvoked; focusedInvoked=[bool]$focusedInvoked;
         fullSuiteExit=$fullCode; focusedExit=$focusedCode; primaryFailureStage=$primaryFailureStage;
-        reason='Driver failed before original full-suite invocation; no original/native coverage claimed.'}
+        discoveryQualified=[bool]$discoveryQualified; reason='Driver failed before focused invocation; no native body coverage claimed.'}
     } else {
     $health=Get-Content -LiteralPath (Join-Path $ReportRoot 'collector-health.json') -Raw | ConvertFrom-Json
     $loggerErrors=@(Get-ChildItem -LiteralPath $ReportRoot -Filter '*.diagnostic-error' -File)
     $workerLogs=@(Get-ChildItem -LiteralPath $ReportRoot -Filter 'worker-*.jsonl' -File)
     $allWorkersReady=$workerLogs.Count -gt 0
     foreach ($file in $workerLogs) { $first=Get-Content -LiteralPath $file.FullName -TotalCount 1 | ConvertFrom-Json; if ($first.event -ne 'preload-ready') { $allWorkersReady=$false } }
-    $fullRaw=[string](Get-Content -LiteralPath (Join-Path $ReportRoot 'full-suite.stdout.log') -Raw)
-    $originalWorkers=[bool]($fullRaw -match 'Running 1745 tests using 2 workers')
-    $diagnosticHealthy=[bool]($health.healthy -eq $true -and $loggerErrors.Count -eq 0 -and $allWorkersReady -and $originalWorkers -and -not (Test-Path -LiteralPath (Join-Path $ReportRoot 'collector-stop-timeout.json')))
-    JsonFile 'diagnostic-health.json' @{healthy=$diagnosticHealthy; fullSuiteInvoked=[bool]$fullInvoked; focusedInvoked=[bool]$focusedInvoked; primaryFailureStage=$primaryFailureStage; originalSuite1745With2WorkersObserved=$originalWorkers; workerLogs=$workerLogs.Count; everyWorkerLogReady=$allWorkersReady; loggerErrorFiles=$loggerErrors.Count; collector=$health}
+    $diagnosticHealthy=[bool]($health.healthy -eq $true -and $health.fixturesObserved -gt 0 -and $loggerErrors.Count -eq 0 -and $allWorkersReady -and $carrierQualified -and $discoveryQualified -and $collectorStartup.outcome -eq 'ready-admitted' -and -not (Test-Path -LiteralPath (Join-Path $ReportRoot 'collector-stop-timeout.json')))
+    JsonFile 'diagnostic-health.json' @{healthy=$diagnosticHealthy; mode='focused-only'; fullSuiteInvoked=[bool]$fullInvoked; focusedInvoked=[bool]$focusedInvoked; primaryFailureStage=$primaryFailureStage; originalSuite1745With2WorkersObserved=$false; discoveryQualified=[bool]$discoveryQualified; workerLogs=$workerLogs.Count; everyWorkerLogReady=$allWorkersReady; loggerErrorFiles=$loggerErrors.Count; collector=$health}
     }
   } catch { JsonFile 'diagnostic-health-error.json' (DriverFailure $_ 'diagnostic-health-after') }
-  JsonFile 'outcome.json' @{fullSuiteExit=$fullCode; focusedExit=$focusedCode; fullSuiteInvoked=[bool]$fullInvoked; focusedInvoked=[bool]$focusedInvoked; noOriginalInvocation=(-not $fullInvoked); primaryFailureStage=$primaryFailureStage; collectorStartupOutcome=$collectorStartup.outcome; collectorStartupAdmissionLimitMs=$collectorStartup.admissionLimitMs; sourceUnchanged=[bool]$sourceValid; diagnosticHealthy=[bool]$diagnosticHealthy; carrierQualified=[bool]$carrierQualified; originalBudgetsChanged=$false; fullSuiteFirst=$true; acceptance='Diagnostic evidence only; does not replace failed original PR58 Windows acceptance.'}
+  JsonFile 'outcome.json' @{mode='focused-only'; fullSuiteExit=$fullCode; focusedExit=$focusedCode; fullSuiteInvoked=[bool]$fullInvoked; focusedInvoked=[bool]$focusedInvoked; noOriginalInvocation=(-not ($fullInvoked -or $focusedInvoked)); primaryFailureStage=$primaryFailureStage; collectorStartupOutcome=$collectorStartup.outcome; collectorStartupAdmissionLimitMs=$collectorStartup.admissionLimitMs; sourceUnchanged=[bool]$sourceValid; trackedSourceUnchanged=[bool]$trackedSourceUnchanged; checkoutClean=[bool]$checkoutClean; sourceVerificationComplete=[bool]$sourceVerificationComplete; diagnosticHealthy=[bool]$diagnosticHealthy; carrierQualified=[bool]$carrierQualified; discoveryQualified=[bool]$discoveryQualified; originalBudgetsChanged=$false; fullSuiteFirst=$false; acceptance='Focused diagnostic evidence only; does not replace failed original PR58 Windows acceptance.'}
 }
-if ($fullCode -ne 0 -or $focusedCode -ne 0 -or -not $sourceValid -or -not $diagnosticHealthy -or (Test-Path -LiteralPath (Join-Path $ReportRoot 'driver-error.json'))) { exit 1 }
+if (-not $focusedInvoked -or $focusedCode -ne 0 -or -not $sourceValid -or -not $diagnosticHealthy -or -not $discoveryQualified -or (Test-Path -LiteralPath (Join-Path $ReportRoot 'driver-error.json'))) { exit 1 }
 exit 0

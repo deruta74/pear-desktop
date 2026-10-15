@@ -69,7 +69,7 @@ jobs:
       - name: Original build (runner only)
         working-directory: source
         run: pnpm build
-      - name: One full original suite then one focused diagnostic context
+      - name: One focused-only diagnostic context after exact discovery
         run: |
           & (Join-Path $env:PEAR_EBUSY_DIAGNOSTIC_ROOT 'SCROBBLER-WINDOWS-EBUSY-runner.ps1') -SourceRoot (Join-Path $env:GITHUB_WORKSPACE 'source') -ReportRoot $env:PEAR_EBUSY_ARTIFACT_ROOT -DiagnosticRoot $env:PEAR_EBUSY_DIAGNOSTIC_ROOT
           exit $LASTEXITCODE

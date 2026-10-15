@@ -22,16 +22,23 @@ function Emit([string]$Event, [hashtable]$Fields = @{}) {
 function Fault([string]$Code) { $healthErrors.Add($Code); Emit 'diagnostic-error' @{code=$Code} }
 function Prop($Value, [string]$Name) {
   $p = $Value.PSObject.Properties[$Name]
-  if ($null -ne $p) { return $p.Value }
+  if ($null -ne $p) {
+    # Directory scope consumes only the original JSON string, never array unwrapping.
+    if ($Name -ceq 'directory' -and $p.Value -isnot [string]) { return $null }
+    return $p.Value
+  }
   return $null
 }
+
 function OwnedDirectory($Value) {
   if ($Value -isnot [string] -or -not [IO.Path]::IsPathFullyQualified($Value)) { return $null }
-  $full = [IO.Path]::GetFullPath($Value)
-  if ([IO.Path]::GetFileName($full) -cnotmatch '^pear-scrobbler-window-[A-Za-z0-9]{6}$') { return $null }
-  if ($full -ine $Value) { return $null }
-  return $full
+  # Ordinary drive paths only; keep the literal short alias for downstream cache/OS qualification.
+  if ($Value -cnotmatch '\A[A-Za-z]:\\(?:[^\\/:*?"<>|\x00-\x1F]+\\)*[^\\/:*?"<>|\x00-\x1F]+\z') { return $null }
+  if ($Value -match '[ .](?:\\|\z)') { return $null }
+  if ([IO.Path]::GetFileName($Value) -cnotmatch '\Apear-scrobbler-window-[A-Za-z0-9]{6}\z') { return $null }
+  return $Value
 }
+
 function Seed([long]$ProcessId, [string]$Directory, [string]$Utc) {
   if ($ProcessId -le 0 -or -not $Directory) { return }
   if (-not $seeds.ContainsKey($ProcessId)) { $seeds[$ProcessId] = [Collections.Generic.List[object]]::new() }
