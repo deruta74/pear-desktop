@@ -26,6 +26,7 @@ import {
   musicOperationLedger,
   type MusicOperationLedger,
   type MusicOperationRow,
+  type MusicOperationBinding,
 } from './music-operations';
 import {
   parseMusicInput,
@@ -329,7 +330,7 @@ export class MusicService {
     for (const [id, reference] of this.references)
       if (reference.access.session === owner) this.references.delete(id);
     this.scheduleCacheCleanup();
-    // Session-bound mutation receipts do not exist until the phase 3 ledger migration.
+    this.operations.retireSession(this, owner);
   }
   configure(config: APIServerConfig) {
     this.operations.retire(this);
@@ -359,24 +360,6 @@ export class MusicService {
     this.cacheTimer = undefined;
     if (services.get(this.runtime.window) === this)
       services.delete(this.runtime.window);
-  }
-  private async admitted<T>(
-    token: unknown,
-    scope: MusicScope,
-    extra: MusicScope[],
-    signal: AbortSignal | undefined,
-    currentRead: boolean,
-    action: (lease: Lease) => Promise<T>,
-    deadlineAt?: number,
-  ): Promise<T> {
-    return this.admittedFor(
-      this.localInvocation(token, signal),
-      scope,
-      extra,
-      currentRead,
-      action,
-      deadlineAt,
-    );
   }
   private localInvocation(
     token: unknown,
@@ -414,7 +397,7 @@ export class MusicService {
   }
   private async admittedFor<T>(
     invocation: MusicInvocation,
-    scope: MusicScope,
+    requiredScope: MusicScope | ((access: MusicAccessBinding) => MusicScope),
     extra: MusicScope[],
     currentRead: boolean,
     action: (lease: Lease) => Promise<T>,
@@ -487,6 +470,14 @@ export class MusicService {
       );
       timer.unref?.();
       if (!currentOwner()) return failMusic('retired');
+      // Receipt scope discovery and authorization share this captured origin.
+      // A reentrant guard must not authorize a replacement using the old scope.
+      const scope =
+        typeof requiredScope === 'function'
+          ? requiredScope(access)
+          : requiredScope;
+      if (typeof requiredScope === 'function' && !currentOwner())
+        return failMusic('retired');
       const principal = await waitOwned(
         this.grants.authorize(token, transport, resource, scope),
         joined,
@@ -604,33 +595,80 @@ export class MusicService {
     deadlineAt?: number,
   ) {
     const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
+    // Preserve synchronous validation and promised local-resource failure.
+    const command = parseMusicOperationPrepareInput(input);
+    try {
+      return this.prepareFor(
+        this.localInvocation(token, signal),
+        command,
+        deadline,
+      );
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+  }
+  prepareFor(invocation: MusicInvocation, input: unknown, deadlineAt?: number) {
+    const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
     const command = parseMusicOperationPrepareInput(input),
       scope = musicOperationScope(command);
-    return this.admitted(
-      token,
+    return this.admittedFor(
+      invocation,
       scope,
       [],
-      signal,
       false,
       (lease) => {
-        return Promise.resolve(
-          this.operations.prepare(command, {
-            principal: lease.principal,
-            resource: lease.resource,
-            service: this,
-            revision: lease.revision,
-            admission: lease.admission,
-            current: () =>
-              this.enabled &&
-              this.revision === lease.revision &&
-              this.grants.isCurrent(lease.principal, scope) &&
-              this.resource === lease.resource &&
-              this.broker.isCurrent(lease.admission),
-          }),
+        const binding = this.receiptOwnerFor(
+          lease.principal,
+          lease.access,
+          lease.revision,
+          lease.admission,
+          scope,
         );
+        if (!lease.current()) return failMusic('retired');
+        return Promise.resolve(this.operations.prepare(command, binding));
       },
       deadline,
     );
+  }
+  /** Separate factory: durable ownership never closes over a request lease or signal. */
+  private receiptOwnerFor(
+    principal: MusicGrantRecord,
+    access: MusicAccessBinding,
+    revision: number,
+    admission: MusicAdmission,
+    scope: MusicScope,
+  ): MusicOperationBinding {
+    const unchanged = () =>
+      this.sharedAvailable() &&
+      this.revision === revision &&
+      (!access.session || !this.retiredSessions.has(access.session));
+    const authorityCurrent = () => {
+      if (!unchanged() || !this.broker.isCurrent(admission) || !unchanged())
+        return false;
+      const selected = this.accessOwner(access.transport, access.resource);
+      return selected?.identity === access.owner.identity && unchanged();
+    };
+    const current = () => {
+      if (!authorityCurrent()) return false;
+      if (!access.owner.current() || !authorityCurrent()) return false;
+      if (access.session && (!access.session.current() || !authorityCurrent()))
+        return false;
+      if (!this.grants.isCurrent(principal, scope) || !authorityCurrent())
+        return false;
+      return access.owner.current() && authorityCurrent();
+    };
+    return Object.freeze({
+      principal,
+      access,
+      resource: access.resource,
+      service: this,
+      revision,
+      admission: Object.freeze({
+        frame: admission.frame,
+        generation: admission.generation,
+      }),
+      current,
+    });
   }
   private requireOperationContext(lease: Lease, row: MusicOperationRow) {
     if (
@@ -652,20 +690,31 @@ export class MusicService {
     deadlineAt?: number,
   ) {
     const id = parseMusicOperationId(operationId);
-    const scope =
-      this.operations.requiredScope(id, token, this.resource) ??
-      'playback.control';
-    return this.admitted(
-      token,
-      scope,
+    return this.operationFor(
+      this.localInvocation(token, signal),
+      id,
+      deadlineAt,
+    );
+  }
+  async operationFor(
+    invocation: MusicInvocation,
+    operationId: unknown,
+    deadlineAt?: number,
+  ) {
+    const id = parseMusicOperationId(operationId);
+    const { token, transport, resource, signal, session } = invocation;
+    const snapshot = { token, transport, resource, signal, session };
+    return this.admittedFor(
+      snapshot,
+      (access) =>
+        this.operations.requiredScope(id, token, access) ?? 'playback.control',
       [],
-      signal,
       false,
       (lease) => {
         const row = this.operations.lookup(
           parseMusicOperationId(operationId),
           lease.principal,
-          lease.resource,
+          lease.access,
           (row) => this.requireOperationContext(lease, row),
         );
         return Promise.resolve(this.operations.receipt(row));
@@ -680,18 +729,33 @@ export class MusicService {
     deadlineAt?: number,
   ) {
     const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
-    return this.admitted(
-      token,
+    try {
+      return this.navigateFor(
+        this.localInvocation(token, signal),
+        input,
+        deadline,
+      );
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+  }
+  navigateFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt?: number,
+  ) {
+    const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
+    return this.admittedFor(
+      invocation,
       'playback.control',
       [],
-      signal,
       false,
       async (lease) => {
         const { operationId, ...command } = parseMusicMutationInput(input);
         const row = this.operations.lookup(
           operationId,
           lease.principal,
-          lease.resource,
+          lease.access,
           (row) => this.requireOperationContext(lease, row),
         );
         if (JSON.stringify(command) !== row.canonical)
@@ -781,11 +845,22 @@ export class MusicService {
     deadlineAt?: number,
   ) {
     const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
-    return this.admitted(
-      token,
+    try {
+      return this.controlFor(
+        this.localInvocation(token, signal),
+        input,
+        deadline,
+      );
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+  }
+  controlFor(invocation: MusicInvocation, input: unknown, deadlineAt?: number) {
+    const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
+    return this.admittedFor(
+      invocation,
       'playback.control',
       [],
-      signal,
       false,
       async (lease) => {
         const { operationId, ...command } =
@@ -793,7 +868,7 @@ export class MusicService {
         const row = this.operations.lookup(
           operationId,
           lease.principal,
-          lease.resource,
+          lease.access,
           (row) => this.requireOperationContext(lease, row),
         );
         if (JSON.stringify(command) !== row.canonical)
@@ -893,18 +968,33 @@ export class MusicService {
     deadlineAt?: number,
   ) {
     const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
-    return this.admitted(
-      token,
+    try {
+      return this.mutateQueueFor(
+        this.localInvocation(token, signal),
+        input,
+        deadline,
+      );
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+  }
+  mutateQueueFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt?: number,
+  ) {
+    const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
+    return this.admittedFor(
+      invocation,
       'queue.write',
       [],
-      signal,
       false,
       async (lease) => {
         const { operationId, ...command } = parseMusicQueueMutationInput(input);
         const row = this.operations.lookup(
           operationId,
           lease.principal,
-          lease.resource,
+          lease.access,
           (row) => this.requireOperationContext(lease, row),
         );
         if (JSON.stringify(command) !== row.canonical)

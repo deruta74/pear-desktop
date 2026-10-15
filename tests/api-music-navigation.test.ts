@@ -531,7 +531,17 @@ async function operationFixture() {
     new Promise((resolve, reject) =>
       calls.push({ input, options, resolve, reject }),
     );
-  return { ...f, broker, grant, calls };
+  return {
+    ...f,
+    broker,
+    grant,
+    calls,
+    access: {
+      transport: 'rest',
+      resource: f.resource,
+      owner: f.service.accessOwner('rest', f.resource),
+    },
+  };
 }
 
 function until(check: () => boolean) {
@@ -1103,6 +1113,11 @@ test('N1 entry storage admits a bounded encoded scalar record and rejects 32KiB 
   // Internal scalar storage policy is independent of the stricter issuer name limit.
   const binding = {
     principal,
+    access: {
+      transport: 'rest',
+      resource: principal.resource,
+      owner: { identity: {}, current: () => true },
+    },
     resource: principal.resource,
     service: {},
     revision: 0,
@@ -1147,7 +1162,7 @@ for (const phase of [
           const row = (f.service as any).operations.lookup(
             prepared.operationId,
             f.grant.record,
-            f.resource,
+            f.access,
           );
           if (phase !== 'pending' && phase !== 'retired') {
             originalExecution = f.service.navigate(f.grant.token, command);
@@ -1264,7 +1279,7 @@ for (const phase of ['pending', 'accepted', 'uncertain'] as const)
         const row = (f.service as any).operations.lookup(
           prepared.operationId,
           f.grant.record,
-          f.resource,
+          f.access,
         );
         if (phase !== 'pending') {
           const original = f.service.navigate(f.grant.token, command);
@@ -1318,7 +1333,7 @@ for (const context of ['foreign-window', 'same-window-new-service'] as const)
         const row = ledger.lookup(
           prepared.operationId,
           f.grant.record,
-          f.resource,
+          f.access,
         );
         second = new f.service.constructor({
           window:
@@ -1427,7 +1442,7 @@ for (const route of ['status', 'execute'] as const)
         const row = ledger.lookup(
             prepared.operationId,
             f.grant.record,
-            f.resource,
+            f.access,
           ),
           original = f.service.navigate(f.grant.token, command);
         await until(() => f.calls.length === 1);
@@ -1499,7 +1514,7 @@ test('N1 F3 principal digest transport resource identity precedes the main-only 
         ledger.lookup(
           prepared.operationId,
           { ...f.grant.record, ...patch },
-          f.resource,
+          f.access,
           validate,
         ),
       ).toThrow('Music operation history is unavailable.');
@@ -1507,14 +1522,14 @@ test('N1 F3 principal digest transport resource identity precedes the main-only 
       ledger.lookup(
         prepared.operationId,
         f.grant.record,
-        'http://localhost:26538/api/v1/music',
+        { ...f.access, resource: 'http://localhost:26538/api/v1/music' },
         validate,
       ),
     ).toThrow('Music operation history is unavailable.');
     expect(validations).toBe(0);
     expect(ledger.rows.has(prepared.operationId)).toBe(true);
     expect(() =>
-      ledger.lookup(prepared.operationId, f.grant.record, f.resource, validate),
+      ledger.lookup(prepared.operationId, f.grant.record, f.access, validate),
     ).toThrow('Context rejection');
     expect(validations).toBe(1);
     expect(ledger.rows.has(prepared.operationId)).toBe(true);
