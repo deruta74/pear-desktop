@@ -1,27 +1,15 @@
-name: Regression tests
-
+# REPORT-OWNED PROPOSAL ONLY. Root may transplant this job into the existing
+# .github/workflows/tests.yml on a separately reviewed diagnostic ref.
+# Combined proposal: Windows exact3 and Linux exact1. No source/CI execution.
+name: Integration60 bounded fixture witnesses
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+  windows-exact-three:
+    runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -34,19 +22,198 @@ jobs:
           node-version: 24.x
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install virtual display
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
       - run: pnpm build
-      - name: CI test grouping contracts
-        run: node --test scripts/ci-test-groups.node.cjs
-      - name: Run Linux tests in a virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/run-ci-tests.cjs
-      - name: Run macOS and Windows tests
-        if: runner.os != 'Linux'
-        run: node scripts/run-ci-tests.cjs
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
+      - name: Discover exactly three and run each once with original test deadlines
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $report = 'integration60-windows-safe-report'
+          New-Item -ItemType Directory -Path $report | Out-Null
+          [ordered]@{ phase='preflight'; evidenceComplete=$false; testExitCode=$null } | ConvertTo-Json | Set-Content -Encoding utf8 "$report/status.json"
+          $expected = @(
+            @{ file='tests/api-music-queue-actions.test.ts'; title='Q4 MR4 new fixture canonicalizes tmp alias once before deriving owned paths' },
+            @{ file='tests/api-music-queue-actions-native.test.ts'; title='Q4 actual REST IPC canonical queue native dispatch and physical cancellation' },
+            @{ file='tests/force-shuffle-native.test.ts'; title='native MutationObserver records preserve a positive shuffle before a batched reset admission' }
+          )
+          $files = @($expected | ForEach-Object { $_.file })
+          # Playwright grep includes filename in full title. Do not add a leading ^.
+          $pattern = '(' + (($expected | ForEach-Object { [regex]::Escape($_.title) }) -join '|') + ')$'
+          function Specs($suites) {
+            foreach ($suite in $suites) {
+              foreach ($spec in $suite.specs) { $spec }
+              Specs $suite.suites
+            }
+          }
+          function ExactSelection($document) {
+            $specs = @(Specs $document.suites)
+            if (@($document.errors).Count -ne 0 -or $specs.Count -ne 3) { return $false }
+            foreach ($item in $expected) {
+              $matches = @($specs | Where-Object { $_.file.Replace('\','/') -ceq $item.file -and $_.title -ceq $item.title })
+              if ($matches.Count -ne 1 -or @($matches[0].tests).Count -ne 1) { return $false }
+            }
+            return $true
+          }
+          $listing = & pnpm exec playwright test @files --grep $pattern --workers=1 --retries=0 --repeat-each=1 --list --reporter=json --output=integration60-diagnostic-temporary | Out-String
+          $discoveryExit = $LASTEXITCODE
+          if ($discoveryExit -ne 0) { throw 'Exact three-case discovery failed; no native test launched' }
+          $discovery = $listing | ConvertFrom-Json
+          if (-not (ExactSelection $discovery)) { throw 'Exact three-case discovery mismatch; no native test launched' }
+          [ordered]@{ discoveredCases=3; workers=1; retries=0; repetitions=1; exactSelection=$true } | ConvertTo-Json | Set-Content -Encoding utf8 "$report/selection.json"
+          # This raw Playwright result is temporary, used only for fixed-field validation.
+          # It is never uploaded. Existing errors remain visible in the normal CI log.
+          $env:PLAYWRIGHT_JSON_OUTPUT_FILE = Join-Path $env:RUNNER_TEMP 'integration60-windows-runtime.json'
+          & pnpm exec playwright test @files --grep $pattern --workers=1 --retries=0 --repeat-each=1 --reporter=line,json --output=integration60-diagnostic-temporary 2>&1 | Tee-Object -Variable caseOutput
+          $caseExit = $LASTEXITCODE
+          $invalidMetadata = $false
+          $queryRows = @(); $taskRows = @(); $cleanupRows = @()
+          function SafeInteger($value) {
+            return $null -ne $value -and $value -is [ValueType] -and $value -isnot [bool] -and [double]::IsFinite([double]$value) -and [math]::Truncate([double]$value) -eq [double]$value -and [math]::Abs([double]$value) -le 9007199254740991
+          }
+          function FixedOrOther($value, $allowed) {
+            if ($null -eq $value) { return $null }
+            if ($value -is [string] -and $allowed -ccontains $value) { return $value }
+            return 'other'
+          }
+          foreach ($entry in $caseOutput) {
+            foreach ($match in [regex]::Matches([string]$entry, '(Q4_OWNED_QUERY|FORCE_SHUFFLE_OWNED_TASK|FORCE_SHUFFLE_OWNED_CLEANUP) (\{[^{}\r\n]*\})')) {
+              try {
+                $row = $match.Groups[2].Value | ConvertFrom-Json
+                switch ($match.Groups[1].Value) {
+                  'Q4_OWNED_QUERY' {
+                    $kind = FixedOrOther $row.commandKind @('owned-cim-cohort','owned-cim-identities','owned-taskkill','owned-posix-group-list','owned-posix-group-identity')
+                    if ($null -eq $kind -or $kind -eq 'other' -or $row.killed -isnot [bool] -or $row.timeoutMs -ne 1000) { throw 'Invalid query metadata' }
+                    foreach ($key in @('elapsedMs','stdoutBytes','stderrBytes')) { if (-not (SafeInteger $row.$key) -or $row.$key -lt 0) { throw 'Invalid numeric metadata' } }
+                    $code = if (SafeInteger $row.code) { $row.code } else { FixedOrOther $row.code @('ENOENT','EACCES','EPERM','ESRCH','ETIMEDOUT','ERR_CHILD_PROCESS_STDIO_MAXBUFFER') }
+                    $queryRows += ([ordered]@{ commandKind=$kind; elapsedMs=$row.elapsedMs; killed=$row.killed; signal=(FixedOrOther $row.signal @('SIGTERM','SIGKILL','SIGINT','SIGABRT')); code=$code; timeoutMs=1000; stdoutBytes=$row.stdoutBytes; stderrBytes=$row.stderrBytes } | ConvertTo-Json -Compress)
+                  }
+                  'FORCE_SHUFFLE_OWNED_TASK' {
+                    foreach ($key in @('taskCompleted','historicalShapeMatches','oldValuesMatch','callsOne','onTrue')) { if ($row.$key -isnot [bool]) { throw 'Invalid task metadata' } }
+                    $taskRows += ([ordered]@{ taskCompleted=$row.taskCompleted; historicalShapeMatches=$row.historicalShapeMatches; oldValuesMatch=$row.oldValuesMatch; callsOne=$row.callsOne; onTrue=$row.onTrue } | ConvertTo-Json -Compress)
+                  }
+                  'FORCE_SHUFFLE_OWNED_CLEANUP' {
+                    foreach ($key in @('killAttempted','killReturnedWithoutError','rmAttempted','rmSucceeded')) { if ($row.$key -isnot [bool]) { throw 'Invalid cleanup metadata' } }
+                    $cleanupRows += ([ordered]@{ killAttempted=$row.killAttempted; killReturnedWithoutError=$row.killReturnedWithoutError; rmAttempted=$row.rmAttempted; rmSucceeded=$row.rmSucceeded; code=(FixedOrOther $row.code @('EBUSY','ENOTEMPTY','EPERM','EACCES','ENOENT','ESRCH')) } | ConvertTo-Json -Compress)
+                  }
+                }
+              } catch { $invalidMetadata = $true }
+            }
+          }
+          $queryRows | Set-Content -Encoding utf8 "$report/query-metadata.jsonl"
+          $taskRows | Set-Content -Encoding utf8 "$report/task-metadata.jsonl"
+          $cleanupRows | Set-Content -Encoding utf8 "$report/cleanup-metadata.jsonl"
+          $runtimeSelection = $false; $runtimeStatuses = @(); $runOnce = $false
+          try {
+            $runtime = Get-Content -Raw $env:PLAYWRIGHT_JSON_OUTPUT_FILE | ConvertFrom-Json
+            $runtimeSelection = ExactSelection $runtime
+            $runtimeTests = @((Specs $runtime.suites) | ForEach-Object { $_.tests })
+            $runOnce = $runtimeTests.Count -eq 3
+            foreach ($test in $runtimeTests) {
+              if (@($test.results).Count -ne 1 -or $test.results[0].retry -ne 0) { $runOnce = $false }
+              $runtimeStatuses += (FixedOrOther $test.results[0].status @('passed','failed','timedOut','skipped','interrupted'))
+            }
+          } catch { $invalidMetadata = $true }
+          Remove-Item -LiteralPath $env:PLAYWRIGHT_JSON_OUTPUT_FILE -Force -ErrorAction SilentlyContinue
+          $allPassed = $runtimeStatuses.Count -eq 3 -and @($runtimeStatuses | Where-Object { $_ -cne 'passed' }).Count -eq 0
+          $evidenceComplete = $runtimeSelection -and $runOnce -and -not $invalidMetadata -and $queryRows.Count -gt 0 -and $taskRows.Count -eq 1 -and $cleanupRows.Count -eq 1
+          [ordered]@{ testExitCode=$caseExit; exactRuntimeSelection=$runtimeSelection; oneResultEach=$runOnce; statuses=$runtimeStatuses; queryRows=$queryRows.Count; taskRows=$taskRows.Count; cleanupRows=$cleanupRows.Count; invalidMetadata=$invalidMetadata; evidenceComplete=$evidenceComplete } | ConvertTo-Json | Set-Content -Encoding utf8 "$report/status.json"
+          if ($caseExit -ne 0) { exit $caseExit }
+          if (-not $allPassed) { throw 'A selected Windows case did not pass' }
+          if (-not $evidenceComplete) { throw 'Diagnostic evidence incomplete' }
+      - name: Upload only reconstructed fixed and numeric witnesses
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: integration60-windows-exact-three-safe-evidence
+          path: integration60-windows-safe-report/
+          if-no-files-found: error
+          retention-days: 7
+  linux-n1-one-case:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        with:
+          version: 11
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: sudo apt-get install -y xvfb
+      - run: pnpm build
+      - name: Discover and run the N1 case once with original deadlines
+        shell: bash
+        run: |
+          node <<'N1_DIAGNOSTIC'
+          // Report-owned candidate: one selected existing Linux native test, one attempt.
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const path = require('node:path');
+          const { spawnSync } = require('node:child_process');
+          const cli = require.resolve('@playwright/test/cli');
+          const file = 'tests/api-music-native.test.ts';
+          const title = 'N1 actual late authenticated ACK and committed/process/window termination notify physical settlement once';
+          const pattern = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
+          const output = 'integration60-linux-safe-report';
+          fs.mkdirSync(output);
+          const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pear-n1-report-'));
+          const reportFile = path.join(temporary, 'result.json');
+          function specs(suites) {
+            return suites.flatMap(s => [...(s.specs ?? []), ...specs(s.suites ?? [])]);
+          }
+          function selected(report, body) {
+            const rows = specs(report.suites);
+            if (report.errors.length || rows.length !== 1 || rows[0].file.replaceAll('\\', '/') !== file || rows[0].title !== title || rows[0].tests.length !== 1) throw Error('Exact N1 selection mismatch');
+            const test = rows[0].tests[0];
+            if (body && (test.expectedStatus !== 'passed' || test.status !== 'expected' || test.results.length !== 1 || test.results[0].retry !== 0 || test.results[0].status !== 'passed')) throw Error('N1 did not pass once without skipping');
+            return rows[0].id;
+          }
+          function invoke(body) {
+            fs.rmSync(reportFile, { force: true });
+            const args = [cli, 'test', file, '--grep', pattern, '--workers=1', '--retries=0', '--repeat-each=1', '--reporter=line,json', '--output=integration60-diagnostic-temporary', ...(body ? [] : ['--list'])];
+            const result = spawnSync('xvfb-run', ['-a', process.execPath, ...args], {
+              env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile, ...(body ? { PEAR_MUSIC_NATIVE_TRACE: '1' } : {}) },
+              encoding: 'utf8', maxBuffer: 2 * 1024 * 1024,
+            });
+            process.stdout.write(result.stdout ?? '');
+            process.stderr.write(result.stderr ?? '');
+            return result;
+          }
+          let bodyExit = null;
+          try {
+            const discovery = invoke(false);
+            if (discovery.status !== 0 || discovery.signal || discovery.error) throw Error('N1 discovery failed; no native launch');
+            const id = selected(JSON.parse(fs.readFileSync(reportFile, 'utf8')), false);
+            fs.writeFileSync(path.join(output, 'selection.json'), JSON.stringify({ exactSelection: true, discoveredCases: 1, workers: 1, retries: 0, repetitions: 1 }) + '\n');
+            const result = invoke(true);
+            bodyExit = result.status;
+            if (result.error || result.signal || result.status !== 0) throw Error('N1 runtime CLI failed');
+            if (selected(JSON.parse(fs.readFileSync(reportFile, 'utf8')), true) !== id) throw Error('N1 identity changed');
+            const clean = (result.stdout ?? '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+            const rows = clean.split('\n').filter(line => line.startsWith('N1_TERMINATION ')).map(line => JSON.parse(line.slice('N1_TERMINATION '.length)));
+            if (rows.length !== 1) throw Error('Missing unique physical termination witness');
+            const row = rows[0];
+            const positive = value => Number.isSafeInteger(value) && value > 0;
+            if (!positive(row.mainPid) || !positive(row.rendererPid) || row.mainPid === row.rendererPid || !positive(row.windowId) || row.method !== 'SIGKILL' || row.reason !== 'killed' || row.slots !== 0 || row.notices.length !== 1 || row.notices[0].reason !== 'authoritative_termination' || row.notices[0].slots !== 0) throw Error('Invalid owned physical termination metadata');
+            fs.writeFileSync(path.join(output, 'termination.json'), JSON.stringify({ mainPid: row.mainPid, rendererPid: row.rendererPid, windowId: row.windowId, method: 'SIGKILL', reason: 'killed', slots: 0, noticeCount: 1, noticeReason: 'authoritative_termination' }) + '\n');
+            fs.writeFileSync(path.join(output, 'status.json'), JSON.stringify({ testExitCode: bodyExit, exactRuntimeSelection: true, onePassedResult: true, evidenceComplete: true }) + '\n');
+          } catch {
+            fs.writeFileSync(path.join(output, 'status.json'), JSON.stringify({ testExitCode: bodyExit, evidenceComplete: false }) + '\n');
+            process.exitCode = Number.isInteger(bodyExit) && bodyExit > 0 ? bodyExit : 1;
+          } finally {
+            fs.rmSync(temporary, { recursive: true, force: true });
+          }
+          N1_DIAGNOSTIC
+      - name: Upload only fixed and numeric N1 witnesses
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: integration60-linux-n1-safe-evidence
+          path: integration60-linux-safe-report/
+          if-no-files-found: error
+          retention-days: 7
