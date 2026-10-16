@@ -343,15 +343,17 @@ export async function musicRemoteHttpFixture(
     }
   };
   const host = `music-http.fixture.invalid:${port}`;
-  const http = (
+  const clients = new Set<any>();
+  const startHttp = (
     target: string,
     method = 'GET',
     body?: string,
     headers: Record<string, string> = {},
     token = grant.token,
-  ) =>
-    new Promise<any>((resolve, reject) => {
-      const req = (tls ? httpsRequest : httpRequest)(
+  ) => {
+    let req: ReturnType<typeof httpRequest>;
+    const response = new Promise<any>((resolve, reject) => {
+      req = (tls ? httpsRequest : httpRequest)(
         {
           hostname: bindAddress,
           localAddress: clientAddress,
@@ -392,10 +394,16 @@ export async function musicRemoteHttpFixture(
           );
         },
       );
+      clients.add(req);
+      req.once('close', () => clients.delete(req));
       req.setTimeout(5000, () => req.destroy(Error('owned request timed out')));
       req.on('error', reject);
       req.end(body);
     });
+    return { request: req!, response };
+  };
+  const http = (...args: Parameters<typeof startHttp>) =>
+    startHttp(...args).response;
   const raw = (message: string | Buffer) =>
     new Promise<string>((resolve, reject) => {
       const received: string[] = [];
@@ -438,6 +446,7 @@ export async function musicRemoteHttpFixture(
     cert,
     server,
     http,
+    startHttp,
     raw,
     observations,
     owner: () => owner,
@@ -455,6 +464,7 @@ export async function musicRemoteHttpFixture(
     async close() {
       epoch.abort();
       service.stop();
+      for (const client of clients) client.destroy();
       for (const h of held.splice(0))
         f.settled(h.q, { ok: true, value: value(h.input) });
       for (const s of sockets) s.destroy();
@@ -473,4 +483,44 @@ export async function musicRemoteHttpFixture(
       await rm(folder, { recursive: true, force: true });
     },
   };
+}
+
+export async function assertMusicRuntimeObservations(
+  observations: any[],
+  admission: MusicRuntimeAdmission,
+  port: number,
+  tls: boolean,
+) {
+  const policy = await musicModuleSource(
+    'src/plugins/api-server/backend/music-http-policy.ts',
+  );
+  const nonloopback = (value: unknown) => {
+    if (typeof value !== 'string') throw Error('Missing actual endpoint');
+    const ip = policy.normalizeMusicIp(value);
+    if (
+      !ip ||
+      ip === '::1' ||
+      ip === '::' ||
+      ip === '0.0.0.0' ||
+      ip.startsWith('127.')
+    )
+      throw Error('Witness requires normalized numeric nonloopback endpoints');
+    return ip;
+  };
+  const peer = nonloopback(admission.clientAddress),
+    local = nonloopback(admission.bindAddress);
+  if (!observations.length) throw Error('Missing actual socket observations');
+  for (const observed of observations) {
+    if (
+      nonloopback(observed.peer) !== peer ||
+      nonloopback(observed.local) !== local ||
+      observed.port !== port ||
+      observed.tls !== tls ||
+      observed.owned !== true ||
+      !observed.epoch
+    )
+      throw Error(
+        'Actual socket witness does not match admitted endpoints/port/TLS/ownership',
+      );
+  }
 }

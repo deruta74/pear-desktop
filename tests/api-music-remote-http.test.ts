@@ -3,6 +3,7 @@ import { request, Agent } from 'node:http';
 import {
   musicRemoteHttpFixture,
   parseMusicRuntimeAdmission,
+  assertMusicRuntimeObservations,
 } from './helpers/api-music-remote-http';
 
 for (const tls of [false, true])
@@ -242,7 +243,6 @@ test('all fourteen socket branches call actual For methods with one selected imm
 if (process.env.PEAR_MUSIC_RUNTIME_ADMISSION) {
   test('runtime-admitted nonloopback HTTP and TLS require actual direct peers', async () => {
     const { readFile } = await import('node:fs/promises');
-    const { isIP } = await import('node:net');
     const { createHash } = await import('node:crypto');
     const input = parseMusicRuntimeAdmission(
       JSON.parse(
@@ -250,39 +250,61 @@ if (process.env.PEAR_MUSIC_RUNTIME_ADMISSION) {
       ),
     );
     expect(['macOS', 'Windows', 'Linux']).toContain(input.environment);
-    for (const ip of [input.bindAddress, input.clientAddress])
-      expect(isIP(ip)).toBeGreaterThan(0);
     for (const tls of [false, true]) {
-      const f = await musicRemoteHttpFixture({ tls, admission: input });
+      const f = await musicRemoteHttpFixture({
+        tls,
+        remoteEnabled: false,
+        admission: input,
+      });
       try {
         expect(createHash('sha256').update(f.cert).digest('hex')).toBe(
           input.certSHA256,
         );
-        expect(
-          (
-            await f.http(
-              '/api/v1/music/search',
-              'POST',
-              '{"query":"owned","limit":100}',
-            )
-          ).status,
-        ).toBe(200);
-        for (const observed of f.observations) {
-          expect(observed.owned).toBe(true);
-          expect(observed.port).toBe(f.port);
-          expect(observed.tls).toBe(tls);
-          for (const ip of [observed.peer, observed.local]) {
-            expect(isIP(ip)).toBeGreaterThan(0);
-            expect(
-              ip === '::1' ||
-                ip.startsWith('127.') ||
-                /^::ffff:(127\.|7f)/i.test(ip),
-            ).toBe(false);
-          }
-        }
+        await remoteOwnershipContract(f);
+        const beforeLocalAttempt = f.sent.filter(
+          (p) => p[0] === 'peard:music-read',
+        ).length;
+        const localAttempt = await f.http(
+          '/api/v1/music/current',
+          'GET',
+          undefined,
+          { host: `127.0.0.1:${f.port}` },
+          f.local.token,
+        );
+        expect(localAttempt.status).toBe(403);
+        expect(f.sent.filter((p) => p[0] === 'peard:music-read')).toHaveLength(
+          beforeLocalAttempt,
+        );
+        await assertMusicRuntimeObservations(
+          f.observations,
+          input,
+          f.port,
+          tls,
+        );
       } finally {
         await f.close();
+        expect(f.server.listening).toBe(false);
+        expect(f.broker.stats()).toEqual({ dispatched: 0, queued: 0 });
       }
+      await test.info().attach(`runtime-${tls ? 'TLS' : 'HTTP'}-checkpoints`, {
+        contentType: 'application/json',
+        body: Buffer.from(
+          JSON.stringify({
+            protocol: tls ? 'TLS' : 'HTTP',
+            checkpoints: [
+              'actual_nonempty_socket_facts',
+              'search100plus51_replay',
+              'distinct_grants_default_disabled',
+              'namespace_headers',
+              'accepted_receipt_exact_replay',
+              'terminal_owner_cursor_receipt',
+              'two_client_logical_cancel_physical_hold',
+              'bounded_cleanup',
+            ],
+            outcome: 'PASS',
+          }),
+        ),
+      });
     }
   });
 }
@@ -566,3 +588,261 @@ test('explicit runtime admission parser rejects missing or malformed authority w
   ])
     expect(() => parseMusicRuntimeAdmission(input)).toThrow();
 });
+
+test('runtime witness rejects missing, substituted, stale and mismatched actual socket facts', async () => {
+  const input = {
+    environment: 'macOS',
+    bindAddress: '192.0.2.10',
+    clientAddress: '192.0.2.10',
+    certSHA256: 'a'.repeat(64),
+  };
+  const epoch = {};
+  const observed = {
+    peer: '192.0.2.10',
+    local: '192.0.2.10',
+    port: 1234,
+    tls: true,
+    owned: true,
+    epoch,
+  };
+  for (const observations of [
+    [],
+    [{ ...observed, peer: '127.0.0.1' }],
+    [{ ...observed, local: '::ffff:127.0.0.1' }],
+    [{ ...observed, peer: '192.0.2.11' }],
+    [{ ...observed, local: '192.0.2.11' }],
+    [{ ...observed, port: 1235 }],
+    [{ ...observed, tls: false }],
+    [{ ...observed, owned: false }],
+    [{ ...observed, epoch: undefined }],
+  ])
+    await expect(
+      assertMusicRuntimeObservations(observations, input, 1234, true),
+    ).rejects.toThrow();
+  await assertMusicRuntimeObservations([observed], input, 1234, true);
+});
+
+// Shared behavior on loopback is only a contract control, never a nonloopback witness.
+for (const tls of [false, true])
+  test(`owned loopback ${tls ? 'TLS' : 'HTTP'} full remote ownership contract`, async () => {
+    const f = await musicRemoteHttpFixture({ tls, remoteEnabled: false });
+    try {
+      await remoteOwnershipContract(f);
+    } finally {
+      await f.close();
+      expect(f.server.listening).toBe(false);
+      expect(f.broker.stats()).toEqual({ dispatched: 0, queued: 0 });
+    }
+  });
+
+async function remoteOwnershipContract(
+  f: Awaited<ReturnType<typeof musicRemoteHttpFixture>>,
+) {
+  const initialObservationCount = f.observations.length;
+  const reads = () => f.sent.filter((p) => p[0] === 'peard:music-read');
+  const controls = () =>
+    reads().filter((p) => p[1].input.operation === 'control');
+  const cleanHeaders = (response: any) => {
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    expect(
+      response.headers['access-control-allow-private-network'],
+    ).toBeUndefined();
+  };
+  // Explicitly prove the default-disabled state on this listener before useful work.
+  f.config.musicApiRemoteEnabled = false;
+  f.publish();
+  const disabledEpoch = f.owner();
+  const disabled = await f.http('/api/v1/music/current');
+  expect(disabled.status).toBe(403);
+  cleanHeaders(disabled);
+  expect(reads()).toHaveLength(0);
+  f.config.musicApiRemoteEnabled = true;
+  f.publish();
+  const enabledEpoch = f.owner();
+  expect(f.grant.token).not.toBe(f.local.token);
+  for (const [method, headers, token, status] of [
+    ['GET', {}, f.local.token, 401],
+    ['GET', { host: 'forged.invalid:' + f.port }, f.grant.token, 403],
+    ['GET', { origin: 'https://forged.invalid' }, f.grant.token, 403],
+    ['GET', { forwarded: 'for=192.0.2.1' }, f.grant.token, 403],
+    ['OPTIONS', {}, f.grant.token, 405],
+  ] as const) {
+    const denied = await f.http(
+      '/api/v1/music/current',
+      method,
+      undefined,
+      headers,
+      token,
+    );
+    expect(denied.status).toBe(status);
+    cleanHeaders(denied);
+  }
+  expect(reads()).toHaveLength(0);
+  const first = await f.http(
+    '/api/v1/music/search',
+    'POST',
+    '{"query":"owned","limit":100}',
+  );
+  expect(first.status).toBe(200);
+  expect(first.body.items).toHaveLength(100);
+  cleanHeaders(first);
+  expect(reads()).toHaveLength(1);
+  const cursorInput = JSON.stringify({
+    cursor: first.body.nextCursor,
+    limit: 100,
+  });
+  const second = await f.http('/api/v1/music/search', 'POST', cursorInput);
+  expect(second.status).toBe(200);
+  expect(second.body.items).toHaveLength(51);
+  cleanHeaders(second);
+  expect(
+    first.body.items.concat(second.body.items).map((item: any) => item.id),
+  ).toEqual(
+    Array.from({ length: 151 }, (_, i) => 'v' + String(i).padStart(10, '0')),
+  );
+  const replay = await f.http('/api/v1/music/search', 'POST', cursorInput);
+  expect(replay.status).toBe(200);
+  expect(replay.body).toEqual(second.body);
+  cleanHeaders(replay);
+  expect(reads()).toHaveLength(1);
+  const prepare = () =>
+    f.http('/api/v1/music/operations/prepare', 'POST', '{"action":"pause"}');
+  const prepared = await prepare();
+  expect(prepared.status).toBe(200);
+  const controlInput = JSON.stringify({
+    action: 'pause',
+    operationId: prepared.body.operationId,
+  });
+  f.setHold();
+  const pending = f.http('/api/v1/music/control', 'POST', controlInput);
+  void pending.catch(() => {});
+  await expect.poll(() => f.held.length).toBe(1);
+  expect(controls()).toHaveLength(1);
+  expect(f.sent.filter((p) => p[0] === 'peard:music-cancel')).toHaveLength(0);
+  f.settle();
+  f.setHold(false);
+  const result = await pending;
+  expect(result.status).toBe(200);
+  expect(result.body.status).toBe('accepted');
+  expect(
+    (await f.http('/api/v1/music/operations/' + prepared.body.operationId))
+      .body,
+  ).toEqual(result.body);
+  expect(
+    (await f.http('/api/v1/music/control', 'POST', controlInput)).body,
+  ).toEqual(result.body);
+  expect(controls()).toHaveLength(1);
+  const epochA = f.owner();
+  f.retireListener();
+  expect(epochA.signal.aborted).toBe(true);
+  f.publish(false);
+  const epochB = f.owner();
+  expect(epochB.identity).not.toBe(epochA.identity);
+  const before = reads().length;
+  expect(
+    (await f.http('/api/v1/music/search', 'POST', cursorInput)).status,
+  ).toBe(404);
+  expect(
+    (await f.http('/api/v1/music/operations/' + prepared.body.operationId))
+      .status,
+  ).toBe(409);
+  expect(
+    (await f.http('/api/v1/music/control', 'POST', controlInput)).status,
+  ).toBe(409);
+  expect(reads()).toHaveLength(before);
+  expect((await f.http('/api/v1/music/current')).status).toBe(200);
+  const fresh = await prepare();
+  expect(fresh.status).toBe(200);
+  expect(
+    (
+      await f.http(
+        '/api/v1/music/control',
+        'POST',
+        JSON.stringify({
+          action: 'pause',
+          operationId: fresh.body.operationId,
+        }),
+      )
+    ).body.status,
+  ).toBe('accepted');
+  expect(controls()).toHaveLength(2);
+  const configPage = await f.http(
+    '/api/v1/music/search',
+    'POST',
+    '{"query":"config","limit":100}',
+  );
+  const configReceipt = await prepare();
+  expect(configPage.status).toBe(200);
+  expect(configReceipt.status).toBe(200);
+  f.config.musicApiRemoteEnabled = false;
+  f.publish();
+  f.config.musicApiRemoteEnabled = true;
+  f.publish();
+  const configEpoch = f.owner();
+  const beforeConfigReplay = reads().length;
+  expect(
+    (
+      await f.http(
+        '/api/v1/music/search',
+        'POST',
+        JSON.stringify({ cursor: configPage.body.nextCursor, limit: 100 }),
+      )
+    ).status,
+  ).toBe(404);
+  expect(
+    (await f.http('/api/v1/music/operations/' + configReceipt.body.operationId))
+      .status,
+  ).toBe(409);
+  expect(reads()).toHaveLength(beforeConfigReplay);
+  f.setHold();
+  const lost = f.startHttp(
+    '/api/v1/music/search',
+    'POST',
+    '{"query":"owned","limit":100}',
+  );
+  const lostResult = lost.response.then(
+    () => 'completed',
+    () => 'disconnected',
+  );
+  try {
+    await expect.poll(() => f.held.length).toBe(1);
+    const healthy = f.http(
+      '/api/v1/music/search',
+      'POST',
+      '{"query":"owned","limit":100}',
+    );
+    void healthy.catch(() => {});
+    await expect.poll(() => f.held.length).toBe(2);
+    expect(f.sent.filter((p) => p[0] === 'peard:music-cancel')).toHaveLength(0);
+    expect(f.broker.stats()).toEqual({ dispatched: 2, queued: 0 });
+    lost.request.destroy();
+    expect(await lostResult).toBe('disconnected');
+    await expect
+      .poll(() => f.sent.filter((p) => p[0] === 'peard:music-cancel').length)
+      .toBe(1);
+    expect(f.broker.stats()).toEqual({ dispatched: 2, queued: 0 });
+    f.settle();
+    f.setHold(false);
+    const useful = await healthy;
+    expect(useful.status).toBe(200);
+    expect(useful.body.items).toHaveLength(100);
+    expect(f.broker.stats()).toEqual({ dispatched: 0, queued: 0 });
+  } finally {
+    lost.request.destroy();
+    f.settle();
+    f.setHold(false);
+  }
+  expect(f.observations.length).toBeGreaterThan(0);
+  for (const observed of f.observations.slice(initialObservationCount)) {
+    expect(observed.owned).toBe(true);
+    expect(observed.port).toBe(f.port);
+    expect(observed.tls).toBe(f.tls);
+    expect([
+      disabledEpoch.identity,
+      enabledEpoch.identity,
+      epochA.identity,
+      epochB.identity,
+      configEpoch.identity,
+    ]).toContain(observed.epoch);
+  }
+}
