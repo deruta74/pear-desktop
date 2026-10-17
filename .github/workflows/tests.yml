@@ -1,52 +1,288 @@
-name: Regression tests
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
+# Nondispatchable source template. Instantiate source/tree pins only AFTER source MAIN.
+# Diagnostic carrier changes only this workflow and must never merge into product.
+name: Focused Windows scrobbler preservation diagnostic
+'on':
   workflow_dispatch:
-
+    inputs:
+      expected_carrier_sha:
+        type: string
+        required: true
+      expected_workflow_sha256:
+        type: string
+        required: true
 permissions:
   contents: read
-
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
+  group: scrobbler-native-preservation-diagnostic
+  cancel-in-progress: false
 jobs:
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+  witness:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      EXPECTED_SOURCE_SHA: '42bda40d589960082be7fcb6818f94351415b2a0'
+      EXPECTED_SOURCE_TREE: 'ac3b9ce1d34d4d5134dbb4d6f818af6b5909ff5e'
+      EXPECTED_CARRIER_SHA: ${{ inputs.expected_carrier_sha }}
+      EXPECTED_WORKFLOW_SHA256: ${{ inputs.expected_workflow_sha256 }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          fetch-depth: 4
           persist-credentials: false
+      - name: Bind exact reviewed carrier and source before setup
+        run: |
+          @'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const {createHash} = require('node:crypto');
+          const {execFileSync} = require('node:child_process');
+          const git = (...args) => execFileSync('git', args, {encoding:'utf8', windowsHide:true}).trim();
+          const e = process.env;
+          const expectedPaths = ['tests/helpers/electron-startup.js','tests/helpers/scrobbler-auth-native-diagnostics.node.cjs','tests/helpers/scrobbler-auth-native.ts','tests/scrobbler-auth-window-native.test.ts'].sort();
+          assert.equal(e.GITHUB_EVENT_NAME, 'workflow_dispatch');
+          assert.equal(e.GITHUB_REF, 'refs/heads/diagnostic/scrobbler-native-preservation-f3');
+          assert.equal(e.GITHUB_REPOSITORY, 'deruta74/pear-desktop');
+          assert(/^[a-f0-9]{40}$/.test(e.EXPECTED_SOURCE_SHA));
+          assert(/^[a-f0-9]{40}$/.test(e.EXPECTED_SOURCE_TREE));
+          assert(/^[a-f0-9]{40}$/.test(e.EXPECTED_CARRIER_SHA));
+          assert(/^[a-f0-9]{64}$/.test(e.EXPECTED_WORKFLOW_SHA256));
+          assert.equal(git('rev-parse','HEAD'),e.EXPECTED_CARRIER_SHA);
+          assert.equal(e.GITHUB_SHA,e.EXPECTED_CARRIER_SHA);
+          assert.equal(git('show','-s','--format=%P','HEAD'),e.EXPECTED_SOURCE_SHA);
+          assert.equal(git('rev-parse',e.EXPECTED_SOURCE_SHA+'^{tree}'),e.EXPECTED_SOURCE_TREE);
+          assert.equal(git('show','-s','--format=%P',e.EXPECTED_SOURCE_SHA),'0f532cc944107388de9362bce45d4ce5d13c619b');
+          assert.deepEqual(git('diff','--name-only',e.EXPECTED_SOURCE_SHA,'HEAD').split('\n'),['.github/workflows/tests.yml']);
+          assert.deepEqual(git('diff','--name-only','35301248839db0a42cfa427230cf3a0c7a6a55bb',e.EXPECTED_SOURCE_SHA).split('\n').sort(),expectedPaths);
+          const hash = createHash('sha256').update(fs.readFileSync('.github/workflows/tests.yml')).digest('hex');
+          assert.equal(hash,e.EXPECTED_WORKFLOW_SHA256);
+          assert.equal(git('status','--porcelain'),'');
+          console.log('Reviewed source and diagnostic carrier matched');
+          '@ | node
+      - name: Create and verify owned private evidence directory
+        run: |
+          $privateRoot = Join-Path $env:RUNNER_TEMP ('pear-scrobbler-diagnostic-' + [Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $privateRoot | Out-Null
+          $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+          $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+          $acl.SetAccessRuleProtection($true, $false)
+          $acl.SetOwner($sid)
+          $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+          $acl.AddAccessRule($rule)
+          Set-Acl -LiteralPath $privateRoot -AclObject $acl
+          $actual = Get-Acl -LiteralPath $privateRoot
+          if (-not $actual.AreAccessRulesProtected) { throw 'Private directory ACL is unproven' }
+          if ($actual.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { throw 'Private directory owner mismatch' }
+          $rules = @($actual.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
+          if ($rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $sid.Value -or $rules[0].AccessControlType -ne 'Allow' -or $rules[0].FileSystemRights -ne 'FullControl') { throw 'Private directory ACL mismatch' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('PEAR_SCROBBLER_PRIVATE_ROOT=' + $privateRoot)
+          New-Item -ItemType Directory -Path (Join-Path $privateRoot 'safe') | Out-Null
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
         with:
           version: 11
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
-          node-version: 24.x
+          node-version: 24.21.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install virtual display
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
-      - run: pnpm build
-      - name: CI test grouping contracts
-        run: node --test scripts/ci-test-groups.node.cjs
-      - name: Run Linux tests in a virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/run-ci-tests.cjs
-      - name: Run macOS and Windows tests
-        if: runner.os != 'Linux'
-        run: node scripts/run-ci-tests.cjs
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
+      - name: Pure source controls
+        id: pure
+        timeout-minutes: 2
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          node --test tests/helpers/scrobbler-auth-native-diagnostics.node.cjs 1> (Join-Path $env:PEAR_SCROBBLER_PRIVATE_ROOT 'pure.stdout') 2> (Join-Path $env:PEAR_SCROBBLER_PRIVATE_ROOT 'pure.stderr')
+          $pureCode = $LASTEXITCODE
+          if ($pureCode -ne 0) { throw 'Pure source controls failed; private logs withheld' }
+      - name: Exactly one original native case without retries
+        id: native
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $title = 'native auth windows use distinct ephemeral sessions and secure child flags, then clear only owned state$'
+          $ownedOutput = Join-Path $env:PEAR_SCROBBLER_PRIVATE_ROOT 'playwright'
+          node node_modules/@playwright/test/cli.js test tests/scrobbler-auth-window-native.test.ts --grep $title --workers=1 --retries=0 --timeout=30000 --reporter=json --output $ownedOutput 1> (Join-Path $env:PEAR_SCROBBLER_PRIVATE_ROOT 'native.stdout.json') 2> (Join-Path $env:PEAR_SCROBBLER_PRIVATE_ROOT 'native.stderr')
+          $nativeCode = $LASTEXITCODE
+          @{code=$nativeCode;signal=$null} | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:PEAR_SCROBBLER_PRIVATE_ROOT 'native-exit.json') -Encoding utf8NoBOM
+          if ($nativeCode -ne 0) { throw 'Native diagnostic failed; private logs withheld' }
+      - name: Collect only validated bounded safe evidence
+        if: always() && env.PEAR_SCROBBLER_PRIVATE_ROOT != ''
+        env:
+          PURE_OUTCOME: ${{ steps.pure.outcome }}
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
+        run: |
+          @'
+          'use strict';
+          // Inert source-only collector. Raw Playwright output never enters safe evidence.
+          const assert = require('node:assert/strict');
+          const TITLE = 'native auth windows use distinct ephemeral sessions and secure child flags, then clear only owned state';
+          const NAMES = ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError', 'Other'];
+          const CODES = ['ENOENT', 'EACCES', 'EPERM', 'ESRCH', 'ETIMEDOUT', 'EPIPE', 'ECONNRESET', 'ABORT_ERR', 'ERR_ASSERTION', 'Other', 'none'];
+          const SIGNALS = ['SIGABRT', 'SIGFPE', 'SIGHUP', 'SIGILL', 'SIGINT', 'SIGKILL', 'SIGPIPE', 'SIGQUIT', 'SIGSEGV', 'SIGTERM', 'SIGTRAP', 'SIGUSR1', 'SIGUSR2', 'SIGBREAK'];
+          const PHASES = ['exit', 'close', 'startup', 'startup-terminate', 'terminate', 'fallback-query', 'fallback-signal-wait', 'close-wait', 'remove', 'query', 'launcher-validation', 'owned-query-close'];
+          function keys(value, required, optional = []) {
+            assert(value && typeof value === 'object' && !Array.isArray(value));
+            assert(required.every(key => Object.hasOwn(value, key)));
+            assert(Object.keys(value).every(key => required.includes(key) || optional.includes(key)));
+          }
+          function integer(value, max = Number.MAX_SAFE_INTEGER) {
+            assert(Number.isSafeInteger(value) && value >= 0 && value <= max);
+            return value;
+          }
+          function code(value) { assert(value === null || Number.isSafeInteger(value)); return value; }
+          function signal(value) { assert(value === null || SIGNALS.includes(value)); return value; }
+          function errorFact(value) {
+            keys(value, ['phase', 'name', 'code', 'site']);
+            assert(['task', 'bootstrap'].includes(value.phase));
+            assert(NAMES.includes(value.name) && CODES.includes(value.code));
+            assert(Array.isArray(value.site) && value.site.length <= 3);
+            return { phase: value.phase, name: value.name, code: value.code, site: value.site.map(site => {
+              keys(site, ['line', 'column']);
+              return { line: integer(site.line, 9999999), column: integer(site.column, 9999999) };
+            }) };
+          }
+          function lifecycle(value, baseline = false) {
+            keys(value, baseline ? ['exitCode', 'signalCode'] : ['observed', 'code', 'signal']);
+            if (baseline) return { exitCode: code(value.exitCode), signalCode: signal(value.signalCode) };
+            assert(typeof value.observed === 'boolean');
+            return { observed: value.observed, code: code(value.code), signal: signal(value.signal) };
+          }
+          function packet(value) {
+            keys(value, ['schema', 'body', 'cleanup', 'fixture']);
+            assert(value.schema === 1 && ['passed', 'failed', 'not-started'].includes(value.body));
+            assert(['passed', 'failed'].includes(value.cleanup));
+            assert(Buffer.byteLength(JSON.stringify(value)) <= 4096);
+            const f = value.fixture;
+            keys(f, ['schema', 'coverage', 'attachedAt', 'captureStopped', 'nativeAbsence', 'baseline', 'exit', 'close', 'stderr', 'taskErrors', 'events']);
+            assert(f.schema === 1 && ['after-launch-return', 'launch-not-returned'].includes(f.coverage) && f.attachedAt === 0);
+            assert(f.captureStopped === true && f.nativeAbsence === 'UNKNOWN');
+            assert(Buffer.byteLength(JSON.stringify(f)) <= 3800);
+            keys(f.stderr, ['bytesSeen', 'bytesRetained', 'truncated', 'sha256', 'content', 'records']);
+            integer(f.stderr.bytesSeen); integer(f.stderr.bytesRetained, 16384);
+            assert(f.stderr.bytesRetained <= f.stderr.bytesSeen);
+            assert(f.stderr.truncated === (f.stderr.bytesSeen > f.stderr.bytesRetained));
+            assert(typeof f.stderr.sha256 === 'string' && /^[a-f0-9]{64}$/.test(f.stderr.sha256) && f.stderr.content === 'UNKNOWN');
+            assert(Array.isArray(f.stderr.records) && Array.isArray(f.taskErrors) && Array.isArray(f.events));
+            assert(f.stderr.records.length + f.taskErrors.length + f.events.length <= 32);
+            const events = f.events.map(event => {
+              keys(event, ['phase', 'at'], ['code', 'signal', 'name', 'errorCode', 'killed']);
+              assert(PHASES.includes(event.phase)); integer(event.at, 999999999);
+              const safe = { phase: event.phase, at: event.at };
+              if (Object.hasOwn(event, 'code')) safe.code = code(event.code);
+              if (Object.hasOwn(event, 'signal')) safe.signal = signal(event.signal);
+              if (Object.hasOwn(event, 'name')) { assert(NAMES.includes(event.name)); safe.name = event.name; }
+              if (Object.hasOwn(event, 'errorCode')) { assert(CODES.includes(event.errorCode)); safe.errorCode = event.errorCode; }
+              if (Object.hasOwn(event, 'killed')) { assert(typeof event.killed === 'boolean'); safe.killed = event.killed; }
+              return safe;
+            });
+            return { schema: 1, body: value.body, cleanup: value.cleanup, fixture: {
+              schema: 1, coverage: f.coverage, attachedAt: 0, captureStopped: true,
+              nativeAbsence: 'UNKNOWN', baseline: lifecycle(f.baseline, true), exit: lifecycle(f.exit), close: lifecycle(f.close),
+              stderr: { bytesSeen: f.stderr.bytesSeen, bytesRetained: f.stderr.bytesRetained, truncated: f.stderr.truncated,
+                sha256: f.stderr.sha256, content: 'UNKNOWN', records: f.stderr.records.map(errorFact) },
+              taskErrors: f.taskErrors.map(errorFact), events,
+            } };
+          }
+          function collect(report, childCode, childSignal) {
+            assert(report && typeof report === 'object');
+            assert(Array.isArray(report.errors) && report.errors.length === 0);
+            const specs = [];
+            function visit(suites) {
+              assert(Array.isArray(suites));
+              for (const suite of suites) {
+                if (suite.specs) specs.push(...suite.specs);
+                if (suite.suites) visit(suite.suites);
+              }
+            }
+            visit(report.suites);
+            assert.equal(specs.length, 1); assert.equal(specs[0].title, TITLE);
+            assert(Array.isArray(specs[0].tests) && specs[0].tests.length === 1);
+            const test = specs[0].tests[0];
+            assert.equal(test.expectedStatus, 'passed');
+            assert(Array.isArray(test.results) && test.results.length === 1);
+            const result = test.results[0];
+            assert(['passed', 'failed', 'timedOut', 'interrupted'].includes(result.status));
+            assert.equal(result.retry, 0); integer(result.duration);
+            assert(Number.isSafeInteger(childCode) && childCode >= 0 && childCode <= 255 && childSignal === null);
+            assert((result.status === 'passed') === (childCode === 0));
+            assert(report.stats && typeof report.stats === 'object');
+            for (const field of ['expected', 'unexpected', 'flaky', 'skipped']) integer(report.stats[field], 1);
+            assert.equal(report.stats.flaky, 0); assert.equal(report.stats.skipped, 0);
+            assert.equal(report.stats.expected, result.status === 'passed' ? 1 : 0);
+            assert.equal(report.stats.unexpected, result.status === 'passed' ? 0 : 1);
+            const packets = [];
+            for (const attachment of result.attachments ?? []) {
+              if (attachment.name !== 'scrobbler-native-diagnostics') continue;
+              assert.equal(attachment.contentType, 'application/json');
+              assert(typeof attachment.body === 'string' && attachment.body.length <= 5500);
+              const body = Buffer.from(attachment.body, 'base64'); assert(body.length <= 4096);
+              assert.equal(body.toString('base64'), attachment.body);
+              packets.push(packet(JSON.parse(body.toString('utf8'))));
+            }
+            for (const entry of result.stdout ?? []) {
+              if (typeof entry.text !== 'string') continue;
+              let candidate; try { candidate = JSON.parse(entry.text.trim()); } catch { continue; }
+              // Identify the structured diagnostic channel before its schema/size gate.
+              // A valid attachment cannot excuse a malformed copy on that channel.
+              if (!candidate || typeof candidate !== 'object' || !Object.hasOwn(candidate, 'fixture')) continue;
+              assert(Buffer.byteLength(entry.text) <= 4097);
+              packets.push(packet(candidate));
+            }
+            assert(packets.length > 0 && packets.length <= 2);
+            const canonical = JSON.stringify(packets[0]);
+            assert(packets.every(value => JSON.stringify(value) === canonical));
+            const diagnostic = packets[0];
+            if (result.status === 'passed') assert(diagnostic.body === 'passed' && diagnostic.cleanup === 'passed');
+            if (diagnostic.body === 'failed' || diagnostic.cleanup === 'failed') assert.notEqual(result.status, 'passed');
+            return { schema: 1, test: 'scrobbler-first-native', status: result.status, retry: 0,
+              durationMs: result.duration, childCode, childSignal: null, diagnostic,
+              nativeAbsence: 'UNKNOWN', historicalCause: 'UNKNOWN', fullRegression: 'UNPROVEN' };
+          }
+          module.exports = { collect, packet, TITLE };
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+          const e = process.env;
+          const output = path.join(e.PEAR_SCROBBLER_PRIVATE_ROOT,'safe','result.json');
+          let safe;
+          try {
+            assert.equal(e.PURE_OUTCOME,'success');
+            assert(['success','failure'].includes(e.NATIVE_OUTCOME));
+            const file = path.join(e.PEAR_SCROBBLER_PRIVATE_ROOT,'native.stdout.json');
+            assert(fs.statSync(file).size <= 4*1024*1024);
+            const exitFile = path.join(e.PEAR_SCROBBLER_PRIVATE_ROOT,'native-exit.json');
+            assert(fs.statSync(exitFile).size <= 1024);
+            const ended = JSON.parse(fs.readFileSync(exitFile,'utf8'));
+            keys(ended,['code','signal']);
+            safe = collect(JSON.parse(fs.readFileSync(file,'utf8')), ended.code, ended.signal);
+            assert.equal(e.NATIVE_OUTCOME, safe.status === 'passed' ? 'success' : 'failure');
+            safe.provenance = {source:e.EXPECTED_SOURCE_SHA,tree:e.EXPECTED_SOURCE_TREE,carrier:e.EXPECTED_CARRIER_SHA,workflowSHA256:e.EXPECTED_WORKFLOW_SHA256,nodeVersion:process.version,nodeSHA256:crypto.createHash('sha256').update(fs.readFileSync(process.execPath)).digest('hex'),lockSHA256:crypto.createHash('sha256').update(fs.readFileSync('pnpm-lock.yaml')).digest('hex'),platform:process.platform,arch:process.arch,imageOS:e.ImageOS,imageVersion:e.ImageVersion,runnerOS:e.RUNNER_OS,runnerArch:e.RUNNER_ARCH,runId:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT};
+            assert.equal(safe.provenance.nodeVersion,'v24.21.0');
+            assert.equal(safe.provenance.platform,'win32');
+            assert.equal(safe.provenance.arch,'x64');
+            assert.equal(safe.provenance.runnerOS,'Windows');
+            assert.equal(safe.provenance.runnerArch,'X64');
+            assert(typeof safe.provenance.imageOS === 'string' && /^[A-Za-z0-9._-]{1,80}$/.test(safe.provenance.imageOS));
+            assert(typeof safe.provenance.imageVersion === 'string' && /^[A-Za-z0-9._-]{1,80}$/.test(safe.provenance.imageVersion));
+            assert(/^[0-9]{1,20}$/.test(safe.provenance.runId));
+            assert(/^[0-9]{1,3}$/.test(safe.provenance.attempt));
+          } catch {
+            safe = {schema:1,status:'UNPROVEN',reason:'DIAGNOSTIC_EVIDENCE_REJECTED',nativeAbsence:'UNKNOWN',historicalCause:'UNKNOWN',fullRegression:'UNPROVEN'};
+          }
+          fs.writeFileSync(output,JSON.stringify(safe,null,2));
+          console.log(JSON.stringify({status:safe.status,reason:safe.reason??'VALIDATED_DIAGNOSTIC',nativeAbsence:'UNKNOWN',historicalCause:'UNKNOWN',fullRegression:'UNPROVEN'}));
+          if (safe.status !== 'passed') process.exitCode=1;
+          '@ | node
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        if: always() && env.PEAR_SCROBBLER_PRIVATE_ROOT != ''
+        with:
+          name: scrobbler-native-safe-result
+          path: ${{ env.PEAR_SCROBBLER_PRIVATE_ROOT }}/safe/result.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove owned private report directory
+        if: always() && env.PEAR_SCROBBLER_PRIVATE_ROOT != ''
+        run: |
+          Remove-Item -LiteralPath $env:PEAR_SCROBBLER_PRIVATE_ROOT -Recurse -Force -ErrorAction Stop
