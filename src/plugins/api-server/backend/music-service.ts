@@ -489,7 +489,13 @@ export class MusicService {
     ]);
     // Native retirement advances this same private revision through the broker
     // observer. These terminal checks make no adapter/native guard callouts.
+    let observedRetirement = false;
+    const observe = (current: boolean) => {
+      if (!current) observedRetirement = true;
+      return current;
+    };
     const unchanged = () =>
+      !observedRetirement &&
       !joined.aborted &&
       !signal.aborted &&
       (!session || !this.retiredSessions.has(session)) &&
@@ -499,18 +505,36 @@ export class MusicService {
     const stable = () => this.now() < deadline && unchanged();
     const authorityCurrent = () => {
       if (!stable()) return false;
-      if (!this.broker.isCurrent(admission) || !stable()) return false;
+      if (!observe(this.broker.isCurrent(admission)) || !stable()) return false;
       // Resolve AFTER native/owner/session callbacks. Never refresh the captured
       // binding: a different selected identity retires this invocation.
       const selected = this.accessOwner(transport, resource);
-      return selected?.identity === access.owner.identity && stable();
+      return observe(selected?.identity === access.owner.identity) && stable();
     };
     const currentOwner = () => {
       if (!authorityCurrent()) return false;
-      if (!access.owner.current() || !authorityCurrent()) return false;
-      if (access.session && (!access.session.current() || !authorityCurrent()))
+      if (!observe(access.owner.current()) || !authorityCurrent()) return false;
+      if (
+        access.session &&
+        (!observe(access.session.current()) || !authorityCurrent())
+      )
         return false;
-      return access.owner.current() && authorityCurrent();
+      return observe(access.owner.current()) && authorityCurrent();
+    };
+    const invalidReason = (
+      principal?: MusicGrantRecord,
+      fallback: 'retired' | 'timeout' = 'timeout',
+    ) => {
+      if (joined.reason instanceof MusicServiceError) return joined.reason;
+      // Classification never re-enters native, access, session or grant guards.
+      const now = this.now();
+      return new MusicServiceError(
+        !unchanged() ||
+          (principal &&
+            (now < principal.createdAt || now >= principal.expiresAt))
+          ? 'retired'
+          : fallback,
+      );
     };
     let detach = () => {},
       timer: ReturnType<typeof setTimeout> | undefined;
@@ -522,11 +546,11 @@ export class MusicService {
         this.sessionLeases.set(session, controllers);
       }
       timer = setTimeout(
-        () => controller.abort(new MusicServiceError('timeout')),
+        () => controller.abort(invalidReason()),
         Math.max(0, deadline - this.now()),
       );
       timer.unref?.();
-      if (!currentOwner()) return failMusic('retired');
+      if (!currentOwner()) throw invalidReason();
       // Receipt scope discovery and authorization share this captured origin.
       // A reentrant guard must not authorize a replacement using the old scope.
       const scope =
@@ -534,51 +558,55 @@ export class MusicService {
           ? requiredScope(access)
           : requiredScope;
       if (typeof requiredScope === 'function' && !currentOwner())
-        return failMusic('retired');
+        throw invalidReason();
       const principal = await waitOwned(
         this.grants.authorize(token, transport, resource, scope),
         joined,
       );
       if (
         !currentOwner() ||
-        !this.grants.isCurrent(principal, scope) ||
+        !observe(this.grants.isCurrent(principal, scope)) ||
         !currentOwner()
       )
-        return failMusic('retired');
+        throw invalidReason(principal);
       for (const permission of extra) {
         await waitOwned(
           this.grants.authorize(token, transport, resource, permission),
           joined,
         );
-        if (!currentOwner()) return failMusic('retired');
+        if (!currentOwner()) throw invalidReason(principal);
       }
       const current = () => {
         if (
           !currentOwner() ||
-          !this.grants.isCurrent(principal, scope) ||
+          !observe(this.grants.isCurrent(principal, scope)) ||
           !currentOwner()
         )
           return false;
         for (const permission of extra)
-          if (!this.grants.isCurrent(principal, permission) || !currentOwner())
+          if (
+            !observe(this.grants.isCurrent(principal, permission)) ||
+            !currentOwner()
+          )
             return false;
         return true;
       };
       detach = this.grants.subscribe(() => {
-        if (!current()) controller.abort();
+        if (!current()) controller.abort(invalidReason(principal));
       });
       clearTimeout(timer);
       timer = setTimeout(
         () =>
           controller.abort(
-            new MusicServiceError(
-              principal.expiresAt < deadline ? 'retired' : 'timeout',
+            invalidReason(
+              principal,
+              principal.expiresAt <= deadline ? 'retired' : 'timeout',
             ),
           ),
         Math.max(0, Math.min(deadline, principal.expiresAt) - this.now()),
       );
       timer.unref?.();
-      if (!current()) return failMusic('retired');
+      if (!current()) throw invalidReason(principal);
       const result = await waitOwned(
         action({
           principal,
@@ -594,7 +622,7 @@ export class MusicService {
         }),
         joined,
       );
-      if (!current()) return failMusic('retired');
+      if (!current()) throw invalidReason(principal);
       return result;
     } catch (error) {
       if (error instanceof MusicServiceError) throw error;

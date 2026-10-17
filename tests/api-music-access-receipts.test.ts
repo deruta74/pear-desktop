@@ -207,6 +207,331 @@ async function healthy(
 ) {
   return f.finish(f.service.currentFor(f.invocation({ session })), snapshot);
 }
+// Shared deadline tests keep actual IPC accounting while deferring its logical result.
+async function deadlineReceipt(rest = false) {
+  const f = await fixture(rest);
+  const grant = rest
+    ? await f.store.issue(
+        'Deadline REST',
+        'rest',
+        f.service.resource,
+        ['playback.control'],
+        () => true,
+      )
+    : f.grant;
+  const invocation = f.invocation({ token: grant.token });
+  const command = { action: 'play_song', videoId: 'abcdefghijk' };
+  const prepared = rest
+    ? await f.service.prepare(grant.token, command)
+    : await f.service.prepareFor(invocation, command);
+  const input = { ...command, operationId: prepared.operationId };
+  return {
+    ...f,
+    grant,
+    prepared,
+    input,
+    execute: (deadline?: number, signal?: AbortSignal) =>
+      rest
+        ? f.service.navigate(grant.token, input, signal, deadline)
+        : f.service.navigateFor(
+            { ...invocation, ...(signal ? { signal } : {}) },
+            input,
+            deadline,
+          ),
+    status: () =>
+      rest
+        ? f.service.operation(grant.token, prepared.operationId)
+        : f.service.operationFor(invocation, prepared.operationId),
+  };
+}
+
+for (const rest of [false, true])
+  for (const elapsed of [10000, 10001])
+    test(`R1 deadline-only ${rest ? 'REST' : 'MCP'} lost ACK at ${elapsed} keeps uncertainty and physical accounting`, async () => {
+      const f = await deadlineReceipt(rest);
+      const read = f.broker.read.bind(f.broker);
+      let rejectLogical!: (error: Error) => void,
+        calls = 0;
+      f.broker.read = (...args: any[]) => {
+        calls++;
+        read(...args).catch(() => {});
+        return new Promise((_resolve, reject) => {
+          rejectLogical = reject;
+        });
+      };
+      try {
+        const deadline = f.service.now() + 10000,
+          pending = outcome(f.execute(deadline));
+        const { packet } = await start(f, pending);
+        const row = f.service.operations.rows.get(f.prepared.operationId);
+        expect(f.broker.stats().dispatched).toBe(1);
+        f.advance(elapsed);
+        rejectLogical(Error('Logical ACK lost at the owned deadline'));
+        expect((await pending).code).toBe('timeout');
+        const receipt = {
+          operationId: f.prepared.operationId,
+          status: 'uncertain',
+          error: 'outcome_unknown',
+        };
+        expect(row.physicalHold).toBe(true);
+        expect(await f.status()).toEqual(receipt);
+        expect(await f.execute()).toEqual(receipt);
+        expect(calls).toBe(1);
+        expect(f.broker.stats().dispatched).toBe(1);
+        f.settled(packet, {
+          ok: true,
+          value: { version: 1, phase: 'owned_dispatch' },
+        });
+        expect(f.broker.stats().dispatched).toBe(0);
+        expect(row.physicalHold).toBe(false);
+        expect(await f.status()).toEqual(receipt);
+        expect(await f.execute()).toEqual(receipt);
+        expect(calls).toBe(1);
+        expect(f.service.sessionLeases.size).toBe(0);
+      } finally {
+        f.broker.read = read;
+        await f.close();
+      }
+    });
+
+test('R1 deadline-only completed authorization cannot enter the broker', async () => {
+  const f = await deadlineReceipt();
+  const authorize = f.store.authorize.bind(f.store);
+  try {
+    f.store.authorize = async (...args: any[]) => {
+      const principal = await authorize(...args);
+      f.advance(10000);
+      return principal;
+    };
+    expect((await outcome(f.execute(f.service.now() + 10000))).code).toBe(
+      'timeout',
+    );
+    expect(queries(f)).toHaveLength(0);
+    f.store.authorize = authorize;
+    expect(await f.status()).toEqual(f.prepared);
+    expect(f.service.sessionLeases.size).toBe(0);
+  } finally {
+    await f.close();
+  }
+});
+
+for (const state of [
+  'deadline-only',
+  'expired-principal',
+  'createdAt-rollback',
+  'grant-timer-early',
+  'equal-expiry',
+  'native-signal',
+  'session-tombstone',
+])
+  test(`R1 deadline final callback classifies ${state} without late probes`, async () => {
+    const f = await fixture();
+    const callbacks: (() => void)[] = [],
+      original = globalThis.setTimeout;
+    let pending: Promise<any> | undefined,
+      late = false;
+    const forbidden: string[] = [];
+    try {
+      if (state === 'expired-principal')
+        f.advance(f.grant.record.expiresAt - f.service.now() - 10001);
+      if (state === 'grant-timer-early')
+        f.advance(f.grant.record.expiresAt - f.service.now() - 1000);
+      if (state === 'equal-expiry')
+        f.advance(f.grant.record.expiresAt - f.service.now() - 10000);
+      const prepared = await f.service.prepareFor(f.invocation(), {
+        action: 'pause',
+      });
+      const current = f.store.isCurrent.bind(f.store);
+      f.store.isCurrent = (...args: any[]) => {
+        if (late) forbidden.push('grant');
+        return current(...args);
+      };
+      for (const [target, key, name] of [
+        [f.broker, 'isCurrent', 'broker'],
+        [f.service.runtime, 'resolveAccessOwner', 'resolver'],
+        [f.owner, 'current', 'owner'],
+        [f.session, 'current', 'session'],
+      ] as any[]) {
+        const originalGuard = target[key].bind(target);
+        target[key] = (...args: any[]) => {
+          if (late) forbidden.push(name);
+          return originalGuard(...args);
+        };
+      }
+      try {
+        globalThis.setTimeout = ((callback: any, ...args: any[]) => {
+          callbacks.push(callback);
+          return (original as any)(callback, ...args);
+        }) as any;
+        pending = outcome(
+          f.service.controlFor(
+            f.invocation(),
+            { action: 'pause', operationId: prepared.operationId },
+            f.service.now() + 10000,
+          ),
+        );
+        for (let turn = 0; turn < 100 && queries(f).length === 0; turn++)
+          await Promise.resolve();
+      } finally {
+        globalThis.setTimeout = original;
+      }
+      expect(queries(f)).toHaveLength(1);
+      expect(callbacks).toHaveLength(3); // admission, principal and existing broker lifetime
+      f.ready();
+      const packet = f.challenge();
+      if (state === 'createdAt-rollback')
+        f.advance(f.grant.record.createdAt - f.service.now() - 1);
+      else if (state !== 'grant-timer-early')
+        f.advance(state === 'expired-principal' ? 10001 : 10000);
+      if (state === 'native-signal')
+        f.contents.emit(
+          'did-start-navigation',
+          {},
+          'https://music.youtube.com/',
+          false,
+          true,
+        );
+      if (state === 'session-tombstone') f.service.retireSession(f.session);
+      late = true;
+      callbacks[1]();
+      expect((await pending).code).toBe(
+        state === 'deadline-only' ? 'timeout' : 'retired',
+      );
+      expect(forbidden).toEqual([]);
+      expect(f.broker.stats().dispatched).toBe(1);
+      f.settled(packet, {
+        ok: true,
+        value: { version: 1, phase: 'owned_control_dispatch' },
+      });
+      expect(f.broker.stats().dispatched).toBe(0);
+    } finally {
+      globalThis.setTimeout = original;
+      late = false;
+      await f.close();
+    }
+  });
+
+test('R1 deadline inner negative observation cannot become outer ABA success', async () => {
+  const callbacks: string[] = [];
+  let observed = false,
+    armed = false;
+  const f = await fixture(false, (kind) => {
+    if (observed) callbacks.push(kind);
+  });
+  const read = f.broker.read.bind(f.broker),
+    owner = f.owner.current.bind(f.owner);
+  let settle: (() => void) | undefined;
+  try {
+    const prepared = await f.service.prepareFor(f.invocation(), {
+      action: 'pause',
+    });
+    f.owner.current = () => {
+      if (armed) {
+        armed = false;
+        observed = true;
+        return false;
+      }
+      return owner();
+    };
+    f.broker.read = (_a: any, _i: any, _p: any, options: any) => {
+      armed = true;
+      expect(options.isCurrent()).toBe(false);
+      settle = () => options.onPhysicalSettled('authenticated_ack');
+      return Promise.reject(Error('Inner owned guard rejected once'));
+    };
+    const result = await outcome(
+      f.service.controlFor(f.invocation(), {
+        action: 'pause',
+        operationId: prepared.operationId,
+      }),
+    );
+    expect(observed).toBe(true);
+    expect(result.code).toBe('retired');
+    expect(callbacks).toEqual([]);
+    expect(
+      f.service.operations.rows.get(prepared.operationId).receipt,
+    ).toMatchObject({ status: 'uncertain', error: 'outcome_unknown' });
+    expect(queries(f)).toHaveLength(0);
+    settle!();
+    observed = false;
+    f.broker.read = read;
+    f.owner.current = owner;
+    expect(await healthy(f)).toEqual(snapshot);
+  } finally {
+    observed = false;
+    f.broker.read = read;
+    await f.close();
+  }
+});
+
+for (const kind of ['native', 'resolver', 'owner', 'session', 'grant'])
+  test(`R1 deadline observed negative ${kind} beats simultaneous clock crossing`, async () => {
+    let observed = false,
+      armed = false;
+    const after: string[] = [];
+    const f = await fixture(false, (call) => {
+      if (observed) after.push(call);
+    });
+    const [target, key] =
+      kind === 'native'
+        ? [f.broker, 'isCurrent']
+        : kind === 'resolver'
+          ? [f.service.runtime, 'resolveAccessOwner']
+          : kind === 'owner'
+            ? [f.owner, 'current']
+            : kind === 'session'
+              ? [f.session, 'current']
+              : [f.store, 'isCurrent'];
+    const original = target[key].bind(target),
+      read = f.broker.read.bind(f.broker);
+    let settle: (() => void) | undefined;
+    try {
+      const prepared = await f.service.prepareFor(f.invocation(), {
+        action: 'pause',
+      });
+      target[key] = (...args: any[]) => {
+        if (armed) {
+          armed = false;
+          observed = true;
+          f.advance(10000);
+          return kind === 'resolver'
+            ? { identity: {}, current: () => true }
+            : false;
+        }
+        return original(...args);
+      };
+      f.broker.read = (_a: any, _i: any, _p: any, options: any) => {
+        armed = true;
+        expect(options.isCurrent()).toBe(false);
+        settle = () => options.onPhysicalSettled('authenticated_ack');
+        return Promise.reject(Error('Observed terminal negative at deadline'));
+      };
+      const result = await outcome(
+        f.service.controlFor(f.invocation(), {
+          action: 'pause',
+          operationId: prepared.operationId,
+        }),
+      );
+      expect(observed).toBe(true);
+      expect(result.code).toBe('retired');
+      expect(after).toEqual([]);
+      expect(queries(f)).toHaveLength(0);
+      expect(
+        f.service.operations.rows.get(prepared.operationId).physicalHold,
+      ).toBe(true);
+      settle!();
+      observed = false;
+      target[key] = original;
+      f.broker.read = read;
+      expect(await healthy(f)).toEqual(snapshot);
+    } finally {
+      observed = false;
+      target[key] = original;
+      f.broker.read = read;
+      await f.close();
+    }
+  });
+
 for (const c of commands)
   test(`MCP REST-off ${c.method} keeps prepared ownership after request completion and replays exactly`, async () => {
     const f = await fixture();

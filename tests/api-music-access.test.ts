@@ -757,7 +757,9 @@ test('terminal resolver callout cannot bypass config frame stop or deadline reti
         (value: unknown) => ({ value, code: 'success' }),
         (error: any) => ({ code: error.code }),
       );
-      expect(await f.finish(pending, snapshot)).toEqual({ code: 'retired' });
+      expect(await f.finish(pending, snapshot)).toEqual({
+        code: retirement === 'deadline' ? 'timeout' : 'retired',
+      });
       expect(fired).toBe(true);
       f.register({ identity: {}, current: () => true });
       const service = retirement === 'stop' ? f.restart() : f.service;
@@ -770,5 +772,212 @@ test('terminal resolver callout cannot bypass config frame stop or deadline reti
     } finally {
       await f.close();
     }
+  }
+});
+
+for (const state of ['deadline-only', 'session-tombstone', 'configuration'])
+  test(`R1 deadline initial callback ${state} does not re-enter authority`, async () => {
+    let late = false;
+    const unexpected: string[] = [];
+    const f = await fixture(false, (kind) => {
+      if (late) unexpected.push(kind);
+    });
+    const authorize = f.store.authorize.bind(f.store),
+      original = globalThis.setTimeout;
+    const callbacks: (() => void)[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    f.store.authorize = async (...args: any[]) => {
+      await gate;
+      return authorize(...args);
+    };
+    try {
+      let pending: Promise<any>;
+      try {
+        globalThis.setTimeout = ((callback: any, ...args: any[]) => {
+          callbacks.push(callback);
+          return (original as any)(callback, ...args);
+        }) as any;
+        pending = f.service
+          .currentFor(f.invocation())
+          .catch((error: any) => error.code);
+      } finally {
+        globalThis.setTimeout = original;
+      }
+      expect(callbacks).toHaveLength(1);
+      f.advance(5000);
+      if (state === 'session-tombstone') f.service.retireSession(f.session);
+      if (state === 'configuration') f.service.configure(f.config);
+      late = true;
+      callbacks[0]();
+      expect(await pending).toBe(
+        state === 'deadline-only' ? 'timeout' : 'retired',
+      );
+      expect(unexpected).toEqual([]);
+      expect(f.sent).toHaveLength(0);
+      expect(f.service.sessionLeases.size).toBe(0);
+    } finally {
+      globalThis.setTimeout = original;
+      late = false;
+      release();
+      await f.close();
+    }
+  });
+
+for (const hidden of ['owner-replacement', 'grant-revocation'])
+  test(`R1 deadline hidden first ${hidden} stays timeout without late probes`, async () => {
+    let late = false;
+    const unexpected: string[] = [];
+    const f = await fixture(false, (kind) => {
+      if (late) unexpected.push(kind);
+    });
+    const original = globalThis.setTimeout,
+      callbacks: (() => void)[] = [];
+    const current = f.store.isCurrent.bind(f.store),
+      native = f.broker.isCurrent.bind(f.broker);
+    f.store.isCurrent = (...args: any[]) => {
+      if (late) unexpected.push('grant');
+      return current(...args);
+    };
+    f.broker.isCurrent = (...args: any[]) => {
+      if (late) unexpected.push('native');
+      return native(...args);
+    };
+    try {
+      let pending: Promise<any>;
+      try {
+        globalThis.setTimeout = ((callback: any, ...args: any[]) => {
+          callbacks.push(callback);
+          return (original as any)(callback, ...args);
+        }) as any;
+        pending = f.service
+          .currentFor(f.invocation())
+          .catch((error: any) => error.code);
+        for (let turn = 0; turn < 100 && f.sent.length === 0; turn++)
+          await Promise.resolve();
+      } finally {
+        globalThis.setTimeout = original;
+      }
+      expect(callbacks).toHaveLength(3);
+      f.ready();
+      const packet = f.challenge();
+      f.advance(5000);
+      late = true;
+      if (hidden === 'owner-replacement')
+        f.register({ identity: {}, current: () => true });
+      if (hidden === 'grant-revocation')
+        await f.store.revoke(f.grant.record.id, () => true);
+      callbacks[1]();
+      expect(await pending).toBe('timeout');
+      expect(unexpected).toEqual([]);
+      expect(f.broker.stats().dispatched).toBe(1);
+      f.settled(packet, { ok: true, value: snapshot });
+      expect(f.broker.stats().dispatched).toBe(0);
+      late = false;
+      f.register(f.owner);
+      const next = await f.store.issue(
+        'Fresh recovery',
+        'mcp',
+        resource,
+        ['playback.read'],
+        () => true,
+      );
+      expect(
+        await f.finish(
+          f.service.currentFor(f.invocation({ token: next.token })),
+          snapshot,
+        ),
+      ).toEqual(snapshot);
+    } finally {
+      globalThis.setTimeout = original;
+      late = false;
+      await f.close();
+    }
+  });
+
+for (const typed of ['timeout', 'retired'])
+  test(`R1 deadline typed ${typed} abort wins over subsequent state change`, async () => {
+    const f = await fixture();
+    try {
+      const canceled = new AbortController();
+      canceled.abort();
+      const reason = await f.service
+        .currentFor(
+          f.invocation(typed === 'retired' ? { signal: canceled.signal } : {}),
+          typed === 'timeout' ? f.service.now() : undefined,
+        )
+        .catch((error: any) => error);
+      expect(reason.code).toBe(typed);
+      const controller = new AbortController(),
+        pending = f.service
+          .currentFor(f.invocation({ signal: controller.signal }))
+          .catch((error: any) => error.code);
+      await expect.poll(() => f.sent.length).toBe(1);
+      f.ready();
+      const packet = f.challenge();
+      controller.abort(reason);
+      if (typed === 'timeout') f.service.retireSession(f.session);
+      else f.advance(5001);
+      expect(await pending).toBe(typed);
+      f.settled(packet, { ok: true, value: snapshot });
+      expect(f.broker.stats().dispatched).toBe(0);
+      const session = { id: 'typed-recovery', current: () => true };
+      expect(
+        await f.finish(
+          f.service.currentFor(f.invocation({ session })),
+          snapshot,
+        ),
+      ).toEqual(snapshot);
+    } finally {
+      await f.close();
+    }
+  });
+
+test('R1 deadline captured REST listener abort retires without a late listener query', async () => {
+  const f = await fixture(true);
+  const controller = new AbortController();
+  let late = false,
+    queries = 0;
+  const audience = f.service.resource;
+  const listener = {
+    identity: {},
+    address: '127.0.0.1',
+    port: 26538,
+    tls: false,
+    resources: { local: audience },
+    signal: controller.signal,
+    ownsSocket: () => true,
+    current: () => true,
+  };
+  f.service.runtime.restListenerOwner = () => {
+    if (late) queries++;
+    return listener;
+  };
+  try {
+    const grant = await f.store.issue(
+      'REST listener',
+      'rest',
+      audience,
+      ['playback.read'],
+      () => true,
+    );
+    const pending = f.service
+      .current(grant.token)
+      .catch((error: any) => error.code);
+    await expect.poll(() => f.sent.length).toBe(1);
+    f.ready();
+    const packet = f.challenge();
+    f.advance(5000);
+    late = true;
+    controller.abort();
+    expect(await pending).toBe('retired');
+    expect(queries).toBe(0);
+    f.settled(packet, { ok: true, value: snapshot });
+    expect(f.broker.stats().dispatched).toBe(0);
+  } finally {
+    late = false;
+    await f.close();
   }
 });
