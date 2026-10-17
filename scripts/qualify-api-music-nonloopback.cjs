@@ -7,6 +7,8 @@ const TEST_TITLE =
   'runtime-admitted nonloopback HTTP and TLS require actual direct peers';
 const CERT_SHA256 =
   '597b4509e1ad0c12b69402bc0cff55bcb3f28603dea13a36623eb38891d109a3';
+const LEAF_FINGERPRINT =
+  'fb6e906aa7015cfe4194ac90bd771a3b4f4d2eecef8ba4614b079a59138f35b1';
 const CHECKPOINTS = Object.freeze([
   'actual_nonempty_socket_facts',
   'search100plus51_replay',
@@ -137,6 +139,165 @@ function validatePlan(plan) {
     fail('INVALID_PLAN');
 }
 
+function parseProtocolTelemetry(value, protocol) {
+  const integer = (v, min, max) =>
+    Number.isSafeInteger(v) && v >= min && v <= max;
+  const group = (v, keys) => {
+    if (!exactKeys(v, keys)) fail('INVALID_REPORT');
+  };
+  group(value, [
+    'version',
+    'endpoint',
+    'tls',
+    'pages',
+    'ownership',
+    'counts',
+    'cleanup',
+  ]);
+  if (value.version !== 1) fail('INVALID_REPORT');
+  const {
+    endpoint: e,
+    tls: t,
+    pages: p,
+    ownership: o,
+    counts: c,
+    cleanup: k,
+  } = value;
+  group(e, [
+    'label',
+    'family',
+    'observations',
+    'port',
+    'nonloopback',
+    'peerMatchesAdmission',
+    'localMatchesAdmission',
+    'owned',
+    'epochs',
+  ]);
+  if (
+    e.label !== 'owned-v4' ||
+    e.family !== 4 ||
+    !integer(e.observations, 1, 256) ||
+    !integer(e.port, 1, 65535) ||
+    [
+      e.nonloopback,
+      e.peerMatchesAdmission,
+      e.localMatchesAdmission,
+      e.owned,
+    ].some((v) => v !== true) ||
+    !Array.isArray(e.epochs) ||
+    e.epochs.length !== 4
+  )
+    fail('INVALID_REPORT');
+  const labels = ['disabled', 'A', 'B', 'configured'];
+  let observed = 0;
+  for (let i = 0; i < labels.length; i++) {
+    const epoch = e.epochs[i];
+    group(epoch, ['label', 'observations']);
+    if (epoch.label !== labels[i] || !integer(epoch.observations, 1, 256))
+      fail('INVALID_REPORT');
+    observed += epoch.observations;
+  }
+  if (observed !== e.observations) fail('INVALID_REPORT');
+  group(t, [
+    'encrypted',
+    'versions',
+    'verifiedResponses',
+    'peerLeafFingerprint256',
+  ]);
+  if (
+    !Array.isArray(t.versions) ||
+    !integer(t.verifiedResponses, 0, e.observations)
+  )
+    fail('INVALID_REPORT');
+  if (protocol === 'HTTP') {
+    if (
+      t.encrypted !== false ||
+      t.versions.length ||
+      t.verifiedResponses !== 0 ||
+      t.peerLeafFingerprint256 !== null
+    )
+      fail('INVALID_REPORT');
+  } else if (
+    protocol !== 'TLS' ||
+    t.encrypted !== true ||
+    t.versions.length < 1 ||
+    t.versions.length > 2 ||
+    new Set(t.versions).size !== t.versions.length ||
+    t.versions.some((v) => !['TLSv1.2', 'TLSv1.3'].includes(v)) ||
+    t.verifiedResponses < 1 ||
+    t.peerLeafFingerprint256 !== LEAF_FINGERPRINT
+  )
+    fail('INVALID_REPORT');
+  group(p, [
+    'firstItems',
+    'secondItems',
+    'nativeFetchesForPaging',
+    'replayNativeDelta',
+  ]);
+  if (
+    p.firstItems !== 100 ||
+    p.secondItems !== 51 ||
+    p.nativeFetchesForPaging !== 1 ||
+    p.replayNativeDelta !== 0
+  )
+    fail('INVALID_REPORT');
+  group(o, ['retiredA', 'distinctAB', 'oldCursorStatus', 'oldReceiptStatus']);
+  if (
+    o.retiredA !== true ||
+    o.distinctAB !== true ||
+    o.oldCursorStatus !== 404 ||
+    o.oldReceiptStatus !== 409
+  )
+    fail('INVALID_REPORT');
+  group(c, [
+    'requests',
+    'nativeReadPackets',
+    'controlsAfterAccepted',
+    'controlsAfterReplay',
+    'controlsFinal',
+    'cancelPackets',
+    'holdsBeforeLoss',
+    'holdsAfterLoss',
+    'holdsAfterSettlement',
+  ]);
+  if (
+    c.requests !== e.observations ||
+    !integer(c.nativeReadPackets, 5, 128) ||
+    c.nativeReadPackets > c.requests ||
+    c.controlsAfterAccepted !== 1 ||
+    c.controlsAfterReplay !== 1 ||
+    c.controlsFinal !== 2 ||
+    c.cancelPackets !== 1 ||
+    c.holdsBeforeLoss !== 2 ||
+    c.holdsAfterLoss !== 2 ||
+    c.holdsAfterSettlement !== 0
+  )
+    fail('INVALID_REPORT');
+  group(k, [
+    'serverListening',
+    'brokerDispatched',
+    'brokerQueued',
+    'openRequestClients',
+    'openServerSockets',
+    'held',
+    'ownedStoreRemoval',
+  ]);
+  if (
+    k.serverListening !== false ||
+    [
+      k.brokerDispatched,
+      k.brokerQueued,
+      k.openRequestClients,
+      k.openServerSockets,
+      k.held,
+    ].some((v) => v !== 0) ||
+    k.ownedStoreRemoval !== 'completed'
+  )
+    fail('INVALID_REPORT');
+  return JSON.parse(JSON.stringify(value));
+}
+
 function parseEvidence(report) {
   try {
     if (
@@ -201,7 +362,7 @@ function parseEvidence(report) {
         attachment.contentType !== 'application/json' ||
         attachment.path !== undefined ||
         typeof attachment.body !== 'string' ||
-        attachment.body.length > 4096 ||
+        attachment.body.length > 5464 ||
         !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
           attachment.body,
         )
@@ -210,8 +371,10 @@ function parseEvidence(report) {
       const body = JSON.parse(
         Buffer.from(attachment.body, 'base64').toString('utf8'),
       );
+      if (Buffer.from(attachment.body, 'base64').length > 4096)
+        fail('INVALID_REPORT');
       if (
-        !exactKeys(body, ['protocol', 'checkpoints', 'outcome']) ||
+        !exactKeys(body, ['protocol', 'checkpoints', 'outcome', 'telemetry']) ||
         body.protocol !== protocol ||
         body.outcome !== 'PASS' ||
         !Array.isArray(body.checkpoints) ||
@@ -221,7 +384,12 @@ function parseEvidence(report) {
         )
       )
         fail('INVALID_REPORT');
-      return { protocol, checkpoints: [...CHECKPOINTS], outcome: 'PASS' };
+      return {
+        protocol,
+        checkpoints: [...CHECKPOINTS],
+        outcome: 'PASS',
+        telemetry: parseProtocolTelemetry(body.telemetry, protocol),
+      };
     });
   } catch {
     fail('INVALID_REPORT');
@@ -348,6 +516,14 @@ async function runQualification(plan, deps) {
       ) && error?.message === 'CLEANUP_FAILED'
         ? 'CLEANUP_FAILED'
         : stage;
+    if (
+      stage === 'WINDOWS_PRIVATE_TEMP_UNPROVEN' &&
+      error?.code === 'WINDOWS_HELPER_NO_CLOSE'
+    ) {
+      evidence.reason = 'WINDOWS_HELPER_NO_CLOSE';
+      evidence.cleanup = 'UNPROVEN';
+      evidence.outerReapRequired = true;
+    }
   } finally {
     if (directory) {
       try {
@@ -498,7 +674,7 @@ async function verifyRuntimePins(plan, io) {
   const manifest = JSON.parse(manifestBytes);
   if (
     !plain(manifest) ||
-    Object.keys(manifest).length < 6 ||
+    Object.keys(manifest).length < 7 ||
     Object.keys(manifest).length > 10_000
   )
     fail('PIN_MISMATCH');
@@ -521,6 +697,7 @@ async function verifyRuntimePins(plan, io) {
     TEST_FILE,
     'tests/helpers/api-music-remote-http.ts',
     'scripts/qualify-api-music-nonloopback.cjs',
+    'scripts/api-music-windows-private-root.cjs',
     'pnpm-lock.yaml',
     'tests/fixtures/api-music-http-tls/cert.pem',
     'tests/fixtures/api-music-http-tls/key.pem',
@@ -549,10 +726,9 @@ async function verifyRuntimePins(plan, io) {
 
 async function createPrivateTempDirectory(io) {
   const { fsp, path, runnerTemp, platform } = io;
-  // chmod does not attest Windows DACLs. The default executable intentionally
-  // supplies no Windows callback. A separately reviewed runner carrier must
-  // implement/verify ACLs for exactly its newly created owned root, then return
-  // that root here. No external process or inherited root is accepted here.
+  // chmod does not attest Windows DACLs. Only the admitted main selects the
+  // fixed internal callback; direct users without it remain failed closed.
+  // The callback verifies exactly its newly created owned root before return.
   if (
     platform === 'win32' &&
     typeof io.makeWindowsPrivateDirectory !== 'function'
@@ -665,6 +841,7 @@ async function main() {
   const plan = JSON.parse(await readBounded(process.argv[3], 16 * 1024));
   validatePlan(plan);
   const runnerTemp = process.env.RUNNER_TEMP;
+  const systemRoot = process.env.SystemRoot;
   if (
     !runnerTemp ||
     !path.isAbsolute(runnerTemp) ||
@@ -698,6 +875,28 @@ async function main() {
         platform: process.platform,
         setTimeout,
         clearTimeout,
+        makeWindowsPrivateDirectory:
+          process.platform === 'win32'
+            ? (parent) => {
+                // Lazy, fixed source import after pin/topology checks. No command or
+                // executable program comes from the plan, environment or caller.
+                const {
+                  createWindowsPrivateDirectory,
+                } = require('./api-music-windows-private-root.cjs');
+                return createWindowsPrivateDirectory(parent, {
+                  fsp,
+                  path,
+                  systemRoot,
+                  spawn: childProcess.spawn,
+                  env: { PATH: path.dirname(plan.node.path) },
+                  setTimeout,
+                  clearTimeout,
+                  signalSource: process,
+                  removeOwnedTemp,
+                  isCancelled: () => deps.isCancelled?.() === true,
+                });
+              }
+            : undefined,
       }),
     writeAdmission: (directory, input) =>
       fsp.writeFile(
@@ -721,7 +920,7 @@ async function main() {
           'admission.json',
         ),
       };
-      if (process.platform === 'win32') env.SystemRoot = process.env.SystemRoot;
+      if (process.platform === 'win32') env.SystemRoot = systemRoot;
       return runOwnedChild(
         { ...spec, cwd, env },
         {

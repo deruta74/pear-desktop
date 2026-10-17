@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { request, Agent } from 'node:http';
+import { X509Certificate } from 'node:crypto';
 import {
   musicRemoteHttpFixture,
   parseMusicRuntimeAdmission,
@@ -256,11 +257,16 @@ if (process.env.PEAR_MUSIC_RUNTIME_ADMISSION) {
         remoteEnabled: false,
         admission: input,
       });
+      let contract:
+        | Awaited<ReturnType<typeof remoteOwnershipContract>>
+        | undefined;
+      let transport: ReturnType<typeof f.transportFacts> | undefined;
+      let cleanup: Awaited<ReturnType<typeof f.close>> | undefined;
       try {
         expect(createHash('sha256').update(f.cert).digest('hex')).toBe(
           input.certSHA256,
         );
-        await remoteOwnershipContract(f);
+        contract = await remoteOwnershipContract(f);
         const beforeLocalAttempt = f.sent.filter(
           (p) => p[0] === 'peard:music-read',
         ).length;
@@ -281,10 +287,22 @@ if (process.env.PEAR_MUSIC_RUNTIME_ADMISSION) {
           f.port,
           tls,
         );
+        transport = contract.transportFacts();
+        expect(transport.endpoint.nonloopback).toBe(true);
+        expect(transport.endpoint.family).toBe(4);
       } finally {
-        await f.close();
+        cleanup = await f.close();
         expect(f.server.listening).toBe(false);
         expect(f.broker.stats()).toEqual({ dispatched: 0, queued: 0 });
+        expect(cleanup).toEqual({
+          serverListening: false,
+          brokerDispatched: 0,
+          brokerQueued: 0,
+          openRequestClients: 0,
+          openServerSockets: 0,
+          held: 0,
+          ownedStoreRemoval: 'completed',
+        });
       }
       await test.info().attach(`runtime-${tls ? 'TLS' : 'HTTP'}-checkpoints`, {
         contentType: 'application/json',
@@ -302,6 +320,17 @@ if (process.env.PEAR_MUSIC_RUNTIME_ADMISSION) {
               'bounded_cleanup',
             ],
             outcome: 'PASS',
+            telemetry: {
+              version: 1,
+              ...transport!,
+              pages: contract!.pages,
+              ownership: contract!.ownership,
+              counts: {
+                ...contract!.counts,
+                requests: transport!.endpoint.observations,
+              },
+              cleanup,
+            },
           }),
         ),
       });
@@ -607,6 +636,7 @@ test('runtime witness rejects missing, substituted, stale and mismatched actual 
   };
   for (const observations of [
     [],
+    Array.from({ length: 257 }, () => observed),
     [{ ...observed, peer: '127.0.0.1' }],
     [{ ...observed, local: '::ffff:127.0.0.1' }],
     [{ ...observed, peer: '192.0.2.11' }],
@@ -626,13 +656,74 @@ test('runtime witness rejects missing, substituted, stale and mismatched actual 
 for (const tls of [false, true])
   test(`owned loopback ${tls ? 'TLS' : 'HTTP'} full remote ownership contract`, async () => {
     const f = await musicRemoteHttpFixture({ tls, remoteEnabled: false });
+    let measured: any, cleanup: any;
     try {
-      await remoteOwnershipContract(f);
+      const contract = await remoteOwnershipContract(f);
+      measured = contract.transportFacts();
+      expect(contract.pages).toEqual({
+        firstItems: 100,
+        secondItems: 51,
+        nativeFetchesForPaging: 1,
+        replayNativeDelta: 0,
+      });
+      expect(contract.ownership).toEqual({
+        retiredA: true,
+        distinctAB: true,
+        oldCursorStatus: 404,
+        oldReceiptStatus: 409,
+      });
+      expect(contract.counts).toEqual({
+        nativeReadPackets: 7,
+        controlsAfterAccepted: 1,
+        controlsAfterReplay: 1,
+        controlsFinal: 2,
+        cancelPackets: 1,
+        holdsBeforeLoss: 2,
+        holdsAfterLoss: 2,
+        holdsAfterSettlement: 0,
+      });
+      expect(measured.endpoint.nonloopback).toBe(false);
+      expect(measured.endpoint.observations).toBeGreaterThan(0);
+      expect(measured.endpoint.epochs.map((e: any) => e.label)).toEqual([
+        'disabled',
+        'A',
+        'B',
+        'configured',
+      ]);
+      expect(measured.tls.encrypted).toBe(tls);
+      if (tls) {
+        expect(measured.tls.verifiedResponses).toBeGreaterThan(0);
+        expect(measured.tls.peerLeafFingerprint256).toBe(
+          new X509Certificate(f.cert).fingerprint256
+            .replaceAll(':', '')
+            .toLowerCase(),
+        );
+        expect(measured.tls.peerLeafFingerprint256).toBe(
+          'fb6e906aa7015cfe4194ac90bd771a3b4f4d2eecef8ba4614b079a59138f35b1',
+        );
+        expect(measured.tls.versions.length).toBeGreaterThan(0);
+      } else {
+        expect(measured.tls).toEqual({
+          encrypted: false,
+          versions: [],
+          verifiedResponses: 0,
+          peerLeafFingerprint256: null,
+        });
+      }
     } finally {
-      await f.close();
+      cleanup = await f.close();
       expect(f.server.listening).toBe(false);
       expect(f.broker.stats()).toEqual({ dispatched: 0, queued: 0 });
     }
+    expect(cleanup).toEqual({
+      serverListening: false,
+      brokerDispatched: 0,
+      brokerQueued: 0,
+      openRequestClients: 0,
+      openServerSockets: 0,
+      held: 0,
+      ownedStoreRemoval: 'completed',
+    });
   });
 
 async function remoteOwnershipContract(
@@ -687,6 +778,7 @@ async function remoteOwnershipContract(
   expect(first.body.items).toHaveLength(100);
   cleanHeaders(first);
   expect(reads()).toHaveLength(1);
+  const readsAfterFirst = reads().length;
   const cursorInput = JSON.stringify({
     cursor: first.body.nextCursor,
     limit: 100,
@@ -705,6 +797,7 @@ async function remoteOwnershipContract(
   expect(replay.body).toEqual(second.body);
   cleanHeaders(replay);
   expect(reads()).toHaveLength(1);
+  const pagingReads = reads().length;
   const prepare = () =>
     f.http('/api/v1/music/operations/prepare', 'POST', '{"action":"pause"}');
   const prepared = await prepare();
@@ -724,6 +817,7 @@ async function remoteOwnershipContract(
   const result = await pending;
   expect(result.status).toBe(200);
   expect(result.body.status).toBe('accepted');
+  const controlsAfterAccepted = controls().length;
   expect(
     (await f.http('/api/v1/music/operations/' + prepared.body.operationId))
       .body,
@@ -732,6 +826,7 @@ async function remoteOwnershipContract(
     (await f.http('/api/v1/music/control', 'POST', controlInput)).body,
   ).toEqual(result.body);
   expect(controls()).toHaveLength(1);
+  const controlsAfterReplay = controls().length;
   const epochA = f.owner();
   f.retireListener();
   expect(epochA.signal.aborted).toBe(true);
@@ -739,13 +834,12 @@ async function remoteOwnershipContract(
   const epochB = f.owner();
   expect(epochB.identity).not.toBe(epochA.identity);
   const before = reads().length;
-  expect(
-    (await f.http('/api/v1/music/search', 'POST', cursorInput)).status,
-  ).toBe(404);
-  expect(
-    (await f.http('/api/v1/music/operations/' + prepared.body.operationId))
-      .status,
-  ).toBe(409);
+  const oldCursor = await f.http('/api/v1/music/search', 'POST', cursorInput);
+  expect(oldCursor.status).toBe(404);
+  const oldReceipt = await f.http(
+    '/api/v1/music/operations/' + prepared.body.operationId,
+  );
+  expect(oldReceipt.status).toBe(409);
   expect(
     (await f.http('/api/v1/music/control', 'POST', controlInput)).status,
   ).toBe(409);
@@ -804,6 +898,9 @@ async function remoteOwnershipContract(
     () => 'completed',
     () => 'disconnected',
   );
+  let holdsBeforeLoss = -1,
+    holdsAfterLoss = -1,
+    holdsAfterSettlement = -1;
   try {
     await expect.poll(() => f.held.length).toBe(1);
     const healthy = f.http(
@@ -815,18 +912,21 @@ async function remoteOwnershipContract(
     await expect.poll(() => f.held.length).toBe(2);
     expect(f.sent.filter((p) => p[0] === 'peard:music-cancel')).toHaveLength(0);
     expect(f.broker.stats()).toEqual({ dispatched: 2, queued: 0 });
+    holdsBeforeLoss = f.broker.stats().dispatched;
     lost.request.destroy();
     expect(await lostResult).toBe('disconnected');
     await expect
       .poll(() => f.sent.filter((p) => p[0] === 'peard:music-cancel').length)
       .toBe(1);
     expect(f.broker.stats()).toEqual({ dispatched: 2, queued: 0 });
+    holdsAfterLoss = f.broker.stats().dispatched;
     f.settle();
     f.setHold(false);
     const useful = await healthy;
     expect(useful.status).toBe(200);
     expect(useful.body.items).toHaveLength(100);
     expect(f.broker.stats()).toEqual({ dispatched: 0, queued: 0 });
+    holdsAfterSettlement = f.broker.stats().dispatched;
   } finally {
     lost.request.destroy();
     f.settle();
@@ -845,4 +945,36 @@ async function remoteOwnershipContract(
       configEpoch.identity,
     ]).toContain(observed.epoch);
   }
+  expect(enabledEpoch.identity).toBe(epochA.identity);
+  return {
+    pages: {
+      firstItems: first.body.items.length,
+      secondItems: second.body.items.length,
+      nativeFetchesForPaging: pagingReads,
+      replayNativeDelta: pagingReads - readsAfterFirst,
+    },
+    ownership: {
+      retiredA: epochA.signal.aborted,
+      distinctAB: epochA.identity !== epochB.identity,
+      oldCursorStatus: oldCursor.status,
+      oldReceiptStatus: oldReceipt.status,
+    },
+    counts: {
+      nativeReadPackets: reads().length,
+      controlsAfterAccepted,
+      controlsAfterReplay,
+      controlsFinal: controls().length,
+      cancelPackets: f.sent.filter((p) => p[0] === 'peard:music-cancel').length,
+      holdsBeforeLoss,
+      holdsAfterLoss,
+      holdsAfterSettlement,
+    },
+    transportFacts: () =>
+      f.transportFacts([
+        { label: 'disabled', identity: disabledEpoch.identity },
+        { label: 'A', identity: epochA.identity },
+        { label: 'B', identity: epochB.identity },
+        { label: 'configured', identity: configEpoch.identity },
+      ]),
+  };
 }

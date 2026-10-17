@@ -21,6 +21,67 @@ const checkpoints = [
   'two_client_logical_cancel_physical_hold',
   'bounded_cleanup',
 ];
+const leafFingerprint =
+  'fb6e906aa7015cfe4194ac90bd771a3b4f4d2eecef8ba4614b079a59138f35b1';
+function telemetry(protocol) {
+  return {
+    version: 1,
+    endpoint: {
+      label: 'owned-v4',
+      family: 4,
+      observations: 30,
+      port: 32123,
+      nonloopback: true,
+      peerMatchesAdmission: true,
+      localMatchesAdmission: true,
+      owned: true,
+      epochs: [
+        { label: 'disabled', observations: 1 },
+        { label: 'A', observations: 15 },
+        { label: 'B', observations: 5 },
+        { label: 'configured', observations: 9 },
+      ],
+    },
+    tls: {
+      encrypted: protocol === 'TLS',
+      versions: protocol === 'TLS' ? ['TLSv1.3'] : [],
+      verifiedResponses: protocol === 'TLS' ? 29 : 0,
+      peerLeafFingerprint256: protocol === 'TLS' ? leafFingerprint : null,
+    },
+    pages: {
+      firstItems: 100,
+      secondItems: 51,
+      nativeFetchesForPaging: 1,
+      replayNativeDelta: 0,
+    },
+    ownership: {
+      retiredA: true,
+      distinctAB: true,
+      oldCursorStatus: 404,
+      oldReceiptStatus: 409,
+    },
+    counts: {
+      requests: 30,
+      nativeReadPackets: 7,
+      controlsAfterAccepted: 1,
+      controlsAfterReplay: 1,
+      controlsFinal: 2,
+      cancelPackets: 1,
+      holdsBeforeLoss: 2,
+      holdsAfterLoss: 2,
+      holdsAfterSettlement: 0,
+    },
+    cleanup: {
+      serverListening: false,
+      brokerDispatched: 0,
+      brokerQueued: 0,
+      openRequestClients: 0,
+      openServerSockets: 0,
+      held: 0,
+      ownedStoreRemoval: 'completed',
+    },
+  };
+}
 function report() {
   return {
     errors: [],
@@ -50,6 +111,7 @@ function report() {
                           protocol,
                           checkpoints,
                           outcome: 'PASS',
+                          telemetry: telemetry(protocol),
                         }),
                       ).toString('base64'),
                     })),
@@ -158,8 +220,18 @@ test('plans reject arbitrary commands, floating node, invalid pins and leaked pr
 
 test('report requires exactly one passing attempt and both exact protocol checkpoint records', () => {
   assert.deepEqual(api.parseEvidence(report()), [
-    { protocol: 'HTTP', checkpoints, outcome: 'PASS' },
-    { protocol: 'TLS', checkpoints, outcome: 'PASS' },
+    {
+      protocol: 'HTTP',
+      checkpoints,
+      outcome: 'PASS',
+      telemetry: telemetry('HTTP'),
+    },
+    {
+      protocol: 'TLS',
+      checkpoints,
+      outcome: 'PASS',
+      telemetry: telemetry('TLS'),
+    },
   ]);
   const mutations = [
     (r) => r.errors.push({ message: 'PRIVATE' }),
@@ -473,6 +545,7 @@ test('runtime pin verification checks actual bytes, executable identity and requ
     'tests/api-music-remote-http.test.ts',
     'tests/helpers/api-music-remote-http.ts',
     'scripts/qualify-api-music-nonloopback.cjs',
+    'scripts/api-music-windows-private-root.cjs',
     'pnpm-lock.yaml',
     'tests/fixtures/api-music-http-tls/cert.pem',
     'tests/fixtures/api-music-http-tls/key.pem',
@@ -566,10 +639,17 @@ test('runtime pin verification checks actual bytes, executable identity and requ
 
 function mainHarness(changes = {}) {
   const crypto = require('node:crypto');
-  const path = require('node:path').posix;
+  const path = require('node:path')[changes.windows ? 'win32' : 'posix'];
+  const sourceRoot = changes.windows ? 'C:\\source' : '/source';
+  const nodePath = changes.windows ? 'C:\\pinned\\node.exe' : '/pinned/node';
+  const runnerTemp = changes.windows ? 'C:\\runner\\temp' : '/runner/temp';
+  const privateRoot = path.join(runnerTemp, 'pear-music-nonloopback-owned');
+  const planPath = changes.windows ? 'C:\\root-plan.json' : '/root-plan.json';
   const digest = (bytes) =>
     crypto.createHash('sha256').update(bytes).digest('hex');
   const p = plan();
+  p.node.path = nodePath;
+  if (changes.windows) p.platform = 'win32';
   const certSHA =
     '597b4509e1ad0c12b69402bc0cff55bcb3f28603dea13a36623eb38891d109a3';
   const files = new Map();
@@ -578,6 +658,7 @@ function mainHarness(changes = {}) {
     'tests/api-music-remote-http.test.ts',
     'tests/helpers/api-music-remote-http.ts',
     'scripts/qualify-api-music-nonloopback.cjs',
+    'scripts/api-music-windows-private-root.cjs',
     'pnpm-lock.yaml',
     'tests/fixtures/api-music-http-tls/cert.pem',
     'tests/fixtures/api-music-http-tls/key.pem',
@@ -587,47 +668,51 @@ function mainHarness(changes = {}) {
     const bytes = Buffer.from(
       file.endsWith('cert.pem') ? 'FAKE_PUBLIC_CERT' : file,
     );
-    files.set('/source/' + file, bytes);
+    files.set(path.join(sourceRoot, file), bytes);
     manifest[file] = file.endsWith('cert.pem') ? certSHA : digest(bytes);
   }
   const manifestBytes = Buffer.from(JSON.stringify(manifest));
-  files.set('/source/api-music-runtime-manifest.json', manifestBytes);
-  files.set('/pinned/node', Buffer.from('FAKE_NODE'));
   files.set(
-    '/source/node_modules/@playwright/test/cli.js',
+    path.join(sourceRoot, 'api-music-runtime-manifest.json'),
+    manifestBytes,
+  );
+  files.set(nodePath, Buffer.from('FAKE_NODE'));
+  files.set(
+    path.join(sourceRoot, 'node_modules/@playwright/test/cli.js'),
     Buffer.from('FAKE_CLI'),
   );
   files.set(
-    '/source/node_modules/@playwright/test/package.json',
+    path.join(sourceRoot, 'node_modules/@playwright/test/package.json'),
     Buffer.from('{"version":"1.61.1"}'),
   );
-  p.node.sha256 = digest(files.get('/pinned/node'));
+  p.node.sha256 = digest(files.get(nodePath));
   p.cliSHA256 = digest(
-    files.get('/source/node_modules/@playwright/test/cli.js'),
+    files.get(path.join(sourceRoot, 'node_modules/@playwright/test/cli.js')),
   );
-  p.lockSHA256 = digest(files.get('/source/pnpm-lock.yaml'));
+  p.lockSHA256 = digest(files.get(path.join(sourceRoot, 'pnpm-lock.yaml')));
   p.sourceManifestSHA256 = digest(manifestBytes);
-  files.set('/root-plan.json', Buffer.from(JSON.stringify(p)));
+  files.set(planPath, Buffer.from(JSON.stringify(p)));
   const stdout = [];
   const fakeProcess = Object.assign(new EventEmitter(), {
     argv: [
-      '/pinned/node',
-      '/source/scripts/qualify-api-music-nonloopback.cjs',
+      nodePath,
+      path.join(sourceRoot, 'scripts/qualify-api-music-nonloopback.cjs'),
       '--execute-admitted-runner',
-      '/root-plan.json',
+      planPath,
     ],
     version: p.node.version,
     platform: p.platform,
     arch: p.arch,
-    execPath: '/pinned/node',
+    execPath: nodePath,
     env: {
       GITHUB_ACTIONS: 'true',
       RUNNER_ENVIRONMENT: 'github-hosted',
-      RUNNER_TEMP: '/runner/temp',
+      RUNNER_TEMP: runnerTemp,
       GITHUB_REPOSITORY: p.repository,
       GITHUB_RUN_ID: p.runId,
       GITHUB_RUN_ATTEMPT: p.attempt,
       ImageVersion: p.image,
+      SystemRoot: changes.windows ? 'C:\\Windows' : undefined,
       NODE_OPTIONS: 'PRIVATE',
       NODE_TLS_REJECT_UNAUTHORIZED: '0',
       SECRET_TOKEN: 'PRIVATE',
@@ -647,9 +732,14 @@ function mainHarness(changes = {}) {
       };
     },
     realpath: async (file) => file,
+    lstat: async (file) => ({
+      isSymbolicLink: () => false,
+      isDirectory: () => !file.endsWith('.exe'),
+      isFile: () => file.endsWith('.exe'),
+    }),
     mkdtemp: async (prefix) => {
       operations.push(['mkdtemp', prefix]);
-      return '/runner/temp/pear-music-nonloopback-owned';
+      return privateRoot;
     },
     chmod: async (...args) => {
       operations.push(['chmod', ...args]);
@@ -666,6 +756,7 @@ function mainHarness(changes = {}) {
   };
   const fakeFs = { ...h.io.fs, promises: fsp };
   const modules = {
+    './api-music-windows-private-root.cjs': windowsApi,
     'node:fs': fakeFs,
     'node:path': path,
     'node:crypto': {
@@ -694,6 +785,29 @@ function mainHarness(changes = {}) {
     },
     'node:child_process': {
       spawn: (...args) => {
+        if (args[0].endsWith('powershell.exe')) {
+          operations.push(['spawnACL', ...args]);
+          const child = new EventEmitter();
+          child.stdin = new EventEmitter();
+          child.stdout = new EventEmitter();
+          child.stderr = new EventEmitter();
+          child.kill = () => {};
+          child.unref = () => {};
+          child.stdin.destroy = () => {};
+          child.stdout.destroy = () => {};
+          child.stderr.destroy = () => {};
+          child.stdin.end = (input) => {
+            operations.push(['aclInput', input]);
+            queueMicrotask(() => {
+              child.stdout.emit(
+                'data',
+                Buffer.from('{"version":1,"private":true}'),
+              );
+              child.emit('close', 0, null);
+            });
+          };
+          return child;
+        }
         operations.push(['spawn', ...args]);
         queueMicrotask(() => {
           const cliArgs = args[1];
@@ -729,6 +843,8 @@ function mainHarness(changes = {}) {
   changes.mutate?.({ fakeProcess, fsp, modules, files, operations, h });
   const module = { exports: {} };
   const fakeRequire = (name) => {
+    if (name === './api-music-windows-private-root.cjs')
+      operations.push(['import-windows']);
     if (!Object.hasOwn(modules, name)) throw Error('Forbidden module ' + name);
     return modules[name];
   };
@@ -742,7 +858,7 @@ function mainHarness(changes = {}) {
     exports: module.exports,
     require: fakeRequire,
     process: fakeProcess,
-    __dirname: '/source/scripts',
+    __dirname: path.join(sourceRoot, 'scripts'),
     Buffer,
     setTimeout: h.io.setTimeout,
     clearTimeout: h.io.clearTimeout,
@@ -1003,4 +1119,426 @@ test('main initialization cleanup timeout emits sanitized UNPROVEN without spawn
   assert.equal(h.timers.size, 0);
   assert.ok(!stdout[0].includes('PRIVATE'));
   assert.ok(!stdout[0].includes('/runner/temp'));
+});
+
+test('telemetry parser rejects substituted topology, TLS, epoch, counter and cleanup facts without leaking supplied diagnostics', () => {
+  const changes = [
+    (t) => {
+      t.endpoint.nonloopback = false;
+    },
+    (t) => {
+      t.endpoint.peerMatchesAdmission = false;
+    },
+    (t) => {
+      t.endpoint.localMatchesAdmission = false;
+    },
+    (t) => {
+      t.endpoint.port = 0;
+    },
+    (t) => {
+      t.endpoint.observations = 0;
+    },
+    (t) => {
+      t.endpoint.family = 6;
+    },
+    (t) => {
+      t.endpoint.epochs[1].label = 'enabled';
+    },
+    (t) => {
+      t.endpoint.epochs[1].observations++;
+    },
+    (t) => {
+      t.endpoint.epochs.push(t.endpoint.epochs[1]);
+    },
+    (t) => {
+      t.endpoint.address = 'PRIVATE';
+    },
+    (t) => {
+      t.tls.verifiedResponses = 0;
+    },
+    (t) => {
+      t.tls.peerLeafFingerprint256 = 'a'.repeat(64);
+    },
+    (t) => {
+      t.tls.versions = ['TLSv1'];
+    },
+    (t) => {
+      t.tls.peerLeafFingerprint256 =
+        '597b4509e1ad0c12b69402bc0cff55bcb3f28603dea13a36623eb38891d109a3';
+    },
+    (t) => {
+      t.tls.encrypted = false;
+    },
+    (t) => {
+      t.tls.verifiedResponses = 31;
+    },
+    (t) => {
+      t.counts.controlsAfterReplay = 2;
+    },
+    (t) => {
+      t.counts.nativeReadPackets = 1;
+    },
+    (t) => {
+      t.counts.requests = 29;
+    },
+    (t) => {
+      t.counts.holdsAfterLoss = 1;
+    },
+    (t) => {
+      t.counts.cancelPackets = 0;
+    },
+    (t) => {
+      t.pages.nativeFetchesForPaging = 2;
+    },
+    (t) => {
+      t.pages.replayNativeDelta = 1;
+    },
+    (t) => {
+      t.ownership.distinctAB = false;
+    },
+    (t) => {
+      t.cleanup.openServerSockets = 1;
+    },
+    (t) => {
+      t.cleanup.ownedStoreRemoval = 'timeout';
+    },
+  ];
+  for (const change of changes) {
+    const r = report();
+    const a = r.suites[0].specs[0].tests[0].results[0].attachments[1];
+    const body = JSON.parse(Buffer.from(a.body, 'base64'));
+    change(body.telemetry);
+    a.body = Buffer.from(JSON.stringify(body)).toString('base64');
+    assert.throws(() => api.parseEvidence(r), /INVALID_REPORT/);
+  }
+  const r = report();
+  const a = r.suites[0].specs[0].tests[0].results[0].attachments[0];
+  const body = JSON.parse(Buffer.from(a.body, 'base64'));
+  body.telemetry.tls.versions = ['TLSv1.3'];
+  a.body = Buffer.from(JSON.stringify(body)).toString('base64');
+  assert.throws(() => api.parseEvidence(r), /INVALID_REPORT/);
+});
+
+let windowsApi = {};
+try {
+  windowsApi = require('./api-music-windows-private-root.cjs');
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND') throw error;
+}
+
+function windowsHarness(overrides = {}) {
+  const path = require('node:path').win32;
+  const child = new EventEmitter();
+  child.stdin = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  const calls = [],
+    timers = new Map();
+  let next = 0;
+  child.stdin.end = (data) => {
+    calls.push(['input', data]);
+  };
+  child.stdin.destroy = () => {
+    calls.push(['stdin-destroy']);
+  };
+  child.stdout.destroy = () => {};
+  child.stderr.destroy = () => {};
+  child.unref = () => {};
+  child.kill = (signal) => {
+    calls.push(['kill', signal]);
+  };
+  const signalSource = new EventEmitter();
+  const io = {
+    path,
+    systemRoot: 'C:\\Windows',
+    signalSource,
+    isCancelled: () => false,
+    fsp: {
+      realpath: async (value) => value,
+      lstat: async (value) => ({
+        isDirectory: () => !value.endsWith('.exe'),
+        isFile: () => value.endsWith('.exe'),
+        isSymbolicLink: () => false,
+      }),
+      mkdtemp: async (prefix) => {
+        calls.push(['mkdtemp', prefix]);
+        return 'C:\\runner\\temp\\pear-music-nonloopback-owned';
+      },
+      rm: async (directory) => {
+        calls.push(['remove', directory]);
+      },
+    },
+    spawn: (...args) => {
+      calls.push(['spawn', ...args]);
+      return child;
+    },
+    env: { CI: '1', PATH: 'C:\\pinned' },
+    setTimeout: (fn, ms) => {
+      const id = ++next;
+      timers.set(id, { fn, ms });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+    removeOwnedTemp: api.removeOwnedTemp,
+    ...overrides,
+  };
+  const tick = () => {
+    const [id, timer] = timers.entries().next().value;
+    timers.delete(id);
+    timer.fn();
+  };
+  const drain = async (name) => {
+    for (let n = 0; n < 200 && !calls.some(([key]) => key === name); n++)
+      await Promise.resolve();
+  };
+  return { io, child, calls, timers, tick, drain, signalSource };
+}
+
+test('Windows module import is inert and fixed adapter invokes only canonical absolute PowerShell with JSON path data', async () => {
+  const source = fs.readFileSync(
+    require.resolve('./api-music-windows-private-root.cjs'),
+    'utf8',
+  );
+  vm.runInNewContext(source, {
+    module: { exports: {} },
+    require() {
+      throw Error('runtime import');
+    },
+  });
+  const h = windowsHarness();
+  const pending = windowsApi.createWindowsPrivateDirectory(
+    'C:\\runner\\temp',
+    h.io,
+  );
+  await h.drain('input');
+  const spawn = h.calls.find(([key]) => key === 'spawn');
+  assert.equal(
+    spawn[1],
+    'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+  );
+  assert.deepEqual(spawn[2].slice(0, 4), [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-EncodedCommand',
+  ]);
+  assert.equal(spawn[3].shell, false);
+  assert.equal(spawn[3].windowsHide, true);
+  assert.deepEqual(spawn[3].stdio, ['pipe', 'pipe', 'pipe']);
+  assert.deepEqual(JSON.parse(h.calls.find(([key]) => key === 'input')[1]), {
+    directory: 'C:\\runner\\temp\\pear-music-nonloopback-owned',
+    parent: 'C:\\runner\\temp',
+  });
+  h.child.stdout.emit('data', Buffer.from('{"version":1,"private":true}'));
+  h.child.emit('exit', 0);
+  let resolved = false;
+  pending.then(() => {
+    resolved = true;
+  });
+  await Promise.resolve();
+  assert.equal(resolved, false);
+  h.child.emit('close', 0, null);
+  assert.equal(await pending, 'C:\\runner\\temp\\pear-music-nonloopback-owned');
+  assert.equal(h.calls.filter(([key]) => key === 'remove').length, 0);
+  assert.equal(h.timers.size, 0);
+});
+
+test('Windows tool/root validation rejects path lookup, traversal, reparses and outside ownership before launching', async () => {
+  for (const systemRoot of [
+    undefined,
+    'Windows',
+    '\\\\host\\Windows',
+    'C:\\Windows\\..\\evil',
+    'C:\\Windows:evil',
+    'C:\\Windows\\',
+  ]) {
+    const h = windowsHarness({ systemRoot });
+    await assert.rejects(
+      windowsApi.createWindowsPrivateDirectory('C:\\runner\\temp', h.io),
+      /WINDOWS_PRIVATE_ROOT_UNPROVEN/,
+    );
+    assert.equal(h.calls.length, 0);
+  }
+  for (const fault of ['reparse', 'redirect', 'outside']) {
+    const h = windowsHarness();
+    if (fault === 'reparse')
+      h.io.fsp.lstat = async () => ({
+        isDirectory: () => true,
+        isFile: () => true,
+        isSymbolicLink: () => true,
+      });
+    if (fault === 'redirect') h.io.fsp.realpath = async () => 'C:\\elsewhere';
+    if (fault === 'outside')
+      h.io.fsp.mkdtemp = async () =>
+        'C:\\elsewhere\\pear-music-nonloopback-owned';
+    await assert.rejects(
+      windowsApi.createWindowsPrivateDirectory('C:\\runner\\temp', h.io),
+      /WINDOWS_PRIVATE_ROOT_UNPROVEN/,
+    );
+    assert.equal(
+      h.calls.filter(([key]) => key === 'spawn' || key === 'remove').length,
+      0,
+    );
+  }
+  for (const badPath of ['node', 'C:\\pinned;C:\\untrusted', 'C:\\pinned;']) {
+    const h = windowsHarness({ env: { PATH: badPath } });
+    const rejected = assert.rejects(
+      windowsApi.createWindowsPrivateDirectory('C:\\runner\\temp', h.io),
+      /WINDOWS_PRIVATE_ROOT_UNPROVEN/,
+    );
+    await h.drain('input');
+    // If the guard regresses, close the fake worker so this test reports a
+    // failed rejection rather than leaving an uncompleted test promise.
+    if (h.calls.some(([key]) => key === 'spawn')) {
+      h.child.stdout.emit('data', Buffer.from('{"version":1,"private":true}'));
+      h.child.emit('close', 0, null);
+    }
+    await rejected;
+    assert.equal(h.calls.length, 0);
+  }
+});
+
+test('Windows ACL rejection and output faults remove only a physically closed owned root through bounded cleanup', async () => {
+  for (const fault of ['denied', 'extra', 'stderr', 'overflow', 'cancel']) {
+    const h = windowsHarness();
+    const pending = windowsApi.createWindowsPrivateDirectory(
+      'C:\\runner\\temp',
+      h.io,
+    );
+    await h.drain('input');
+    if (fault === 'denied')
+      h.child.stdout.emit('data', Buffer.from('{"version":1,"private":false}'));
+    if (fault === 'extra')
+      h.child.stdout.emit(
+        'data',
+        Buffer.from('{"version":1,"private":true,"sid":"PRIVATE"}'),
+      );
+    if (fault === 'stderr') h.child.stderr.emit('data', Buffer.from('PRIVATE'));
+    if (fault === 'overflow') h.child.stdout.emit('data', Buffer.alloc(257));
+    if (fault === 'cancel') h.signalSource.emit('SIGTERM');
+    h.child.emit('close', fault === 'denied' ? 1 : 0, null);
+    await assert.rejects(
+      pending,
+      (error) => error.message === 'WINDOWS_PRIVATE_ROOT_UNPROVEN',
+    );
+    assert.deepEqual(
+      h.calls.filter(([key]) => key === 'remove'),
+      [['remove', 'C:\\runner\\temp\\pear-music-nonloopback-owned']],
+    );
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('Windows helper timeout without physical close withholds deletion, reports outer reap and never supplies admission root', async () => {
+  const h = windowsHarness();
+  const pending = windowsApi.createWindowsPrivateDirectory(
+    'C:\\runner\\temp',
+    h.io,
+  );
+  await h.drain('input');
+  assert.equal([...h.timers.values()][0].ms, 5000);
+  h.tick();
+  assert.deepEqual(
+    h.calls.filter(([key]) => key === 'kill'),
+    [['kill', 'SIGKILL']],
+  );
+  assert.equal([...h.timers.values()][0].ms, 2000);
+  h.tick();
+  await assert.rejects(
+    pending,
+    (error) =>
+      error.code === 'WINDOWS_HELPER_NO_CLOSE' &&
+      error.cleanup === 'UNPROVEN' &&
+      error.outerReapRequired === true,
+  );
+  assert.equal(h.calls.filter(([key]) => key === 'remove').length, 0);
+  assert.equal(h.timers.size, 0);
+});
+
+test('Windows ACL failure with physically closed worker retains ownership while a stuck removal uses the five-second watchdog', async () => {
+  const h = windowsHarness();
+  h.io.fsp.rm = () => new Promise(() => {});
+  const pending = windowsApi.createWindowsPrivateDirectory(
+    'C:\\runner\\temp',
+    h.io,
+  );
+  await h.drain('input');
+  h.child.emit('close', 1, null);
+  for (let n = 0; n < 100 && !h.timers.size; n++) await Promise.resolve();
+  assert.equal([...h.timers.values()][0].ms, 5000);
+  h.tick();
+  await assert.rejects(pending, /CLEANUP_FAILED/);
+  assert.equal(h.timers.size, 0);
+});
+
+test('admitted Windows main lazily composes the fixed internal adapter before admission and retains Node-only child PATH', async () => {
+  const { operations, stdout, fakeProcess } = mainHarness({ windows: true });
+  for (let n = 0; n < 3000 && !stdout.length; n++) await Promise.resolve();
+  assert.equal(JSON.parse(stdout[0]).status, 'PASS');
+  assert.equal(fakeProcess.exitCode, 0);
+  const imported = operations.findIndex(([name]) => name === 'import-windows');
+  const write = operations.findIndex(([name]) => name === 'writeFile');
+  const acl = operations.findIndex(([name]) => name === 'spawnACL');
+  assert.ok(imported > operations.findIndex(([name]) => name === 'interfaces'));
+  assert.ok(acl > imported && write > acl);
+  const childOptions = operations.find(([name]) => name === 'spawn')[3];
+  assert.equal(childOptions.env.SystemRoot, 'C:\\Windows');
+  assert.equal(childOptions.env.PATH, 'C:\\pinned');
+  assert.ok(!JSON.stringify(childOptions.env).includes('PRIVATE'));
+});
+
+test('outer evidence for an ACL helper lacking physical close requires reap and never writes admission or removes a live root', async () => {
+  const h = mainHarness({
+    windows: true,
+    mutate: ({ modules, operations }) => {
+      modules['./api-music-windows-private-root.cjs'] = {
+        createWindowsPrivateDirectory: async () => {
+          const error = Error('PRIVATE');
+          error.code = 'WINDOWS_HELPER_NO_CLOSE';
+          throw error;
+        },
+      };
+    },
+  });
+  for (let n = 0; n < 3000 && !h.stdout.length; n++) await Promise.resolve();
+  const evidence = JSON.parse(h.stdout[0]);
+  assert.equal(evidence.reason, 'WINDOWS_HELPER_NO_CLOSE');
+  assert.equal(evidence.cleanup, 'UNPROVEN');
+  assert.equal(evidence.outerReapRequired, true);
+  assert.equal(
+    h.operations.filter(([name]) => ['writeFile', 'rm', 'spawn'].includes(name))
+      .length,
+    0,
+  );
+});
+
+test('Windows ACL input bound rejects oversized path data before spawning and retires only its allocated root', async () => {
+  const h = windowsHarness();
+  const parent = 'C:\\runner\\' + '界'.repeat(3000);
+  const owned = h.io.path.join(parent, 'pear-music-nonloopback-owned');
+  h.io.fsp.mkdtemp = async () => owned;
+  await assert.rejects(
+    windowsApi.createWindowsPrivateDirectory(parent, h.io),
+    /WINDOWS_PRIVATE_ROOT_UNPROVEN/,
+  );
+  assert.equal(h.calls.filter(([name]) => name === 'spawn').length, 0);
+  assert.deepEqual(
+    h.calls.filter(([name]) => name === 'remove'),
+    [['remove', owned]],
+  );
+});
+
+test('closed Windows ACL failure sanitizes an immediate owned-removal error as cleanup failure', async () => {
+  const h = windowsHarness();
+  h.io.fsp.rm = async () => {
+    throw Error('PRIVATE filesystem path and SID');
+  };
+  const pending = windowsApi.createWindowsPrivateDirectory(
+    'C:\\runner\\temp',
+    h.io,
+  );
+  await h.drain('input');
+  h.child.emit('close', 1, null);
+  await assert.rejects(pending, (error) => error.message === 'CLEANUP_FAILED');
+  assert.equal(h.timers.size, 0);
 });

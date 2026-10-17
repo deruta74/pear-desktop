@@ -7,7 +7,7 @@ import {
   request as httpsRequest,
 } from 'node:https';
 import { connect } from 'node:net';
-import { createHash } from 'node:crypto';
+import { createHash, X509Certificate } from 'node:crypto';
 import { connect as tlsConnect } from 'node:tls';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -238,16 +238,28 @@ export async function musicRemoteHttpFixture(
   };
   publish();
   const observations: any[] = [];
-  server.on('request', (incoming) =>
+  let observationOverflow = false,
+    tlsResponseOverflow = false;
+  const tlsResponses: {
+    version: string | null;
+    authorized: boolean;
+    fingerprint: string | undefined;
+  }[] = [];
+  server.on('request', (incoming) => {
+    if (observations.length >= 256) {
+      observationOverflow = true;
+      return;
+    }
     observations.push({
       peer: incoming.socket.remoteAddress,
       local: incoming.socket.localAddress,
       port: incoming.socket.localPort,
       tls: (incoming.socket as any).encrypted === true,
+      tlsProtocol: tls ? (incoming.socket as any).getProtocol() : null,
       owned: owner?.ownsSocket(incoming.socket),
       epoch: owner?.identity,
-    }),
-  );
+    });
+  });
   const grant = await store.issue(
     'Explicit remote',
     'rest',
@@ -381,6 +393,19 @@ export async function musicRemoteHttpFixture(
           },
         },
         (res) => {
+          if (tls) {
+            const socket = res.socket as any;
+            if (tlsResponses.length >= 256) tlsResponseOverflow = true;
+            else
+              tlsResponses.push({
+                version: socket.getProtocol(),
+                authorized: socket.authorized === true,
+                fingerprint: socket
+                  .getPeerCertificate()
+                  .fingerprint256?.replaceAll(':', '')
+                  .toLowerCase(),
+              });
+          }
           let text = '';
           res.setEncoding('utf8');
           res.on('data', (c) => (text += c));
@@ -449,6 +474,98 @@ export async function musicRemoteHttpFixture(
     startHttp,
     raw,
     observations,
+    transportFacts(
+      epochs: {
+        label: 'disabled' | 'A' | 'B' | 'configured';
+        identity: object;
+      }[],
+    ) {
+      const normalize = (value: unknown) =>
+        typeof value === 'string' ? policy.normalizeMusicIp(value) : undefined;
+      const local = normalize(bindAddress),
+        peer = normalize(clientAddress);
+      const nonloopback = (ip: string | undefined) =>
+        !!ip &&
+        ip !== '::1' &&
+        ip !== '::' &&
+        ip !== '0.0.0.0' &&
+        !ip.startsWith('127.');
+      if (
+        observationOverflow ||
+        tlsResponseOverflow ||
+        !local ||
+        !peer ||
+        !observations.length ||
+        observations.length > 256 ||
+        epochs.length !== 4 ||
+        new Set(epochs.map((e) => e.identity)).size !== 4 ||
+        epochs.map((e) => e.label).join('|') !== 'disabled|A|B|configured'
+      )
+        throw Error('Invalid measured transport facts');
+      const totals = epochs.map((epoch) => ({
+        label: epoch.label,
+        observations: observations.filter(
+          (observation) => observation.epoch === epoch.identity,
+        ).length,
+      }));
+      for (const observed of observations) {
+        if (
+          normalize(observed.peer) !== peer ||
+          normalize(observed.local) !== local ||
+          observed.port !== port ||
+          observed.tls !== tls ||
+          observed.owned !== true ||
+          !epochs.some((e) => e.identity === observed.epoch)
+        )
+          throw Error('Mismatched measured transport facts');
+      }
+      if (totals.some((e) => e.observations === 0))
+        throw Error('Missing measured epoch');
+      const versions: string[] = tls
+        ? [...new Set(observations.map((o) => o.tlsProtocol))]
+        : [];
+      const fingerprint = tls
+        ? new X509Certificate(cert).fingerprint256
+            .replaceAll(':', '')
+            .toLowerCase()
+        : null;
+      if (
+        tls &&
+        (!tlsResponses.length ||
+          versions.some((v) => !['TLSv1.2', 'TLSv1.3'].includes(v)) ||
+          tlsResponses.some(
+            (r) =>
+              !r.authorized ||
+              r.fingerprint !== fingerprint ||
+              !r.version ||
+              !versions.includes(r.version),
+          ))
+      )
+        throw Error('Unverified measured TLS facts');
+      return {
+        endpoint: {
+          label: 'owned-v4',
+          family: local.includes(':') ? 6 : 4,
+          observations: observations.length,
+          port,
+          nonloopback: nonloopback(peer) && nonloopback(local),
+          peerMatchesAdmission: observations.every(
+            (o) => normalize(o.peer) === peer,
+          ),
+          localMatchesAdmission: observations.every(
+            (o) => normalize(o.local) === local,
+          ),
+          owned: observations.every((o) => o.owned === true),
+          epochs: totals,
+        },
+        tls: {
+          encrypted: observations.every((o) => o.tls === true),
+          versions: versions.sort(),
+          verifiedResponses: tlsResponses.filter((r) => r.authorized).length,
+          peerLeafFingerprint256: tls ? tlsResponses[0].fingerprint : null,
+        },
+      };
+    },
     owner: () => owner,
     publish,
     retireListener: () => {
@@ -464,6 +581,12 @@ export async function musicRemoteHttpFixture(
     async close() {
       epoch.abort();
       service.stop();
+      // Register each owned close before destroying; a server close callback
+      // alone does not attest completion of request/client socket close events.
+      const closing = [...clients, ...sockets].map(
+        (owned) =>
+          new Promise<void>((resolve) => owned.once('close', () => resolve())),
+      );
       for (const client of clients) client.destroy();
       for (const h of held.splice(0))
         f.settled(h.q, { ok: true, value: value(h.input) });
@@ -473,14 +596,33 @@ export async function musicRemoteHttpFixture(
           () => reject(Error('owned close timed out')),
           3000,
         );
-        server.close(() => {
-          clearTimeout(timer);
-          resolve();
-        });
+        const serverClosed = new Promise<void>((closed) =>
+          server.close(() => closed()),
+        );
+        Promise.all([...closing, serverClosed]).then(
+          () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          (error) => {
+            clearTimeout(timer);
+            reject(error);
+          },
+        );
       });
       release();
       f.broker.dispose();
       await rm(folder, { recursive: true, force: true });
+      const stats = f.broker.stats();
+      return {
+        serverListening: server.listening,
+        brokerDispatched: stats.dispatched,
+        brokerQueued: stats.queued,
+        openRequestClients: clients.size,
+        openServerSockets: sockets.size,
+        held: held.length,
+        ownedStoreRemoval: 'completed' as const,
+      };
     },
   };
 }
@@ -509,7 +651,8 @@ export async function assertMusicRuntimeObservations(
   };
   const peer = nonloopback(admission.clientAddress),
     local = nonloopback(admission.bindAddress);
-  if (!observations.length) throw Error('Missing actual socket observations');
+  if (!observations.length || observations.length > 256)
+    throw Error('Missing or excessive actual socket observations');
   for (const observed of observations) {
     if (
       nonloopback(observed.peer) !== peer ||
