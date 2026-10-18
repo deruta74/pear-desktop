@@ -1,0 +1,239 @@
+# PRIVATE PLAN TEMPLATE ONLY; never executed or installed by this audit.
+name: SDK130 isolated lock resolution R2
+on:
+  push:
+    branches: [audit/sdk130-lock-candidate-m71-20261018]
+    paths: [.github/workflows/sdk130-lock-candidate-preflight.yml]
+permissions:
+  contents: read
+jobs:
+  resolve:
+    if: github.repository == 'deruta74/pear-desktop' && github.event_name == 'push' && github.ref == 'refs/heads/audit/sdk130-lock-candidate-m71-20261018'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Enforce sole raw parent and source before tool setup
+        shell: bash
+        env:
+          BASE: 6206bf20f43a1d6447e19688cc0da629e9a4a826
+          BASE_TREE: b77a96568acc192dd56845fa4738987b488fa59d
+          WORKFLOW_PATH: .github/workflows/sdk130-lock-candidate-preflight.yml
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sdk130-artifact"
+          status=failed; category=source_mismatch
+          trap 'rc=$?; printf "{\"phase\":\"provenance\",\"status\":\"%s\",\"errorCategory\":\"%s\",\"resolverExit\":null,\"resolved\":false}\n" "$status" "$category" > "$RUNNER_TEMP/sdk130-artifact/resolution.json"; exit "$rc"' EXIT
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t parents < <(git cat-file commit "$GITHUB_SHA" | sed -n '/^$/q; s/^parent //p')
+          test "${#parents[@]}" -eq 1
+          test "${parents[0]}" = "$BASE"
+          test "$(git cat-file commit "$BASE" | sed -n '/^$/q; s/^tree //p')" = "$BASE_TREE"
+          test "$(git diff-tree --no-commit-id --name-only -r "$BASE" "$GITHUB_SHA")" = "$WORKFLOW_PATH"
+          status=passed; category=none
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        with:
+          version: 11
+          run_install: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.x
+      - name: One data-only isolated resolution with total owned finalization
+        shell: bash
+        env:
+          SDK_INTEGRITY: sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          const {spawnSync}=require('node:child_process'),{isDeepStrictEqual}=require('node:util');
+          const w=path.join(process.env.RUNNER_TEMP,'sdk130-work'),o=path.join(process.env.RUNNER_TEMP,'sdk130-artifact');
+          const factsFile=path.join(o,'resolution.json'),log=path.join(process.env.RUNNER_TEMP,'sdk130-resolver.log');
+          const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
+          const categories=new Set(['none','source_mismatch','input_mismatch','manifest_mismatch','hook_config_present','tool_version_mismatch','resolver_spawn_failure','unknown_option','parser_mismatch','sdk_integrity_mismatch','unexpected_tree','artifact_size','ERR_PNPM_NO_MATCHING_VERSION','ERR_PNPM_UNSUPPORTED_ENGINE','ERR_PNPM_FETCH_404','ERR_PNPM_PEER_DEP_ISSUES','ERR_PNPM_TARBALL_INTEGRITY','tool_version_timeout','tool_version_output_limit','tool_version_probe_failed','tool_version_exit','tool_version_stderr','candidate_missing','candidate_unsafe','candidate_oversize','artifact_state','OTHER']);
+          const fail=category=>{throw {category};},check=(ok,category)=>{if(!ok)fail(category);};
+          let facts={phase:'prepare',status:'running',errorCategory:'none',resolverExit:null,resolved:false};
+          const save=()=>{const data=JSON.stringify(facts,null,2)+'\n';check(Buffer.byteLength(data)<=2097152,'artifact_size');fs.writeFileSync(factsFile,data);};
+          const phase=name=>{facts.phase=name;save();};
+          const parserStages=new Set(['candidate_captured','preconditions','lock_format','top_level_keys','root_importer','root_dependencies','sdk_importer_fields','sdk_package_record','sdk_resolution_field','sdk_integrity_equality','base_header_inventory','candidate_header_inventory','header_delta_bounds','final_publish','complete']);
+          const parserMark=name=>{check(parserStages.has(name),'artifact_state');facts.parserStage=name;save();};
+          const inputHashes={
+            "package.json": "973f6e067390931c6b0e2a8d9dfe3df74c99418070b352be717f34cdd7d16c8c",
+            "pnpm-lock.yaml": "1ae9556e7a67d8bc67a67a5c09f87203f98ef739f945e8d62db9410cf38239a6",
+            "pnpm-workspace.yaml": "46d0deb6f6f25bc4dded4e13e419113750bcdb2d4c187144ea8b3583b8e48eb1",
+            "patches/@malept__flatpak-bundler@0.4.0.patch": "c787371eeb2af011ea934e8818a0dad6d7dcb2df31bbb1686babc7231af0183c",
+            "patches/electron-is@3.0.0.patch": "08664a5453f092fe45542f9005ffc07527b1f207447318374cba0f4d30f466a0",
+            "patches/kuromoji@0.1.2.patch": "4a948f1ea45c61779fa371feb020253ccf7a24e1f7c6b2e250b3ce53d86216d4",
+            "patches/mdui@2.1.4.patch": "e6f91e8e974b4ccc0903ec27b2c840fa3a84048144098e96671fc9915df47ef1",
+            "patches/vudio@2.1.1.patch": "0e06c2ed11c02bdc490c209fa80070e98517c2735c641f5738b6e15d7dc1959d"
+          };
+          try {
+            facts.expectedInputHashes=inputHashes;facts.verifiedInputHashes={};phase('inputs');
+            for(const [key,value] of Object.entries(process.env)) if(/pnpmfile/i.test(key)) check(!value,'hook_config_present');
+            fs.mkdirSync(w);fs.mkdirSync(path.join(w,'patches'));
+            for(const [name,expected] of Object.entries(inputHashes)) {
+              const stat=fs.lstatSync(name);check(stat.isFile()&&!stat.isSymbolicLink(),'input_mismatch');
+              const data=fs.readFileSync(name);check(data.length<=4194304&&sha(data)===expected,'input_mismatch');
+              fs.writeFileSync(path.join(w,name),data);facts.verifiedInputHashes[name]=sha(data);
+            }
+            facts.inputHashes=inputHashes;facts.base='6206bf20f43a1d6447e19688cc0da629e9a4a826';facts.baseTree='b77a96568acc192dd56845fa4738987b488fa59d';
+            facts.source=process.env.GITHUB_SHA;facts.run=process.env.GITHUB_RUN_ID;facts.node=process.version;
+            const original=JSON.parse(fs.readFileSync(path.join(w,'package.json'))),proposed=JSON.parse(JSON.stringify(original));
+            check(original.packageManager==null&&original.devEngines==null&&!original.dependencies['@modelcontextprotocol/sdk'],'input_mismatch');
+            proposed.dependencies['@modelcontextprotocol/sdk']='1.30.0';
+            const manifest=JSON.stringify(proposed,null,2)+'\n';check(Buffer.byteLength(manifest)<=65536,'artifact_size');facts.proposedManifestSHA256=sha(manifest);
+            fs.writeFileSync(path.join(w,'package.json'),manifest);fs.writeFileSync(path.join(o,'package.json'),manifest);
+            const env={...process.env,NPM_CONFIG_REGISTRY:'https://registry.npmjs.org/',XDG_CONFIG_HOME:path.join(process.env.RUNNER_TEMP,'sdk130-config')};
+            fs.mkdirSync(env.XDG_CONFIG_HOME);
+            for(const key of ['NPM_CONFIG_USERCONFIG','NPM_CONFIG_GLOBALCONFIG']){env[key]=path.join(process.env.RUNNER_TEMP,key+'.empty');fs.writeFileSync(env[key],'');}
+            phase('pm_version');
+            facts.versionProbeExit=null;
+            save();
+            const probe=spawnSync('pnpm',['--version'],{
+              cwd:w,env,timeout:5000,killSignal:'SIGKILL',maxBuffer:128,
+              stdio:['ignore','pipe','pipe'],
+            });
+            facts.versionProbeExit=Number.isInteger(probe.status)&&probe.status>=0&&probe.status<=255
+              ? probe.status : null;
+            if(probe.error?.code==='ETIMEDOUT') fail('tool_version_timeout');
+            if(probe.error?.code==='ENOBUFS') fail('tool_version_output_limit');
+            check(!probe.error&&probe.signal==null&&facts.versionProbeExit!==null,
+              'tool_version_probe_failed');
+            check(facts.versionProbeExit===0,'tool_version_exit');
+            check(Buffer.isBuffer(probe.stdout)&&Buffer.isBuffer(probe.stderr)
+              &&probe.stdout.length<=128&&probe.stderr.length<=128,'tool_version_output_limit');
+            check(probe.stderr.length===0,'tool_version_stderr');
+            const observedVersion=probe.stdout.toString('utf8').trim();
+            check(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(observedVersion),
+              'tool_version_mismatch');
+            facts.pnpmObserved=observedVersion;
+            save();
+            check(/^11\./.test(observedVersion),'tool_version_mismatch');
+            facts.pnpm=observedVersion;
+            save();
+            phase('resolver');
+            const fd=fs.openSync(log,'w');let result;
+            try {result=spawnSync('pnpm',['install','--lockfile-only','--ignore-scripts','--no-frozen-lockfile','--ignore-pnpmfile','--store-dir',path.join(process.env.RUNNER_TEMP,'sdk130-store')],{cwd:w,env,stdio:['ignore',fd,fd]});facts.resolverExit=Number.isInteger(result.status)?result.status:null;} finally {fs.closeSync(fd);}
+            check(!result.error&&facts.resolverExit!==null,'resolver_spawn_failure');
+            if(facts.resolverExit!==0){
+              const fd=fs.openSync(log,'r'),size=fs.fstatSync(fd).size,buffer=Buffer.alloc(Math.min(size,65536));
+              try {fs.readSync(fd,buffer,0,buffer.length,Math.max(0,size-buffer.length));} finally {fs.closeSync(fd);}
+              const text=buffer.toString('utf8'),known=[...categories].filter(x=>x.startsWith('ERR_PNPM_')).find(x=>text.includes(x));
+              fail(known??(/unknown option/i.test(text)?'unknown_option':'OTHER'));
+            }
+            phase('candidate_capture');
+            const candidatePath=path.join(o,'pnpm-lock.UNVALIDATED.yaml'),validatedPath=path.join(o,'pnpm-lock.yaml');
+            check(!fs.existsSync(candidatePath)&&!fs.existsSync(validatedPath),'artifact_state');
+            const workingLockPath=path.join(w,'pnpm-lock.yaml');let candidateFD,candidateBytes;
+            try {
+              let stat;try {stat=fs.lstatSync(workingLockPath);} catch(error) {fail(error?.code==='ENOENT'?'candidate_missing':'candidate_unsafe');}
+              check(stat.isFile()&&!stat.isSymbolicLink()&&stat.nlink===1,'candidate_unsafe');
+              check(stat.size<=4194304,'candidate_oversize');
+              check(Number.isInteger(fs.constants.O_NOFOLLOW),'candidate_unsafe');
+              candidateFD=fs.openSync(workingLockPath,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
+              const opened=fs.fstatSync(candidateFD);check(opened.isFile()&&opened.nlink===1,'candidate_unsafe');check(opened.size<=4194304,'candidate_oversize');
+              const buffer=Buffer.alloc(opened.size+1);let offset=0;
+              while(offset<buffer.length){const count=fs.readSync(candidateFD,buffer,offset,buffer.length-offset,offset);if(count===0)break;offset+=count;}
+              check(offset===opened.size&&fs.fstatSync(candidateFD).size===opened.size,'candidate_unsafe');candidateBytes=buffer.subarray(0,offset);
+            } catch(error) {if(categories.has(error?.category))throw error;fail('candidate_unsafe');} finally {if(candidateFD!==undefined)fs.closeSync(candidateFD);}
+            fs.writeFileSync(candidatePath,candidateBytes,{flag:'wx',mode:0o600});
+            facts.candidateLock={classification:'UNVALIDATED',bytes:candidateBytes.length,sha256:sha(candidateBytes)};parserMark('candidate_captured');
+            phase('validation');
+            parserMark('preconditions');
+            check(!fs.existsSync(path.join(w,'node_modules')),'unexpected_tree');
+            const workingManifest=fs.readFileSync(path.join(w,'package.json'));
+            check(sha(workingManifest)===facts.proposedManifestSHA256&&sha(fs.readFileSync(path.join(o,'package.json')))===facts.proposedManifestSHA256,'manifest_mismatch');
+            check(isDeepStrictEqual(JSON.parse(workingManifest),proposed),'manifest_mismatch');facts.manifestDelta='SDK1.30.0_ONLY';
+            const lock=candidateBytes.toString('utf8');check(Buffer.byteLength(lock)<=4194304,'artifact_size');
+            parserMark('lock_format');
+            const lines=lock.split('\n');check(!lock.includes('\r')&&lines[0]==="lockfileVersion: '9.0'",'parser_mismatch');
+            parserMark('top_level_keys');
+            const top=[];for(const line of lines.filter(x=>/^\S/.test(x))){const m=line.match(/^([A-Za-z][A-Za-z0-9]*):/);check(m&&['lockfileVersion','settings','overrides','patchedDependencies','importers','packages','snapshots'].includes(m[1]),'parser_mismatch');top.push(m[1]);}check(new Set(top).size===top.length,'parser_mismatch');
+            const indent=line=>line.search(/\S/);
+            function block(rows,header,level){const indices=rows.flatMap((x,i)=>x===header?[i]:[]);check(indices.length===1,'parser_mismatch');let end=indices[0]+1;while(end<rows.length&&(!rows[end].trim()||indent(rows[end])>level))end++;return rows.slice(indices[0]+1,end);}
+            function headers(rows,level){const map=new Map();for(let i=0;i<rows.length;i++)if(indent(rows[i])===level){const m=rows[i].slice(level).match(/^(?:'([^']+)'|([^\s'\"]+)):$/);check(m&&!map.has(m[1]??m[2]),'parser_mismatch');map.set(m[1]??m[2],i);}return map;}
+            function child(rows,key,level){const index=headers(rows,level).get(key);check(index!==undefined,'parser_mismatch');return block(rows,rows[index],level);}
+            parserMark('root_importer');
+            const root=child(block(lines,'importers:',0),'.',2);
+            parserMark('root_dependencies');
+            const deps=child(root,'dependencies',4);
+            parserMark('sdk_importer_fields');
+            const entry=child(deps,'@modelcontextprotocol/sdk',6).filter(x=>x.trim());
+            check(entry.length===2&&entry[0]==='        specifier: 1.30.0','parser_mismatch');
+            const version=entry[1].match(/^        version: (1\.30\.0((?:\((?:zod|@cfworker\/json-schema)@(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\))*))$/);check(version,'parser_mismatch');
+            const peers=[...(version[2]??'').matchAll(/\((zod|@cfworker\/json-schema)@/g)].map(x=>x[1]);check(new Set(peers).size===peers.length,'parser_mismatch');
+            parserMark('sdk_package_record');
+            const packages=block(lines,'packages:',0),record=child(packages,'@modelcontextprotocol/sdk@1.30.0',2),fields=[];
+            for(const line of record.filter(x=>indent(x)===4)){const m=line.match(/^    ([A-Za-z][A-Za-z0-9]*):(?: |$)/);check(m&&!fields.includes(m[1]),'parser_mismatch');fields.push(m[1]);}
+            parserMark('sdk_resolution_field');
+            const resolutions=record.filter(x=>/^    resolution:/.test(x));check(resolutions.length===1,'parser_mismatch');
+            const integrity=resolutions[0].match(/^    resolution: \{integrity: (sha512-[A-Za-z0-9+/]+={0,2})\}$/);check(integrity,'parser_mismatch');
+            parserMark('sdk_integrity_equality');check(integrity[1]===process.env.SDK_INTEGRITY,'sdk_integrity_mismatch');
+            parserMark('base_header_inventory');
+            const baseLock=fs.readFileSync('pnpm-lock.yaml','utf8').split('\n');
+            const before=[...headers(block(baseLock,'packages:',0),2).keys()];
+            parserMark('candidate_header_inventory');
+            const after=[...headers(packages,2).keys()];
+            parserMark('header_delta_bounds');
+            const added=after.filter(x=>!before.includes(x)),removed=before.filter(x=>!after.includes(x));check(added.length<=256&&removed.length<=256&&[...added,...removed].every(x=>x.length<=512),'artifact_size');
+            Object.assign(facts,{sdkRoot:{specifier:'1.30.0',version:version[1]},sdkResolutionIntegrity:integrity[1],lockSHA256:sha(candidateBytes),addedPackageHeaders:added,removedPackageHeaders:removed,licenses:{sdk:'MIT',sdkLicenseSHA256:'5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d',addedTransitiveNotices:'UNREVIEWED'}});
+            parserMark('final_publish');
+            check(fs.existsSync(candidatePath)&&!fs.existsSync(validatedPath),'artifact_state');
+            fs.renameSync(candidatePath,validatedPath);facts.candidateLock.classification='VALIDATED';
+            facts.phase='complete';facts.status='passed';facts.resolved=true;parserMark('complete');
+          } catch(error) {
+            facts.status='failed';facts.errorCategory=categories.has(error?.category)?error.category:'OTHER';process.exitCode=1;
+          } finally {
+            facts.workingLockPresent=fs.existsSync(path.join(w,'pnpm-lock.yaml'));facts.unvalidatedCandidatePresent=fs.existsSync(path.join(o,'pnpm-lock.UNVALIDATED.yaml'));facts.validatedLockArtifactPresent=fs.existsSync(path.join(o,'pnpm-lock.yaml'));
+            try {save();} catch {process.exitCode=1;}
+          }
+          JS
+      - name: Validate owned artifact directory even when earlier steps fail
+        id: publication_contract
+        if: always()
+        shell: bash
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          const directory=path.join(process.env.RUNNER_TEMP,'sdk130-artifact');
+          const caps={'package.json':65536,'resolution.json':2097152,'pnpm-lock.UNVALIDATED.yaml':4194304,'pnpm-lock.yaml':4194304};
+          const fail=()=>{throw 0;},check=value=>{if(!value)fail();},sha=b=>crypto.createHash('sha256').update(b).digest('hex');
+          let safe=false;
+          try {
+            const dir=fs.lstatSync(directory);check(dir.isDirectory()&&!dir.isSymbolicLink());
+            const names=fs.readdirSync(directory);check(names.length>=1&&names.length<=3&&names.includes('resolution.json'));
+            check(!names.includes('pnpm-lock.UNVALIDATED.yaml')||!names.includes('pnpm-lock.yaml'));
+            const files={};let total=0;
+            for(const name of names){
+              check(Object.hasOwn(caps,name));const file=path.join(directory,name),stat=fs.lstatSync(file);
+              check(stat.isFile()&&!stat.isSymbolicLink()&&stat.nlink===1&&stat.size<=caps[name]);total+=stat.size;check(total<8388608);
+              let fd;try {fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);const opened=fs.fstatSync(fd);check(opened.isFile()&&opened.nlink===1&&opened.size===stat.size);const data=Buffer.alloc(stat.size+1);let offset=0;while(offset<data.length){const n=fs.readSync(fd,data,offset,data.length-offset,offset);if(n===0)break;offset+=n;}check(offset===stat.size&&fs.fstatSync(fd).size===stat.size);files[name]=data.subarray(0,offset);} finally {if(fd!==undefined)fs.closeSync(fd);}
+            }
+            const facts=JSON.parse(files['resolution.json'].toString('utf8'));check(facts&&typeof facts==='object'&&!Array.isArray(facts));
+            check(['provenance','prepare','inputs','pm_version','resolver','candidate_capture','validation','complete'].includes(facts.phase)&&['running','passed','failed'].includes(facts.status)&&typeof facts.resolved==='boolean'&&(facts.resolverExit===null||(Number.isInteger(facts.resolverExit)&&facts.resolverExit>=0&&facts.resolverExit<=255)));
+            if(files['package.json'])check(sha(files['package.json'])===facts.proposedManifestSHA256);
+            const candidate=files['pnpm-lock.UNVALIDATED.yaml'],validated=files['pnpm-lock.yaml'];
+            if(candidate)check(facts.resolved===false&&facts.candidateLock?.classification==='UNVALIDATED'&&facts.candidateLock.bytes===candidate.length&&facts.candidateLock.sha256===sha(candidate));
+            if(validated)check(facts.resolved===true&&facts.candidateLock?.classification==='VALIDATED'&&facts.candidateLock.bytes===validated.length&&facts.candidateLock.sha256===sha(validated)&&facts.lockSHA256===sha(validated));
+            if(!candidate&&!validated)check(facts.resolved!==true);
+            safe=true;
+          } catch {safe=false;} finally {
+            try {fs.appendFileSync(process.env.GITHUB_OUTPUT,'safe='+String(safe)+'\n');} catch {safe=false;}
+            if(!safe)process.exitCode=1;
+            console.log('PUBLICATION_CONTRACT '+(safe?'safe':'artifact_state'));
+          }
+          JS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && steps.publication_contract.outcome == 'success' && steps.publication_contract.outputs.safe == 'true'
+        with:
+          name: sdk130-lock-candidate-m71
+          path: |
+            ${{ runner.temp }}/sdk130-artifact/package.json
+            ${{ runner.temp }}/sdk130-artifact/pnpm-lock.UNVALIDATED.yaml
+            ${{ runner.temp }}/sdk130-artifact/pnpm-lock.yaml
+            ${{ runner.temp }}/sdk130-artifact/resolution.json
+          retention-days: 7
+          if-no-files-found: error
