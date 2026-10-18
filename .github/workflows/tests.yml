@@ -1,52 +1,129 @@
-name: Regression tests
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
+# SOURCE-ONLY diagnostic carrier; never merge into product.
+# Registered workflow ID 376634247; root-only dispatch must explicitly select
+# diagnostic/api-nonloopback-qualified-f4, never the default/product ref.
+name: Manual nonloopback API qualification
+'on':
   workflow_dispatch:
-
+    inputs:
+      expected_carrier_sha: { type: string, required: true }
+      expected_workflow_sha256: { type: string, required: true }
+      expected_helper_sha256: { type: string, required: true }
+      expected_policy_sha256: { type: string, required: true }
 permissions:
   contents: read
-
+  actions: read
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
+  group: manual-api-nonloopback-qualified-f4
+  cancel-in-progress: false
 jobs:
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+  qualify:
+    name: api-nonloopback-${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+        include:
+          - { os: ubuntu-24.04, platform: linux, arch: x64 }
+          - { os: macos-latest, platform: darwin, arch: arm64 }
+          - { os: windows-latest, platform: win32, arch: x64 }
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARRIER_MODE: qualify
+      EXPECTED_CARRIER_SHA: ${{ inputs.expected_carrier_sha }}
+      EXPECTED_WORKFLOW_SHA256: ${{ inputs.expected_workflow_sha256 }}
+      EXPECTED_HELPER_SHA256: ${{ inputs.expected_helper_sha256 }}
+      EXPECTED_POLICY_SHA256: ${{ inputs.expected_policy_sha256 }}
+      NODE_OPTIONS: ''
+      NODE_TLS_REJECT_UNAUTHORIZED: '1'
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        timeout-minutes: 1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
-        with:
-          version: 11
+          fetch-depth: 3
+      - name: Bind reviewed source before tool setup
+        timeout-minutes: 1
+        run: |
+          node scripts/api-music-nonloopback-carrier.cjs preflight
+          if ($LASTEXITCODE -ne 0) { throw 'Carrier/source admission unproven' }
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        timeout-minutes: 2
         with:
-          node-version: 24.x
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install virtual display
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
-      - run: pnpm build
-      - name: CI test grouping contracts
-        run: node --test scripts/ci-test-groups.node.cjs
-      - name: Run Linux tests in a virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/run-ci-tests.cjs
-      - name: Run macOS and Windows tests
-        if: runner.os != 'Linux'
-        run: node scripts/run-ci-tests.cjs
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
+          node-version: 24.20.0
+          architecture: ${{ matrix.arch }}
+          check-latest: false
+      - name: Admit tool/image and create owned private capture root
+        timeout-minutes: 1
+        run: |
+          node scripts/api-music-nonloopback-carrier.cjs prepare
+          if ($LASTEXITCODE -ne 0) { throw 'Private capture admission unproven' }
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        timeout-minutes: 1
+        with:
+          version: 11.28.6
+          run_install: false
+      - name: Frozen dependencies with all project/dependency hooks disabled
+        id: install
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $root = $env:PEAR_MUSIC_CARRIER_PRIVATE_ROOT
+          if (-not $root) { throw 'Private capture root unavailable' }
+          $env:npm_config_userconfig = Join-Path $root 'empty-user.npmrc'
+          $env:npm_config_globalconfig = Join-Path $root 'empty-global.npmrc'
+          $env:npm_config_ignore_scripts = 'true'
+          $env:npm_config_registry = 'https://registry.npmjs.org'
+          $version = pnpm --version 2> (Join-Path $root 'pnpm-version.stderr')
+          if ($LASTEXITCODE -ne 0 -or "$version".Trim() -cne '11.28.6') { throw 'Package manager pin mismatch' }
+          pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile --config.manage-package-manager-versions=false 1> (Join-Path $root 'install.stdout') 2> (Join-Path $root 'install.stderr')
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency setup failed; raw logs withheld' }
+      - name: Resolve exact current numeric job identity
+        id: job
+        timeout-minutes: 1
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          EXPECTED_JOB_NAME: api-nonloopback-${{ matrix.platform }}
+        with:
+          script: |
+            try {
+              const {data} = await github.rest.actions.listJobsForWorkflowRunAttempt({
+                owner: context.repo.owner, repo: context.repo.repo,
+                run_id: context.runId, attempt_number: Number(process.env.GITHUB_RUN_ATTEMPT),
+                per_page: 100,
+              });
+              const rows = data.jobs.filter(job => job.name === process.env.EXPECTED_JOB_NAME &&
+                job.head_sha === context.sha && job.status === 'in_progress');
+              if (rows.length !== 1 || !Number.isSafeInteger(rows[0].id) || rows[0].id < 1) throw Error();
+              core.setOutput('id', String(rows[0].id));
+            } catch { throw Error('Current job identity unproven'); }
+      - name: Fixed accepted runner and strict safe result
+        timeout-minutes: 4
+        env:
+          QUALIFICATION_JOB_ID: ${{ steps.job.outputs.id }}
+        run: |
+          node scripts/api-music-nonloopback-carrier.cjs run
+          if ($LASTEXITCODE -ne 0) { throw 'Qualification unproven; raw logs withheld' }
+      - name: Upload exact reconstructed qualification file only
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        timeout-minutes: 1
+        with:
+          name: api-nonloopback-${{ matrix.platform }}-safe-result
+          path: api-music-nonloopback-safe/result.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Bounded owned cleanup; abnormal descendants require VM teardown
+        if: always() && steps.install.outcome == 'success' && env.PEAR_MUSIC_CARRIER_PRIVATE_ROOT != ''
+        timeout-minutes: 1
+        run: |
+          node scripts/api-music-nonloopback-carrier.cjs cleanup
+          if ($LASTEXITCODE -ne 0) { throw 'Owned cleanup unproven; hosted VM teardown required' }
+
+# Fixed job timeout plus hosted disposable VM teardown is the outer reap boundary.
+# No process absence, descendant absence, or timer-based deletion claim is made.
