@@ -291,6 +291,9 @@ export class MusicService {
       (resource) => resource !== undefined && this.restAvailable(resource),
     );
   }
+  get httpConfigured() {
+    return this.sharedAvailable() && this.config.musicApiEnabled === true;
+  }
   get resource() {
     return localMusicResource(this.config);
   }

@@ -170,7 +170,7 @@ export function registerMusicRoutes<E extends Env>(
       detachSocket = () => {};
     try {
       const service = getService();
-      if (!service?.enabled || !incoming || !outgoing)
+      if (!service?.httpConfigured || !incoming || !outgoing)
         return reject(503, 'unavailable');
       const transport = getTransportOwner(incoming);
       if (!transport?.current()) return reject(503, 'unavailable');
