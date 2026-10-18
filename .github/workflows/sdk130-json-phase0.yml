@@ -1,0 +1,106 @@
+# PRIVATE PREPARATION ONLY: no push/job admission follows from these bytes.
+name: SDK130 isolated JSON lifecycle Phase0
+on:
+  push:
+    branches: [audit/sdk130-json-phase0-m71-20261018]
+    paths:
+      - .github/workflows/sdk130-json-phase0.yml
+      - .github/sdk130-phase0/**
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    if: github.repository == 'deruta74/pear-desktop' && github.event_name == 'push' && github.ref == 'refs/heads/audit/sdk130-json-phase0-m71-20261018'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact admitted source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Guard exact source and prepare failure evidence
+        id: guard
+        timeout-minutes: 1
+        shell: bash
+        env:
+          EXPECTED_INPUTS_SHA256: '8d663189f22f37c5d22dbca0ebf4524891cb2dae4a77cb84934ce9d1f2cd4c1b'
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,stat,subprocess
+          from pathlib import Path
+          root=Path.cwd(); output=Path(os.environ['RUNNER_TEMP'])/'sdk130-phase0-output'; output.mkdir(mode=0o700,exist_ok=False)
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          names={'facts.json':{},'cases.json':[],'esm-timeline.json':[],'cjs-timeline.json':[],'raw.log':'','hashes.json':{},'cleanup.json':{'completed':False},'SUMMARY.md':'Phase0 NOT_RUN; NO_ADOPTION.\n'}
+          facts={'status':'failed','phase':'source_guard','classification':'NO_ADOPTION','candidateClassification':'UNVALIDATED','candidateResolved':False}
+          names['facts.json']=facts
+          def save():
+            for n,v in names.items(): (output/n).write_text(v if isinstance(v,str) else json.dumps(v,indent=2)+'\n')
+            (output/'SHA256SUMS').write_text(''.join(sha((output/n).read_bytes())+'  '+n+'\n' for n in sorted(names)))
+          save()
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('publishable=true\n')
+          def check(ok,category):
+            if not ok: raise RuntimeError(category)
+          def git(*args): return subprocess.check_output(['git',*args],timeout=10).decode().strip()
+          def read(name):
+            p=root/name
+            for parent in [p,*p.parents]:
+              if parent==root: break
+              check(not parent.is_symlink(),'input_symlink')
+            s=p.lstat(); check(stat.S_ISREG(s.st_mode) and s.st_size<=4194304,'input_type'); return p.read_bytes()
+          try:
+            check(os.environ['GITHUB_REPOSITORY']=='deruta74/pear-desktop' and os.environ['GITHUB_EVENT_NAME']=='push' and os.environ['GITHUB_REF']=='refs/heads/audit/sdk130-json-phase0-m71-20261018','event')
+            raw=read('.github/sdk130-phase0/INPUTS.json'); check(sha(raw)==os.environ['EXPECTED_INPUTS_SHA256'],'inputs_binding'); inputs=json.loads(raw)
+            head=git('rev-parse','HEAD'); check(head==os.environ['GITHUB_SHA'],'head')
+            commit=git('cat-file','commit',head); parents=[l[7:] for l in commit.split('\n\n',1)[0].splitlines() if l.startswith('parent ')]
+            check(parents==[inputs['base']],'sole_parent'); check(git('rev-parse',inputs['base']+'^{tree}')==inputs['tree'],'base_tree')
+            changes=git('diff-tree','--no-commit-id','--name-status','-r',inputs['base'],head).splitlines()
+            check(sorted(changes)==sorted('A\t'+p for p in inputs['allowedPaths']),'exact_eight_added_paths')
+            for name,h in {**inputs['inputs'],**inputs['context']}.items(): check(sha(read(name))==h,'input_hash')
+            original=json.loads(read('package.json')); check('@modelcontextprotocol/sdk' not in original['dependencies'],'base_has_sdk'); original['dependencies']['@modelcontextprotocol/sdk']='1.30.0'
+            canonical=(json.dumps(original,indent=2,ensure_ascii=False)+'\n').encode(); check(sha(canonical)==inputs['manifestSHA256'],'canonical_manifest')
+            check('gpgsig ' in commit.split('\n\n',1)[0],'signature_absent')
+            provenance={'repository':os.environ['GITHUB_REPOSITORY'],'branch':os.environ['GITHUB_REF'],'base':inputs['base'],'baseTree':inputs['tree'],'source':head,'sourceTree':git('rev-parse','HEAD^{tree}'),'signaturePresent':True,'signatureVerification':'EXTERNAL_ROOT_EXACT_COMMIT_GATE_REQUIRED','run':os.environ['GITHUB_RUN_ID'],'attempt':os.environ['GITHUB_RUN_ATTEMPT'],'job':os.environ['GITHUB_JOB'],'workflowSHA256':sha(read('.github/workflows/sdk130-json-phase0.yml')),'inputManifestSHA256':sha(raw),'sourceHashes':{**inputs['inputs'],'.github/sdk130-phase0/INPUTS.json':sha(raw),'.github/workflows/sdk130-json-phase0.yml':sha(read('.github/workflows/sdk130-json-phase0.yml'))}}
+            (output/'provenance.json').write_text(json.dumps(provenance)+'\n'); facts['phase']='setup_not_completed'; facts['provenance']=provenance;save()
+            with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('ready=true\n')
+            print('phase0 source_guard passed NO_ADOPTION')
+          except Exception as e:
+            facts['failure']=str(e)[:80];save();print('phase0 source_guard failed NO_ADOPTION');raise SystemExit(1)
+          PY
+      - name: Set up exact pnpm without install
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        timeout-minutes: 2
+        with:
+          version: 11.28.6
+          run_install: false
+      - name: Set up exact Node without cache
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        timeout-minutes: 2
+        with:
+          node-version: 24.20.0
+      - name: Owned 16-minute work then reserved drain and evidence
+        id: diagnostic
+        shell: bash
+        run: |
+          export PNPM_BIN="$(command -v pnpm)"
+          node .github/sdk130-phase0/run.cjs
+      - name: Upload only gated bounded diagnostics
+        if: always() && (steps.diagnostic.outputs.publishable == 'true' || (steps.diagnostic.conclusion == 'skipped' && steps.guard.outputs.publishable == 'true'))
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 3
+        with:
+          name: sdk130-phase0-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/sdk130-phase0-output/facts.json
+            ${{ runner.temp }}/sdk130-phase0-output/cases.json
+            ${{ runner.temp }}/sdk130-phase0-output/esm-timeline.json
+            ${{ runner.temp }}/sdk130-phase0-output/cjs-timeline.json
+            ${{ runner.temp }}/sdk130-phase0-output/raw.log
+            ${{ runner.temp }}/sdk130-phase0-output/hashes.json
+            ${{ runner.temp }}/sdk130-phase0-output/cleanup.json
+            ${{ runner.temp }}/sdk130-phase0-output/SUMMARY.md
+            ${{ runner.temp }}/sdk130-phase0-output/SHA256SUMS
