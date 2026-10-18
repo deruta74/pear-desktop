@@ -421,6 +421,653 @@ function evidenceBase(plan) {
   };
 }
 
+// Error-only, finite observations. These helpers perform no runtime I/O.
+const CHILD_FAILURE_ENUMS = {
+  origin: new Set([
+    'CHILD_FAILED',
+    'CHILD_NO_CLOSE',
+    'CHILD_TIMEOUT',
+    'CHILD_OUTPUT_LIMIT',
+    'CHILD_CANCELLED',
+    'CHILD_SPAWN_FAILED',
+    'CHILD_LOG_FAILED',
+  ]),
+  disposition: new Set(['RETURNED', 'REJECTED', 'UNKNOWN']),
+  signal: new Set([
+    'SIGTERM',
+    'SIGKILL',
+    'SIGINT',
+    'SIGHUP',
+    'SIGQUIT',
+    'SIGABRT',
+    'SIGBUS',
+    'SIGFPE',
+    'SIGILL',
+    'SIGPIPE',
+    'SIGSEGV',
+    'SIGUSR1',
+    'SIGUSR2',
+    'SIGBREAK',
+    'SIGALRM',
+    'SIGTRAP',
+    'UNKNOWN',
+  ]),
+  reason: new Set([
+    'TIMEOUT',
+    'OUTPUT_LIMIT',
+    'CANCELLED',
+    'SPAWN_FAILED',
+    'LOG_FAILED',
+    'UNKNOWN',
+  ]),
+  reporter: new Set(['EMPTY', 'VALID', 'INVALID', 'UNAVAILABLE']),
+  scan: new Set(['COMPLETE', 'LIMIT', 'UNKNOWN']),
+  name: new Set([
+    'Error',
+    'TypeError',
+    'SyntaxError',
+    'RangeError',
+    'ReferenceError',
+    'AssertionError',
+    'TimeoutError',
+    'AggregateError',
+    'UNKNOWN',
+  ]),
+  code: new Set([
+    'ERR_MODULE_NOT_FOUND',
+    'MODULE_NOT_FOUND',
+    'ERR_PACKAGE_PATH_NOT_EXPORTED',
+    'ERR_REQUIRE_ESM',
+    'ERR_UNKNOWN_FILE_EXTENSION',
+    'ERR_UNSUPPORTED_DIR_IMPORT',
+    'ERR_ASSERTION',
+    'ENOENT',
+    'EACCES',
+    'EPERM',
+    'EADDRINUSE',
+    'EADDRNOTAVAIL',
+    'ETIMEDOUT',
+    'UNKNOWN',
+  ]),
+  file: new Set([
+    'TEST',
+    'REMOTE_FIXTURE',
+    'MODULE_HELPER',
+    'REQUEST_HELPER',
+    'UNKNOWN',
+  ]),
+};
+const FAILURE_FILES = {
+  TEST: TEST_FILE,
+  REMOTE_FIXTURE: 'tests/helpers/api-music-remote-http.ts',
+  MODULE_HELPER: 'tests/helpers/api-music-source.ts',
+  REQUEST_HELPER: 'tests/helpers/api-music-request.ts',
+};
+const FAILURE_STATUSES = new Map([
+  ['passed', 1],
+  ['failed', 2],
+  ['timedOut', 4],
+  ['skipped', 8],
+  ['interrupted', 16],
+]);
+const failureInteger = (value, min, max) =>
+  Number.isSafeInteger(value) && value >= min && value <= max;
+
+function failureReader() {
+  const snapshots = new WeakMap();
+  const snapshot = (value) => {
+    if (value === null || typeof value !== 'object') return null;
+    if (snapshots.has(value)) return snapshots.get(value);
+    const state = {
+      valid: false,
+      array: false,
+      fields: new Map(),
+      keys: undefined,
+    };
+    snapshots.set(value, state);
+    try {
+      const prototype = Object.getPrototypeOf(value);
+      state.array = Array.isArray(value);
+      state.valid =
+        prototype === null ||
+        prototype === (state.array ? Array.prototype : Object.prototype);
+    } catch {
+      /* A proxy trap is not an observation. */
+    }
+    return state;
+  };
+  const data = (value, key) => {
+    const state = snapshot(value);
+    if (!state?.valid) return { state: 'INVALID' };
+    if (state.fields.has(key)) return state.fields.get(key);
+    let field = { state: 'INVALID' };
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor) field = { state: 'ABSENT' };
+      else if (Object.hasOwn(descriptor, 'value'))
+        field = { state: 'DATA', value: descriptor.value };
+    } catch {
+      /* Cache invalid presence; never retry a stateful trap. */
+    }
+    state.fields.set(key, field);
+    return field;
+  };
+  const record = (value) => {
+    const state = snapshot(value);
+    return state?.valid === true && !state.array;
+  };
+  const array = (value) => {
+    const state = snapshot(value);
+    return state?.valid === true && state.array;
+  };
+  const exact = (value, expected) => {
+    const state = snapshot(value);
+    if (!record(value)) return false;
+    if (state.keys === undefined) {
+      try {
+        state.keys = Reflect.ownKeys(value);
+      } catch {
+        state.keys = null;
+      }
+    }
+    return (
+      Array.isArray(state.keys) &&
+      state.keys.length === expected.length &&
+      state.keys.every(
+        (key) => typeof key === 'string' && expected.includes(key),
+      ) &&
+      expected.every((key) => data(value, key).state === 'DATA')
+    );
+  };
+  return { data, record, array, exact };
+}
+
+function unknownChildFailure(origin, disposition) {
+  return {
+    version: 1,
+    origin: CHILD_FAILURE_ENUMS.origin.has(origin) ? origin : 'CHILD_FAILED',
+    disposition: CHILD_FAILURE_ENUMS.disposition.has(disposition)
+      ? disposition
+      : 'UNKNOWN',
+    child: { closed: null, code: null, signal: 'UNKNOWN', reason: 'UNKNOWN' },
+    reporter: 'UNAVAILABLE',
+    scan: 'UNKNOWN',
+    target: { specs: null, tests: null, results: null, statusMask: null },
+    errors: { root: null, target: null },
+    first: null,
+  };
+}
+
+function validateChildFailure(value) {
+  try {
+    const reader = failureReader(),
+      get = (record, key) => reader.data(record, key).value;
+    const requireRecord = (record, keys) => {
+      if (!reader.exact(record, keys)) throw Error();
+    };
+    requireRecord(value, [
+      'version',
+      'origin',
+      'disposition',
+      'child',
+      'reporter',
+      'scan',
+      'target',
+      'errors',
+      'first',
+    ]);
+    const version = get(value, 'version'),
+      origin = get(value, 'origin'),
+      disposition = get(value, 'disposition'),
+      child = get(value, 'child'),
+      reporter = get(value, 'reporter'),
+      scan = get(value, 'scan'),
+      target = get(value, 'target'),
+      errors = get(value, 'errors'),
+      first = get(value, 'first');
+    if (
+      version !== 1 ||
+      !CHILD_FAILURE_ENUMS.origin.has(origin) ||
+      !CHILD_FAILURE_ENUMS.disposition.has(disposition) ||
+      !CHILD_FAILURE_ENUMS.reporter.has(reporter) ||
+      !CHILD_FAILURE_ENUMS.scan.has(scan)
+    )
+      throw Error();
+    requireRecord(child, ['closed', 'code', 'signal', 'reason']);
+    requireRecord(target, ['specs', 'tests', 'results', 'statusMask']);
+    requireRecord(errors, ['root', 'target']);
+    const c = {
+      closed: get(child, 'closed'),
+      code: get(child, 'code'),
+      signal: get(child, 'signal'),
+      reason: get(child, 'reason'),
+    };
+    if (
+      ![true, false, null].includes(c.closed) ||
+      !(c.code === null || failureInteger(c.code, -2147483648, 4294967295)) ||
+      !(c.signal === null || CHILD_FAILURE_ENUMS.signal.has(c.signal)) ||
+      !(c.reason === null || CHILD_FAILURE_ENUMS.reason.has(c.reason))
+    )
+      throw Error();
+    const t = {
+        specs: get(target, 'specs'),
+        tests: get(target, 'tests'),
+        results: get(target, 'results'),
+        statusMask: get(target, 'statusMask'),
+      },
+      e = { root: get(errors, 'root'), target: get(errors, 'target') };
+    for (const n of [t.specs, t.tests, t.results, e.root, e.target])
+      if (!(n === null || failureInteger(n, 0, 64))) throw Error();
+    if (!(t.statusMask === null || failureInteger(t.statusMask, 0, 31)))
+      throw Error();
+    let f = null;
+    if (first !== null) {
+      requireRecord(first, ['name', 'code', 'file', 'line', 'column']);
+      f = {
+        name: get(first, 'name'),
+        code: get(first, 'code'),
+        file: get(first, 'file'),
+        line: get(first, 'line'),
+        column: get(first, 'column'),
+      };
+      if (
+        !CHILD_FAILURE_ENUMS.name.has(f.name) ||
+        !CHILD_FAILURE_ENUMS.code.has(f.code) ||
+        !CHILD_FAILURE_ENUMS.file.has(f.file)
+      )
+        throw Error();
+      if (
+        f.file === 'UNKNOWN'
+          ? f.line !== null || f.column !== null
+          : !failureInteger(f.line, 1, 1000000) ||
+            !failureInteger(f.column, 1, 1000000)
+      )
+        throw Error();
+    }
+    const aggregates = [
+      t.specs,
+      t.tests,
+      t.results,
+      t.statusMask,
+      e.root,
+      e.target,
+    ];
+    if (scan === 'COMPLETE') {
+      if (
+        reporter !== 'VALID' ||
+        aggregates.includes(null) ||
+        e.root + e.target > 64
+      )
+        throw Error();
+      if (
+        (t.specs === 0 && (t.tests || t.results || t.statusMask || e.target)) ||
+        (t.tests === 0 && (t.results || t.statusMask || e.target)) ||
+        (t.results === 0 && (t.statusMask || e.target)) ||
+        (t.results > 0 && t.statusMask === 0)
+      )
+        throw Error();
+      let bits = t.statusMask,
+        popcount = 0;
+      while (bits) {
+        popcount += bits & 1;
+        bits >>>= 1;
+      }
+      if (popcount > t.results) throw Error();
+      if (f !== null && e.root + e.target === 0) throw Error();
+    } else if (aggregates.some((n) => n !== null) || f !== null) throw Error();
+    if ((reporter === 'EMPTY' || reporter === 'INVALID') && scan !== 'UNKNOWN')
+      throw Error();
+    if (reporter === 'UNAVAILABLE' && scan === 'COMPLETE') throw Error();
+    if (
+      disposition !== 'RETURNED' &&
+      (c.closed !== null ||
+        c.code !== null ||
+        c.signal !== 'UNKNOWN' ||
+        c.reason !== 'UNKNOWN' ||
+        reporter !== 'UNAVAILABLE' ||
+        scan !== 'UNKNOWN')
+    )
+      throw Error();
+    const canonical = {
+      version,
+      origin,
+      disposition,
+      child: c,
+      reporter,
+      scan,
+      target: t,
+      errors: e,
+      first: f,
+    };
+    if (Buffer.byteLength(JSON.stringify(canonical)) > 1024) throw Error();
+    return canonical;
+  } catch {
+    fail('INVALID_CHILD_FAILURE');
+  }
+}
+
+function failureSites(sourceRoot) {
+  const sites = new Map();
+  for (const [label, relative] of Object.entries(FAILURE_FILES))
+    sites.set(relative, label);
+  if (
+    typeof sourceRoot !== 'string' ||
+    sourceRoot.length > 2048 ||
+    /[\x00-\x1f]/.test(sourceRoot)
+  )
+    return sites;
+  const backslash = String.fromCharCode(92),
+    windows = /^[A-Za-z]:[\\/]/.test(sourceRoot);
+  if (
+    !windows &&
+    (!sourceRoot.startsWith('/') || sourceRoot.includes(backslash))
+  )
+    return sites;
+  const base = sourceRoot.replace(/[\\/]$/, '');
+  for (const [label, relative] of Object.entries(FAILURE_FILES)) {
+    const absolute = (base + '/' + relative).split(backslash).join('/');
+    sites.set(absolute, label);
+    if (windows) sites.set(absolute.split('/').join(backslash), label);
+    try {
+      const url = new URL('file://');
+      url.pathname = (windows ? '/' : '') + absolute.replaceAll('%', '%25');
+      sites.set(url.href, label);
+    } catch {
+      /* Unknown spelling remains unknown. */
+    }
+  }
+  return sites;
+}
+
+function firstFailureFacts(error, reader, sites) {
+  const result = {
+    name: 'UNKNOWN',
+    code: 'UNKNOWN',
+    file: 'UNKNOWN',
+    line: null,
+    column: null,
+  };
+  if (!reader.record(error)) return result;
+  const named = reader.data(error, 'name'),
+    coded = reader.data(error, 'code'),
+    stacked = reader.data(error, 'stack'),
+    location = reader.data(error, 'location');
+  if (named.state === 'DATA' && CHILD_FAILURE_ENUMS.name.has(named.value))
+    result.name = named.value;
+  if (coded.state === 'DATA' && CHILD_FAILURE_ENUMS.code.has(coded.value))
+    result.code = coded.value;
+  const stack =
+    stacked.state === 'DATA' && typeof stacked.value === 'string'
+      ? Buffer.from(stacked.value, 'utf8')
+      : null;
+  if (stack && named.state === 'ABSENT' && coded.state === 'ABSENT') {
+    const newline = stack.indexOf(10),
+      length = newline < 0 ? stack.length : newline;
+    if (length <= 256) {
+      let header = stack.subarray(0, length).toString('utf8');
+      if (header.endsWith('\r')) header = header.slice(0, -1);
+      const match =
+        /^(Error|TypeError|SyntaxError|RangeError|ReferenceError|AssertionError|TimeoutError|AggregateError)(?: \[([A-Z_]+)\])?:(?:[ \t]|$)/.exec(
+          header,
+        );
+      if (
+        match &&
+        (!match[2] ||
+          (match[2] !== 'UNKNOWN' && CHILD_FAILURE_ENUMS.code.has(match[2])))
+      ) {
+        result.name = match[1];
+        result.code = match[2] || 'UNKNOWN';
+      }
+    }
+  }
+  const accept = (file, line, column) => {
+    if (
+      typeof file === 'string' &&
+      sites.has(file) &&
+      failureInteger(line, 1, 1000000) &&
+      failureInteger(column, 1, 1000000)
+    ) {
+      result.file = sites.get(file);
+      result.line = line;
+      result.column = column;
+      return true;
+    }
+    return false;
+  };
+  if (location.state !== 'ABSENT') {
+    if (location.state === 'DATA' && reader.record(location.value))
+      accept(
+        reader.data(location.value, 'file').value,
+        reader.data(location.value, 'line').value,
+        reader.data(location.value, 'column').value,
+      );
+    return result;
+  }
+  if (!stack) return result;
+  const bounded = stack.subarray(0, 8192),
+    firstNewline = bounded.indexOf(10);
+  if (firstNewline < 0) return result;
+  let start = firstNewline + 1,
+    scanned = 0;
+  while (start < bounded.length && scanned < 32) {
+    const newline = bounded.indexOf(10, start);
+    if (newline < 0 && stack.length > bounded.length) break;
+    const end = newline < 0 ? bounded.length : newline;
+    const bytes = bounded.subarray(start, end);
+    scanned++;
+    start = end + 1;
+    if (bytes.length > 512) continue;
+    let line = bytes.toString('utf8');
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (!line.startsWith('    at ')) continue;
+    let body = line.slice(7);
+    if (body.endsWith(')')) {
+      const open = body.lastIndexOf(' (');
+      if (open < 1 || open > 128 || /[()\x00-\x1f]/.test(body.slice(0, open)))
+        continue;
+      body = body.slice(open + 2, -1);
+    } else if (/[()\x00-\x1f]/.test(body)) continue;
+    const match = /^(.*):([0-9]{1,7}):([0-9]{1,7})$/.exec(body);
+    if (match && accept(match[1], Number(match[2]), Number(match[3]))) break;
+  }
+  return result;
+}
+
+function summarizeChildFailure(origin, disposition, child, sourceRoot) {
+  const summary = unknownChildFailure(origin, disposition);
+  try {
+    if (summary.disposition !== 'RETURNED') return summary;
+    const reader = failureReader(),
+      data = (value, key) => reader.data(value, key);
+    const closed = data(child, 'closed'),
+      code = data(child, 'code'),
+      signal = data(child, 'signal'),
+      reason = data(child, 'reason');
+    summary.child = {
+      closed:
+        closed.state === 'DATA' && typeof closed.value === 'boolean'
+          ? closed.value
+          : null,
+      code:
+        code.state === 'DATA' &&
+        failureInteger(code.value, -2147483648, 4294967295)
+          ? code.value
+          : null,
+      signal:
+        signal.state === 'DATA' &&
+        (signal.value === null || CHILD_FAILURE_ENUMS.signal.has(signal.value))
+          ? signal.value
+          : 'UNKNOWN',
+      reason:
+        reason.state === 'DATA' &&
+        (reason.value === null || CHILD_FAILURE_ENUMS.reason.has(reason.value))
+          ? reason.value
+          : 'UNKNOWN',
+    };
+    // Owned close is required before inspecting any captured reporter bytes.
+    if (summary.child.closed !== true) return summary;
+    const stdout = data(child, 'stdout');
+    if (stdout.state !== 'DATA' || typeof stdout.value !== 'string')
+      return summary;
+    if (Buffer.byteLength(stdout.value) > MAX_OUTPUT) {
+      summary.scan = 'LIMIT';
+      return summary;
+    }
+    if (/^[ \t\r\n]*$/.test(stdout.value)) {
+      summary.reporter = 'EMPTY';
+      return summary;
+    }
+    let report;
+    try {
+      report = JSON.parse(stdout.value);
+    } catch {
+      summary.reporter = 'INVALID';
+      return summary;
+    }
+    summary.reporter = 'VALID';
+    const limit = Symbol('LIMIT'),
+      invalid = Symbol('UNKNOWN');
+    const arrayValues = (value) => {
+      if (!reader.array(value)) throw invalid;
+      const length = data(value, 'length');
+      if (length.state !== 'DATA' || !failureInteger(length.value, 0, 64)) {
+        if (
+          length.state === 'DATA' &&
+          failureInteger(length.value, 65, Number.MAX_SAFE_INTEGER)
+        )
+          throw limit;
+        throw invalid;
+      }
+      const values = [];
+      for (let i = 0; i < length.value; i++) {
+        const field = data(value, String(i));
+        if (field.state !== 'DATA') throw invalid;
+        values.push(field.value);
+      }
+      return values;
+    };
+    const arrayField = (value, key, optional = false) => {
+      const field = data(value, key);
+      if (optional && field.state === 'ABSENT') return [];
+      if (field.state !== 'DATA') throw invalid;
+      return arrayValues(field.value);
+    };
+    const record = (value) => {
+      if (!reader.record(value)) throw invalid;
+    };
+    const counters = { suites: 0, specs: 0, tests: 0, results: 0, errors: 0 },
+      increment = (key, n = 1) => {
+        counters[key] += n;
+        if (counters[key] > 64) throw limit;
+      };
+    try {
+      record(report);
+      const rootErrors = arrayField(report, 'errors');
+      for (const error of rootErrors) record(error);
+      increment('errors', rootErrors.length);
+      const target = { specs: 0, tests: 0, results: 0, statusMask: 0 },
+        errors = { root: rootErrors.length, target: 0 };
+      let firstTarget = null;
+      let firstTargetSelected = false;
+      const stack = arrayField(report, 'suites')
+        .map((suite) => ({ suite, depth: 0 }))
+        .reverse();
+      while (stack.length) {
+        const { suite, depth } = stack.pop();
+        if (depth > 8) throw limit;
+        increment('suites');
+        record(suite);
+        for (const spec of arrayField(suite, 'specs', true)) {
+          increment('specs');
+          record(spec);
+          const file = data(spec, 'file'),
+            title = data(spec, 'title');
+          if (
+            file.state !== 'DATA' ||
+            typeof file.value !== 'string' ||
+            title.state !== 'DATA' ||
+            typeof title.value !== 'string'
+          )
+            throw invalid;
+          const matches =
+            file.value === TEST_FILE && title.value === TEST_TITLE;
+          if (matches) target.specs++;
+          for (const test of arrayField(spec, 'tests')) {
+            increment('tests');
+            record(test);
+            if (matches) target.tests++;
+            for (const result of arrayField(test, 'results')) {
+              increment('results');
+              record(result);
+              const status = data(result, 'status');
+              if (
+                status.state !== 'DATA' ||
+                !FAILURE_STATUSES.has(status.value)
+              )
+                throw invalid;
+              const formattedPresence = data(result, 'errors');
+              const formatted = arrayField(result, 'errors', true);
+              for (const error of formatted) record(error);
+              const raw = data(result, 'error');
+              if (raw.state === 'INVALID') throw invalid;
+              const hasRaw =
+                raw.state === 'DATA' &&
+                raw.value !== null &&
+                raw.value !== undefined;
+              if (hasRaw) record(raw.value);
+              const count =
+                formattedPresence.state === 'ABSENT'
+                  ? hasRaw
+                    ? 1
+                    : 0
+                  : formatted.length;
+              increment('errors', count);
+              if (matches) {
+                target.results++;
+                target.statusMask |= FAILURE_STATUSES.get(status.value);
+                errors.target += count;
+                if (
+                  !firstTargetSelected &&
+                  ['failed', 'timedOut', 'interrupted'].includes(status.value)
+                ) {
+                  firstTargetSelected = true;
+                  firstTarget = hasRaw ? raw.value : formatted[0] || null;
+                }
+              }
+            }
+          }
+        }
+        const children = arrayField(suite, 'suites', true);
+        for (let i = children.length - 1; i >= 0; i--)
+          stack.push({ suite: children[i], depth: depth + 1 });
+      }
+      summary.scan = 'COMPLETE';
+      summary.target = target;
+      summary.errors = errors;
+      const first = firstTarget || rootErrors[0];
+      summary.first =
+        first && errors.root + errors.target > 0
+          ? firstFailureFacts(first, reader, failureSites(sourceRoot))
+          : null;
+    } catch (error) {
+      summary.scan = error === limit ? 'LIMIT' : 'UNKNOWN';
+      summary.target = {
+        specs: null,
+        tests: null,
+        results: null,
+        statusMask: null,
+      };
+      summary.errors = { root: null, target: null };
+      summary.first = null;
+    }
+    if (Buffer.byteLength(JSON.stringify(summary)) > 1024)
+      return unknownChildFailure(origin, disposition);
+    return summary;
+  } catch {
+    return unknownChildFailure(origin, disposition);
+  }
+}
+
 async function runQualification(plan, deps) {
   try {
     validatePlan(plan);
@@ -434,6 +1081,7 @@ async function runQualification(plan, deps) {
   }
   const evidence = evidenceBase(plan);
   let directory, child;
+  let childDisposition = 'UNKNOWN';
   let stage = 'PIN_MISMATCH';
   const checkCancellation = () => {
     if (deps.isCancelled?.()) {
@@ -464,6 +1112,7 @@ async function runQualification(plan, deps) {
     });
     checkCancellation();
     stage = 'CHILD_FAILED';
+    childDisposition = 'REJECTED';
     child = await deps.execute({
       command: plan.node.path,
       args: [
@@ -481,6 +1130,7 @@ async function runQualification(plan, deps) {
       ],
       directory,
     });
+    childDisposition = 'RETURNED';
     checkCancellation();
     if (!child.closed) {
       stage = 'CHILD_NO_CLOSE';
@@ -508,6 +1158,21 @@ async function runQualification(plan, deps) {
     evidence.status = 'PASS';
     evidence.reason = 'CHECKPOINTS_COMPLETE';
   } catch (error) {
+    if (CHILD_FAILURE_ENUMS.origin.has(stage)) {
+      try {
+        const root = failureReader().data(deps, 'sourceRoot');
+        evidence.childFailure = validateChildFailure(
+          summarizeChildFailure(
+            stage,
+            childDisposition,
+            child,
+            root.state === 'DATA' ? root.value : undefined,
+          ),
+        );
+      } catch {
+        evidence.childFailure = unknownChildFailure(stage, childDisposition);
+      }
+    }
     // Only this fixed internal cleanup result may refine the stage. Never emit
     // filesystem error text, paths or diagnostics from an initialization fault.
     evidence.reason =
@@ -788,6 +1453,8 @@ module.exports = {
   verifyRuntimePins,
   createPrivateTempDirectory,
   removeOwnedTemp,
+  summarizeChildFailure,
+  validateChildFailure,
 };
 
 // Deliberate executable entry point. No action, including builtin imports, occurs
@@ -854,6 +1521,7 @@ async function main() {
   )
     fail('RUNNER_NOT_ADMITTED');
   const deps = {
+    sourceRoot: cwd,
     verifyPins: () =>
       verifyRuntimePins(plan, {
         path,

@@ -4,12 +4,786 @@ const test = require('node:test');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-let api = {};
-try {
-  api = require('./qualify-api-music-nonloopback.cjs');
-} catch (error) {
-  if (error.code !== 'MODULE_NOT_FOUND') throw error;
+// Load only inert pure definitions/exports as source, never the CLI entry point.
+const sourcePath = require.resolve('./qualify-api-music-nonloopback.cjs');
+const sourceText = fs.readFileSync(sourcePath, 'utf8');
+const pureBoundary = sourceText.indexOf(
+  '// Deliberate executable entry point.',
+);
+assert.ok(pureBoundary > 0);
+function loadPure(source = sourceText) {
+  const pureModule = { exports: {} };
+  const boundary = source.indexOf('// Deliberate executable entry point.');
+  vm.runInThisContext(
+    '(function(module, require) {\n' +
+      (boundary < 0 ? source : source.slice(0, boundary)) +
+      '\n})',
+  )(pureModule, () =>
+    assert.fail('pure definitions must not import runtime state'),
+  );
+  return pureModule.exports;
 }
+const api = loadPure();
+
+test('formatted error presence controls both target and global mirror counts', () => {
+  for (const shape of ['empty', 'nonempty', 'absent']) {
+    const report = failureReport('failed', { stack: 'TypeError: private' });
+    const result = report.suites[0].specs[0].tests[0].results[0];
+    if (shape === 'empty') result.errors = [];
+    if (shape === 'absent') delete result.errors;
+    const value = summarizeReport(report);
+    assert.equal(value.scan, 'COMPLETE');
+    assert.equal(value.errors.target, shape === 'empty' ? 0 : 1);
+    assert.equal(value.first === null, shape === 'empty');
+    privateSafe(value);
+  }
+  const report = failureReport('failed', { stack: 'TypeError: private' });
+  report.suites[0].specs[0].tests[0].results[0].errors = [];
+  report.errors = Array.from({ length: 64 }, () => ({
+    stack: 'SyntaxError: private',
+  }));
+  const value = summarizeReport(report);
+  assert.equal(value.scan, 'COMPLETE');
+  assert.equal(value.errors.root, 64);
+  assert.equal(value.errors.target, 0);
+  assert.equal(value.first.name, 'TypeError');
+  privateSafe(value);
+});
+test('first failing target result is selected once even when it has no error', () => {
+  for (const firstStatus of ['failed', 'timedOut', 'interrupted']) {
+    for (const withRoot of [true, false]) {
+      const report = failureReport();
+      report.errors = withRoot ? [{ stack: 'SyntaxError: private' }] : [];
+      report.suites[0].specs[0].tests[0].results = [
+        { status: firstStatus, errors: [] },
+        {
+          status: 'failed',
+          error: { stack: 'TypeError: private' },
+          errors: [{ stack: 'RangeError: private' }],
+        },
+      ];
+      const value = summarizeReport(report);
+      assert.equal(value.scan, 'COMPLETE');
+      assert.equal(value.target.results, 2);
+      assert.equal(value.errors.target, 1);
+      if (withRoot) assert.equal(value.first.name, 'SyntaxError');
+      else assert.equal(value.first, null);
+      privateSafe(value);
+    }
+    for (const rawPresent of [true, false]) {
+      const report = failureReport();
+      report.errors = [{ stack: 'SyntaxError: private' }];
+      const first = {
+        status: firstStatus,
+        errors: [{ stack: 'RangeError: private' }],
+      };
+      if (rawPresent) first.error = { stack: 'TypeError: private' };
+      report.suites[0].specs[0].tests[0].results = [
+        first,
+        { status: 'failed', error: { stack: 'ReferenceError: private' } },
+      ];
+      const value = summarizeReport(report);
+      assert.equal(value.first.name, rawPresent ? 'TypeError' : 'RangeError');
+      privateSafe(value);
+    }
+  }
+  for (const ignoredStatus of ['passed', 'skipped']) {
+    const report = failureReport();
+    report.errors = [{ stack: 'RangeError: private' }];
+    report.suites[0].specs[0].tests[0].results = [
+      { status: ignoredStatus, error: { stack: 'TypeError: private' } },
+      { status: 'interrupted', error: { stack: 'SyntaxError: private' } },
+    ];
+    const value = summarizeReport(report);
+    assert.equal(value.first.name, 'SyntaxError');
+    privateSafe(value);
+  }
+});
+
+test('complete header boundaries and unknown sentinel headers fail closed', () => {
+  for (const length of [256, 257]) {
+    const value = summarizeReport(
+      failureReport('failed', { stack: 'Error: ' + 'x'.repeat(length - 7) }),
+    );
+    assert.equal(value.first.name, length === 256 ? 'Error' : 'UNKNOWN');
+  }
+  const unknown = summarizeReport(
+    failureReport('failed', { stack: 'Error [UNKNOWN]: private' }),
+  );
+  assert.equal(unknown.first.name, 'UNKNOWN');
+  assert.equal(unknown.first.code, 'UNKNOWN');
+});
+test('complete pinned URL spelling and frame boundary are canonical rather than suffix repaired', () => {
+  const colon = summarizeReport(
+    failureReport('failed', {
+      stack: 'Error: private\n    at file:///source:x/' + failureFile + ':4:5',
+    }),
+    {},
+    '/source:x',
+  );
+  assert.equal(colon.first.file, 'TEST');
+  const encoded = summarizeReport(
+    failureReport('failed', {
+      stack:
+        'Error: private\n    at file:///source%20%25%3F%23/' +
+        failureFile +
+        ':4:5',
+    }),
+    {},
+    '/source %?#',
+  );
+  assert.equal(encoded.first.file, 'TEST');
+  for (const lines of [31, 32]) {
+    const stack =
+      'Error: private\n' +
+      '    at /unowned:1:1\n'.repeat(lines) +
+      '    at /source/' +
+      failureFile +
+      ':4:5';
+    const value = summarizeReport(failureReport('failed', { stack }));
+    assert.equal(value.first.file, lines === 31 ? 'TEST' : 'UNKNOWN');
+  }
+});
+test('all global traversal boundaries are independent of per-array limits', () => {
+  const simpleSpec = () => ({
+    file: failureFile,
+    title: failureTitle,
+    tests: [],
+  });
+  for (const n of [64, 65]) {
+    const cases = [
+      { errors: [], suites: Array.from({ length: n }, () => ({ specs: [] })) },
+      {
+        errors: [],
+        suites: [
+          { specs: Array.from({ length: 32 }, simpleSpec) },
+          { specs: Array.from({ length: n - 32 }, simpleSpec) },
+        ],
+      },
+      {
+        errors: [],
+        suites: [
+          {
+            specs: [
+              {
+                ...simpleSpec(),
+                tests: Array.from({ length: 32 }, () => ({ results: [] })),
+              },
+              {
+                ...simpleSpec(),
+                tests: Array.from({ length: n - 32 }, () => ({ results: [] })),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        errors: [],
+        suites: [
+          {
+            specs: [
+              {
+                ...simpleSpec(),
+                tests: [
+                  {
+                    results: Array.from({ length: 32 }, () => ({
+                      status: 'passed',
+                    })),
+                  },
+                  {
+                    results: Array.from({ length: n - 32 }, () => ({
+                      status: 'passed',
+                    })),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    for (const report of cases) {
+      const value = summarizeReport(report);
+      assert.equal(value.scan, n === 64 ? 'COMPLETE' : 'LIMIT');
+      if (n === 65) {
+        assert.equal(value.target.results, null);
+        assert.equal(value.errors.root, null);
+      }
+      privateSafe(value);
+    }
+  }
+  for (const depth of [8, 9]) {
+    let suite = { specs: [] };
+    for (let i = 0; i < depth; i++) suite = { specs: [], suites: [suite] };
+    const value = summarizeReport({ errors: [], suites: [suite] });
+    assert.equal(value.scan, depth === 8 ? 'COMPLETE' : 'LIMIT');
+    privateSafe(value);
+  }
+});
+test('mirror counting and first error selection remain consistent for unmatched and raw-only results', () => {
+  const raw = failureReport('failed', { stack: 'TypeError: private' });
+  delete raw.suites[0].specs[0].tests[0].results[0].errors;
+  const value = summarizeReport(raw);
+  assert.equal(value.errors.target, 1);
+  assert.equal(value.first.name, 'TypeError');
+  const mismatch = failureReport();
+  mismatch.suites[0].specs[0].file = 'other.test.ts';
+  mismatch.suites[0].specs[0].tests[0].results[0].errors = Array.from(
+    { length: 64 },
+    () => ({ message: privateFailure }),
+  );
+  mismatch.errors = [{}];
+  assert.equal(summarizeReport(mismatch).scan, 'LIMIT');
+  const priority = failureReport('failed', { stack: 'TypeError: private' });
+  priority.errors = [{ stack: 'SyntaxError: private' }];
+  assert.equal(summarizeReport(priority).first.name, 'TypeError');
+});
+test('classifier failure and invalid classifier return preserve the original failure and required unknown summary', async () => {
+  const marker =
+    'function summarizeChildFailure(origin, disposition, child, sourceRoot) {';
+  assert.ok(sourceText.includes(marker));
+  for (const replacement of [
+    "throw Error('INJECTED_CLASSIFIER_FAILURE');",
+    "return {private: 'SECRETVALUE'};",
+  ]) {
+    const broken = loadPure(
+      sourceText.replace(marker, marker + '\n' + replacement),
+    );
+    let removed = 0;
+    const value = await broken.runQualification(plan(), {
+      verifyPins: async () => {},
+      readInterfaces: () => ({
+        owned: [{ family: 'IPv4', internal: false, address: '10.3.4.5' }],
+      }),
+      createPrivateTemp: async () => '/owned',
+      writeAdmission: async () => {},
+      execute: async () => ({
+        closed: true,
+        code: 1,
+        signal: null,
+        reason: null,
+        stdout: 'PRIVATE',
+      }),
+      removeTemp: async () => {
+        removed++;
+      },
+    });
+    assert.equal(value.reason, 'CHILD_FAILED');
+    assert.equal(removed, 1);
+    assert.equal(value.childFailure.origin, 'CHILD_FAILED');
+    assert.equal(value.childFailure.disposition, 'RETURNED');
+    assert.equal(value.childFailure.reporter, 'UNAVAILABLE');
+    assert.equal(value.childFailure.target.results, null);
+    privateSafe(value.childFailure);
+  }
+});
+test('summary attachment covers child reasons and skips success and non-child failures', async () => {
+  const base = {
+    verifyPins: async () => {},
+    readInterfaces: () => ({
+      owned: [{ family: 'IPv4', internal: false, address: '10.3.4.5' }],
+    }),
+    createPrivateTemp: async () => '/owned',
+    writeAdmission: async () => {},
+    removeTemp: async () => {},
+  };
+  for (const reason of [
+    'TIMEOUT',
+    'OUTPUT_LIMIT',
+    'CANCELLED',
+    'SPAWN_FAILED',
+    'LOG_FAILED',
+  ]) {
+    const value = await api.runQualification(plan(), {
+      ...base,
+      execute: async () => ({
+        closed: true,
+        code: 1,
+        signal: null,
+        reason,
+        stdout: '',
+      }),
+    });
+    assert.equal(value.reason, 'CHILD_' + reason);
+    assert.equal(value.childFailure.origin, value.reason);
+    privateSafe(value.childFailure);
+  }
+  const rejected = await api.runQualification(plan(), {
+    ...base,
+    execute: async () => {
+      throw Error(privateFailure);
+    },
+  });
+  assert.equal(rejected.childFailure.disposition, 'REJECTED');
+  privateSafe(rejected.childFailure);
+  const good = await api.runQualification(plan(), {
+    ...base,
+    execute: async () => ({
+      closed: true,
+      code: 0,
+      signal: null,
+      reason: null,
+      stdout: JSON.stringify(report()),
+    }),
+  });
+  assert.equal(good.status, 'PASS');
+  assert.equal(Object.hasOwn(good, 'childFailure'), false);
+  const invalid = await api.runQualification(plan(), {
+    ...base,
+    execute: async () => ({
+      closed: true,
+      code: 0,
+      signal: null,
+      reason: null,
+      stdout: '{bad',
+    }),
+  });
+  assert.equal(invalid.reason, 'INVALID_REPORT');
+  assert.equal(Object.hasOwn(invalid, 'childFailure'), false);
+});
+test('fixed source context getters are not invoked by orchestration', async () => {
+  let reads = 0;
+  const deps = {
+    verifyPins: async () => {},
+    readInterfaces: () => ({
+      owned: [{ family: 'IPv4', internal: false, address: '10.3.4.5' }],
+    }),
+    createPrivateTemp: async () => '/owned',
+    writeAdmission: async () => {},
+    execute: async () => ({
+      closed: true,
+      code: 1,
+      signal: null,
+      reason: null,
+      stdout: JSON.stringify(failureReport()),
+    }),
+    removeTemp: async () => {},
+    get sourceRoot() {
+      reads++;
+      throw Error(privateFailure);
+    },
+  };
+  const value = await api.runQualification(plan(), deps);
+  assert.equal(reads, 0);
+  assert.equal(value.reason, 'CHILD_FAILED');
+  privateSafe(value.childFailure);
+});
+
+const failureFile = 'tests/api-music-remote-http.test.ts';
+const failureTitle =
+  'runtime-admitted nonloopback HTTP and TLS require actual direct peers';
+const privateFailure =
+  'SECRETVALUE https://private.invalid/?token=secret /private/absolute/path';
+function failureReport(status = 'failed', error = {}) {
+  return {
+    errors: [],
+    suites: [
+      {
+        specs: [
+          {
+            file: failureFile,
+            title: failureTitle,
+            tests: [{ results: [{ status, error, errors: [{ ...error }] }] }],
+          },
+        ],
+      },
+    ],
+  };
+}
+function summarizeReport(value, changes = {}, root = '/source') {
+  return api.summarizeChildFailure(
+    'CHILD_FAILED',
+    'RETURNED',
+    {
+      closed: true,
+      code: 1,
+      signal: null,
+      reason: null,
+      stdout: JSON.stringify(value),
+      ...changes,
+    },
+    root,
+  );
+}
+function completeFailure() {
+  return {
+    version: 1,
+    origin: 'CHILD_FAILED',
+    disposition: 'RETURNED',
+    child: { closed: true, code: 1, signal: null, reason: null },
+    reporter: 'VALID',
+    scan: 'COMPLETE',
+    target: { specs: 1, tests: 1, results: 1, statusMask: 2 },
+    errors: { root: 0, target: 1 },
+    first: null,
+  };
+}
+function privateSafe(value) {
+  const json = JSON.stringify(value);
+  assert.ok(Buffer.byteLength(json) <= 1024);
+  for (const secret of [
+    'SECRETVALUE',
+    'private.invalid',
+    '/private/absolute',
+    '/source/',
+    'file:///',
+  ])
+    assert.ok(!json.includes(secret));
+  assert.deepEqual(api.validateChildFailure(value), value);
+}
+test('child failure telemetry exposes bounded load/target/adapter distinctions without raw errors', async () => {
+  assert.equal(typeof api.summarizeChildFailure, 'function');
+  const load = summarizeReport({
+    errors: [
+      {
+        stack: 'Error [ERR_MODULE_NOT_FOUND]: ' + privateFailure,
+        location: { file: failureFile, line: 1, column: 2 },
+      },
+    ],
+    suites: [],
+  });
+  assert.equal(load.target.results, 0);
+  assert.equal(load.errors.root, 1);
+  assert.equal(load.first.code, 'ERR_MODULE_NOT_FOUND');
+  assert.equal(load.first.file, 'TEST');
+  const target = summarizeReport(
+    failureReport('failed', { stack: 'AssertionError: ' + privateFailure }),
+  );
+  assert.equal(target.target.results, 1);
+  assert.equal(target.target.statusMask, 2);
+  assert.equal(target.first.name, 'AssertionError');
+  const rejected = api.summarizeChildFailure(
+    'CHILD_FAILED',
+    'REJECTED',
+    {},
+    '/source',
+  );
+  assert.equal(rejected.reporter, 'UNAVAILABLE');
+  assert.equal(rejected.child.closed, null);
+  assert.equal(rejected.first, null);
+  for (const value of [load, target, rejected]) privateSafe(value);
+});
+test('ChildFailureV1 validates the 2080 results/mask combinations and all 0..64 counter values', () => {
+  let vectors = 0;
+  for (let results = 0; results <= 64; results++)
+    for (let mask = 0; mask <= 31; mask++) {
+      const value = completeFailure();
+      value.target.results = results;
+      value.target.statusMask = mask;
+      value.errors.target = 0;
+      const popcount = mask.toString(2).replaceAll('0', '').length;
+      const valid =
+        results === 0 ? mask === 0 : mask !== 0 && popcount <= results;
+      if (valid) assert.deepEqual(api.validateChildFailure(value), value);
+      else
+        assert.throws(
+          () => api.validateChildFailure(value),
+          /INVALID_CHILD_FAILURE/,
+        );
+      vectors++;
+    }
+  assert.equal(vectors, 2080);
+  for (let count = 0; count <= 64; count++) {
+    const value = completeFailure();
+    value.target = {
+      specs: count,
+      tests: count,
+      results: count,
+      statusMask: count ? 1 : 0,
+    };
+    value.errors = { root: count, target: 0 };
+    assert.deepEqual(api.validateChildFailure(value), value);
+  }
+});
+test('strict summary validation rejects unknown keys, bad facts, coercion, and cross-rule violations', () => {
+  const mutations = [
+    (v) => (v.extra = privateFailure),
+    (v) => (v.version = 2),
+    (v) => (v.child.closed = 'true'),
+    (v) => (v.child.code = 4294967296),
+    (v) => (v.child.signal = privateFailure),
+    (v) => (v.child.reason = privateFailure),
+    (v) => (v.reporter = 'OTHER'),
+    (v) => (v.scan = 'OTHER'),
+    (v) => (v.target.specs = 65),
+    (v) => (v.target.statusMask = 32),
+    (v) => (v.errors.root = 64),
+    (v) =>
+      (v.first = {
+        name: 'Error',
+        code: 'UNKNOWN',
+        file: 'UNKNOWN',
+        line: 1,
+        column: 2,
+      }),
+    (v) => (v.disposition = 'REJECTED'),
+    (v) => (v.target.results = 0),
+    (v) => (v.target.tests = 0),
+    (v) => (v.target.specs = 0),
+  ];
+  for (const mutate of mutations) {
+    const value = completeFailure();
+    mutate(value);
+    assert.throws(
+      () => api.validateChildFailure(value),
+      /INVALID_CHILD_FAILURE/,
+    );
+  }
+  let touched = 0;
+  const value = completeFailure();
+  Object.defineProperty(value.child, 'code', {
+    get() {
+      touched++;
+      throw Error(privateFailure);
+    },
+  });
+  assert.throws(() => api.validateChildFailure(value), /INVALID_CHILD_FAILURE/);
+  assert.equal(touched, 0);
+});
+test('summary classifier snapshots own descriptors once and never invokes getters or coercion', () => {
+  const reads = new Map();
+  let prototypeReads = 0,
+    getterReads = 0;
+  const base = {
+    closed: true,
+    code: 1,
+    signal: null,
+    reason: null,
+    stdout: JSON.stringify(failureReport()),
+  };
+  const child = new Proxy(base, {
+    getOwnPropertyDescriptor(target, key) {
+      reads.set(key, (reads.get(key) || 0) + 1);
+      return Reflect.getOwnPropertyDescriptor(target, key);
+    },
+    getPrototypeOf(target) {
+      prototypeReads++;
+      return Reflect.getPrototypeOf(target);
+    },
+  });
+  privateSafe(
+    api.summarizeChildFailure('CHILD_FAILED', 'RETURNED', child, '/source'),
+  );
+  assert.equal(prototypeReads, 1);
+  for (const count of reads.values()) assert.equal(count, 1);
+  const getter = {
+    closed: true,
+    code: 1,
+    signal: null,
+    reason: null,
+    get stdout() {
+      getterReads++;
+      throw Error(privateFailure);
+    },
+  };
+  const value = api.summarizeChildFailure(
+    'CHILD_FAILED',
+    'RETURNED',
+    getter,
+    '/source',
+  );
+  assert.equal(getterReads, 0);
+  assert.equal(value.reporter, 'UNAVAILABLE');
+  privateSafe(value);
+  const poisoned = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        throw Error(privateFailure);
+      },
+    },
+  );
+  privateSafe(
+    api.summarizeChildFailure('CHILD_FAILED', 'RETURNED', poisoned, '/source'),
+  );
+});
+test('unclosed child output is never inspected and negative child facts remain finite unknowns', () => {
+  let stdoutReads = 0;
+  const child = new Proxy(
+    { closed: false, code: -2147483648, signal: 'SIGABRT', reason: 'TIMEOUT' },
+    {
+      getOwnPropertyDescriptor(target, key) {
+        if (key === 'stdout') {
+          stdoutReads++;
+          throw Error(privateFailure);
+        }
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    },
+  );
+  const value = api.summarizeChildFailure(
+    'CHILD_NO_CLOSE',
+    'RETURNED',
+    child,
+    '/source',
+  );
+  assert.equal(stdoutReads, 0);
+  assert.equal(value.reporter, 'UNAVAILABLE');
+  assert.equal(value.child.code, -2147483648);
+  assert.equal(value.child.signal, 'SIGABRT');
+  privateSafe(value);
+  const bad = api.summarizeChildFailure(
+    'CHILD_FAILED',
+    'RETURNED',
+    {
+      closed: 'yes',
+      code: NaN,
+      signal: {
+        toString() {
+          throw Error(privateFailure);
+        },
+      },
+      reason: privateFailure,
+    },
+    '/source',
+  );
+  assert.equal(bad.child.closed, null);
+  assert.equal(bad.child.code, null);
+  assert.equal(bad.child.signal, 'UNKNOWN');
+  assert.equal(bad.child.reason, 'UNKNOWN');
+  privateSafe(bad);
+});
+test('reporter states and oversize bounds never emit partial counts or private data', () => {
+  for (const [stdout, reporter, scan] of [
+    ['', 'EMPTY', 'UNKNOWN'],
+    [' \n\t', 'EMPTY', 'UNKNOWN'],
+    ['{bad', 'INVALID', 'UNKNOWN'],
+    ['null', 'VALID', 'UNKNOWN'],
+    ['X'.repeat(2 * 1024 * 1024 + 1), 'UNAVAILABLE', 'LIMIT'],
+  ]) {
+    const value = summarizeReport({}, { stdout });
+    assert.equal(value.reporter, reporter);
+    assert.equal(value.scan, scan);
+    assert.equal(value.target.results, null);
+    assert.equal(value.first, null);
+    privateSafe(value);
+  }
+  const limit = summarizeReport({
+    errors: [],
+    suites: Array.from({ length: 65 }, () => ({ specs: [] })),
+  });
+  assert.equal(limit.scan, 'LIMIT');
+  assert.equal(limit.target.specs, null);
+  privateSafe(limit);
+});
+test('target identity, all statuses and mirror-deduplicated global error budget are exact', () => {
+  for (const [status, bit] of [
+    ['passed', 1],
+    ['failed', 2],
+    ['timedOut', 4],
+    ['skipped', 8],
+    ['interrupted', 16],
+  ])
+    assert.equal(summarizeReport(failureReport(status)).target.statusMask, bit);
+  const mismatch = failureReport();
+  mismatch.suites[0].specs[0].file = '/source/' + failureFile;
+  assert.equal(summarizeReport(mismatch).target.specs, 0);
+  const mirrors = failureReport();
+  const result = mirrors.suites[0].specs[0].tests[0].results[0];
+  result.errors = Array.from({ length: 64 }, () => ({
+    message: privateFailure,
+  }));
+  assert.equal(summarizeReport(mirrors).scan, 'COMPLETE');
+  assert.equal(summarizeReport(mirrors).errors.target, 64);
+  mirrors.errors = [{ message: privateFailure }];
+  const limited = summarizeReport(mirrors);
+  assert.equal(limited.scan, 'LIMIT');
+  assert.equal(limited.errors.root, null);
+});
+test('structured location presence blocks fallback and exact pinned source spellings are bounded', () => {
+  const stack =
+    'Error: ' + privateFailure + '\n    at /source/' + failureFile + ':4:5';
+  for (const location of [
+    null,
+    {},
+    { file: '/private/' + failureFile, line: 4, column: 5 },
+    { file: failureFile, line: 0, column: 5 },
+  ]) {
+    const value = summarizeReport(failureReport('failed', { stack, location }));
+    assert.equal(value.first.file, 'UNKNOWN');
+    assert.equal(value.first.line, null);
+  }
+  const absent = summarizeReport(failureReport('failed', { stack }));
+  assert.equal(absent.first.file, 'TEST');
+  assert.equal(absent.first.line, 4);
+  const windows = summarizeReport(
+    failureReport('failed', {
+      stack:
+        'TypeError: ' +
+        privateFailure +
+        '\n    at run (file:///C:/source/' +
+        failureFile +
+        ':7:9)',
+    }),
+    {},
+    'C:\\source',
+  );
+  assert.equal(windows.first.file, 'TEST');
+  assert.equal(windows.first.line, 7);
+  privateSafe(windows);
+});
+test('finite first headers never parse message substrings or cap-truncated headers/frames', () => {
+  for (const [header, name, code] of [
+    ['Error [ERR_REQUIRE_ESM]: ' + privateFailure, 'Error', 'ERR_REQUIRE_ESM'],
+    ['Error: text ERR_MODULE_NOT_FOUND', 'Error', 'UNKNOWN'],
+    ['Error [SECRET]: x', 'UNKNOWN', 'UNKNOWN'],
+    ['SECRETError: x', 'UNKNOWN', 'UNKNOWN'],
+    ['\u001b[31mError: x', 'UNKNOWN', 'UNKNOWN'],
+    ['Error: ' + 'X'.repeat(257), 'UNKNOWN', 'UNKNOWN'],
+  ]) {
+    const value = summarizeReport(failureReport('failed', { stack: header }));
+    assert.equal(value.first.name, name);
+    assert.equal(value.first.code, code);
+    privateSafe(value);
+  }
+  const header = 'Error: private\n',
+    frame = '    at /source/' + failureFile + ':4:5';
+  const stack =
+    header +
+    'x'.repeat(
+      8192 - Buffer.byteLength(header) - Buffer.byteLength(frame) - 1,
+    ) +
+    '\n' +
+    frame +
+    'TRAILING';
+  const value = summarizeReport(failureReport('failed', { stack }));
+  assert.equal(value.first.file, 'UNKNOWN');
+});
+test('orchestration preserves original child origin through cleanup failure and late cancellation', async () => {
+  const deps = {
+    verifyPins: async () => {},
+    readInterfaces: () => ({
+      test: [{ family: 'IPv4', internal: false, address: '10.3.4.5' }],
+    }),
+    createPrivateTemp: async () => '/owned',
+    writeAdmission: async () => {},
+    execute: async () => ({
+      closed: true,
+      code: 1,
+      signal: null,
+      reason: null,
+      stdout: JSON.stringify(failureReport()),
+    }),
+    removeTemp: async () => {
+      throw Error(privateFailure);
+    },
+    sourceRoot: '/source',
+  };
+  const cleanup = await api.runQualification(plan(), deps);
+  assert.equal(cleanup.reason, 'CLEANUP_FAILED');
+  assert.equal(cleanup.childFailure.origin, 'CHILD_FAILED');
+  privateSafe(cleanup.childFailure);
+  let cancelled = false;
+  const cancellation = await api.runQualification(plan(), {
+    ...deps,
+    removeTemp: async () => {
+      cancelled = true;
+    },
+    isCancelled: () => cancelled,
+  });
+  assert.equal(cancellation.reason, 'CANCELLED');
+  assert.equal(cancellation.childFailure.origin, 'CHILD_FAILED');
+});
 
 const checkpoints = [
   'actual_nonempty_socket_facts',
@@ -1219,12 +1993,12 @@ test('telemetry parser rejects substituted topology, TLS, epoch, counter and cle
   assert.throws(() => api.parseEvidence(r), /INVALID_REPORT/);
 });
 
-let windowsApi = {};
-try {
-  windowsApi = require('./api-music-windows-private-root.cjs');
-} catch (error) {
-  if (error.code !== 'MODULE_NOT_FOUND') throw error;
-}
+const windowsApi = loadPure(
+  fs.readFileSync(
+    require.resolve('./api-music-windows-private-root.cjs'),
+    'utf8',
+  ),
+);
 
 function windowsHarness(overrides = {}) {
   const path = require('node:path').win32;
