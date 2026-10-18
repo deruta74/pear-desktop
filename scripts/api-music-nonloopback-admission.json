@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "sourceHead": "b4ea9b35420995122e7a050c232cce0e46adf581",
+  "sourceTree": "c2617ab2362ae674bc343591a53a35b8a9d5d36c",
+  "sourceParent": "9659187ca3b7663e78039def9d929bc1b586ef58",
+  "nodeVersion": "v24.20.0",
+  "pnpmVersion": "11.28.6",
+  "lockSHA256": "1ae9556e7a67d8bc67a67a5c09f87203f98ef739f945e8d62db9410cf38239a6",
+  "cliSHA256": "79e23e6a249176295b8490567daa7717448a75866d6ea6f6b296ff3d23305c69",
+  "platforms": [
+    {
+      "label": "ubuntu-24.04",
+      "platform": "linux",
+      "arch": "x64",
+      "imageOS": "ubuntu24",
+      "imageVersion": "20261012.334.1",
+      "nodeSHA256": "89af8424dd53e560b1933f87ba650d8bf57c83ca5a04600eefb31f416aabbae7",
+      "systemRoot": null,
+      "powerShellIdentity": null
+    },
+    {
+      "label": "macos-latest",
+      "platform": "darwin",
+      "arch": "arm64",
+      "imageOS": null,
+      "imageVersion": "20261013.0424.1",
+      "nodeSHA256": "9d050fd455b56426e25d4d603c7c501cbb2630348e836cf221dcce748e90588a",
+      "systemRoot": null,
+      "powerShellIdentity": null
+    },
+    {
+      "label": "windows-latest",
+      "platform": "win32",
+      "arch": "x64",
+      "imageOS": null,
+      "imageVersion": "20261007.264.1",
+      "nodeSHA256": "5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5",
+      "systemRoot": "C:\\Windows",
+      "powerShellIdentity": "MICROSOFT_AUTHENTICODE_VALID"
+    }
+  ]
+}
