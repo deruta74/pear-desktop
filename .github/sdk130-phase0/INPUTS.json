@@ -1,0 +1,349 @@
+{
+  "status": "PRIVATE_PREPARATION_NOT_EXECUTION_ADMISSION",
+  "base": "6206bf20f43a1d6447e19688cc0da629e9a4a826",
+  "tree": "b77a96568acc192dd56845fa4738987b488fa59d",
+  "allowedPaths": [
+    ".github/workflows/sdk130-json-phase0.yml",
+    ".github/sdk130-phase0/run.cjs",
+    ".github/sdk130-phase0/probe.mjs",
+    ".github/sdk130-phase0/normal-json-cleanup.patch",
+    ".github/sdk130-phase0/inputs/package.json",
+    ".github/sdk130-phase0/inputs/pnpm-lock.UNVALIDATED.yaml",
+    ".github/sdk130-phase0/inputs/sdk-1.30.0.tgz",
+    ".github/sdk130-phase0/INPUTS.json"
+  ],
+  "inputs": {
+    ".github/sdk130-phase0/run.cjs": "e4f0f004d62038cce420930cb4bd4d0d53ee0f2a30492a555761290be93eaee4",
+    ".github/sdk130-phase0/probe.mjs": "672a700a7cfa3bc14ebd2540e7db7d72e2564a80ee6a7a8470835a1c93fb1446",
+    ".github/sdk130-phase0/normal-json-cleanup.patch": "29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9",
+    ".github/sdk130-phase0/inputs/package.json": "3d41d964b5310736e6042e63e2094be8658e5f79a30ef67a93c3844d97fd7494",
+    ".github/sdk130-phase0/inputs/pnpm-lock.UNVALIDATED.yaml": "65a643aeb716a1244421aad864bf21be4898706ffaaa345de440bc482c6bf01f",
+    ".github/sdk130-phase0/inputs/sdk-1.30.0.tgz": "2cac3f3e38fec2815ed9efafa2947faf8c6957310684f99703f3d180f3e9af1a"
+  },
+  "context": {
+    "package.json": "973f6e067390931c6b0e2a8d9dfe3df74c99418070b352be717f34cdd7d16c8c",
+    "pnpm-lock.yaml": "1ae9556e7a67d8bc67a67a5c09f87203f98ef739f945e8d62db9410cf38239a6",
+    "pnpm-workspace.yaml": "46d0deb6f6f25bc4dded4e13e419113750bcdb2d4c187144ea8b3583b8e48eb1",
+    "patches/@malept__flatpak-bundler@0.4.0.patch": "c787371eeb2af011ea934e8818a0dad6d7dcb2df31bbb1686babc7231af0183c",
+    "patches/electron-is@3.0.0.patch": "08664a5453f092fe45542f9005ffc07527b1f207447318374cba0f4d30f466a0",
+    "patches/kuromoji@0.1.2.patch": "4a948f1ea45c61779fa371feb020253ccf7a24e1f7c6b2e250b3ce53d86216d4",
+    "patches/mdui@2.1.4.patch": "e6f91e8e974b4ccc0903ec27b2c840fa3a84048144098e96671fc9915df47ef1",
+    "patches/vudio@2.1.1.patch": "0e06c2ed11c02bdc490c209fa80070e98517c2735c641f5738b6e15d7dc1959d"
+  },
+  "manifestSHA256": "3d41d964b5310736e6042e63e2094be8658e5f79a30ef67a93c3844d97fd7494",
+  "candidateSHA256": "65a643aeb716a1244421aad864bf21be4898706ffaaa345de440bc482c6bf01f",
+  "candidateClassification": "UNVALIDATED",
+  "candidateResolved": false,
+  "sdkArchiveSHA256": "2cac3f3e38fec2815ed9efafa2947faf8c6957310684f99703f3d180f3e9af1a",
+  "sdkSRI": "sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==",
+  "sdk": [
+    {
+      "member": "package/package.json",
+      "sha256": "0690cbe02511a95d1ff199acf20b5a12ac4dfde1bbe30c82a0de73afa92dffc9",
+      "bytes": 6511
+    },
+    {
+      "member": "package/LICENSE",
+      "sha256": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
+      "bytes": 1071
+    },
+    {
+      "member": "package/dist/esm/server/mcp.d.ts",
+      "sha256": "45b14dbeb3e96def50e3a43febf875d4849fb8f3653f9e03a8bcbbd84692abfe",
+      "bytes": 16927
+    },
+    {
+      "member": "package/dist/esm/types.d.ts",
+      "sha256": "992f47b4534fed1f6064c90095c171d60118412a63d4432b5983b08d0148c880",
+      "bytes": 381960
+    },
+    {
+      "member": "package/dist/esm/server/mcp.js",
+      "sha256": "a5caaddfa0f6aadea64604aa57136bab6540298b846bbe861a80bf7392ae5aad",
+      "bytes": 40694
+    },
+    {
+      "member": "package/dist/esm/types.js",
+      "sha256": "962836b0f8dad85bcd398ad3ddb5ba81a7c7530c706955aa846dd8dfc02dd6a9",
+      "bytes": 73271
+    },
+    {
+      "member": "package/dist/esm/server/zod-compat.d.ts",
+      "sha256": "361b4fff69ca3e465ca01f81803f83815c2b19f77fe7870d8449a7d64e337f7a",
+      "bytes": 3321
+    },
+    {
+      "member": "package/dist/esm/server/zod-compat.js",
+      "sha256": "66b539b003646258b9d82c382f2832836291e4ce2b0a37e253cfdc1222dafde1",
+      "bytes": 7423
+    },
+    {
+      "member": "package/dist/esm/shared/protocol.d.ts",
+      "sha256": "beb2cdafa1697caece370cedc97cddc7638b2df66310193cd2ab2a76029828e8",
+      "bytes": 18746
+    },
+    {
+      "member": "package/dist/esm/server/webStandardStreamableHttp.js",
+      "sha256": "7f13981326b31e78ae7c66406e2961176c2619bb1b2f6b6e4b99ac78e90f1d8c",
+      "bytes": 45259
+    },
+    {
+      "member": "package/dist/esm/shared/protocol.js",
+      "sha256": "8de524602541771e084f7185e7d0fc418b8142a9cae1bd80a3ee7c70e9a9e132",
+      "bytes": 51762
+    },
+    {
+      "member": "package/dist/esm/server/index.js",
+      "sha256": "8b4fbdc0d0bbdc9ad74f385c41c0152d85445187f47cfc3941ff0d2a14a2696e",
+      "bytes": 20763
+    },
+    {
+      "member": "package/dist/esm/client/streamableHttp.js",
+      "sha256": "a181da6a31e8a34acd3e011ce5e574e8f1381b17f4541f64afcfb6b7209bafa3",
+      "bytes": 22564
+    },
+    {
+      "member": "package/dist/esm/client/streamableHttp.d.ts",
+      "sha256": "56641c2f34817ea03023da73fe6739706c1251996fbab7002461df98844a0fb8",
+      "bytes": 7032
+    },
+    {
+      "member": "package/dist/esm/client/index.js",
+      "sha256": "db6cc643f5cc095b2fd0b70bf691d1775f07a317e97555e3928559e815f5e32a",
+      "bytes": 29275
+    },
+    {
+      "member": "package/dist/esm/client/index.d.ts",
+      "sha256": "94c7286929d33877f7f09c1068964028f4e69f7ca9d33c2663474d1a0c33ab2d",
+      "bytes": 23066
+    },
+    {
+      "member": "package/dist/esm/server/webStandardStreamableHttp.d.ts",
+      "sha256": "b699d7545ae5fe214037df97b15f13565bad5aa1a021ffbda4402ed4686e0813",
+      "bytes": 11354
+    },
+    {
+      "member": "package/dist/esm/shared/transport.d.ts",
+      "sha256": "c69e129aad89bafd97ecda53ce74c0148982dba42f11c9d517db5352809ce899",
+      "bytes": 3744
+    },
+    {
+      "member": "package/dist/cjs/server/webStandardStreamableHttp.js",
+      "sha256": "51f0bb018442341032d7d5897e204ce48a65cbe5df14db03083fa07e3ca325c1",
+      "bytes": 45617
+    }
+  ],
+  "patchTargets": [
+    "dist/esm/server/webStandardStreamableHttp.js",
+    "dist/cjs/server/webStandardStreamableHttp.js"
+  ],
+  "sourceRun": {
+    "run": 39153101014,
+    "attempt": 1,
+    "job": 117750620498,
+    "head": "33bea453c620c2ffd4a74a2ccad6f9901becdfb1",
+    "artifact": 12145188952
+  },
+  "bindingRule": "This manifest pins six other diagnostic code/data files. Its own hash is pinned in workflow; external root admission/SHA256SUMS must bind all8 and exact signed source commit/tree. No circular self hash or unsigned execution authority.",
+  "planSHA256": "16b8e9c0342f0fd9710f7fd35ec5db71319a1a8664d6efb831bf30184a1d468e",
+  "privateAdmissionSHA256": "58c66e1bebbd878226976b3d42529998ef05b222973212a0584075a5c74a5889",
+  "m71Source": {
+    "paths": 775,
+    "lsTreeSHA256": "c1abdd4a03b8f56da12f2ed01e168e61556a5e8a6b3d49f4f09c16dcff8f0416",
+    "totalBytes": 11109505,
+    "maxBytes": 809446,
+    "modes": [
+      "100644"
+    ]
+  },
+  "priorPrivateAdmissionSHA256": "e17bb4d6aaa112497d3aa6c8335f8208a83e4fcd9bcad7b89bd263fd2e16ad1b",
+  "priorSourceFreezeSHA256": "5d78b21dff427974ef0a3ff22c0d68e76a3f1f64285f2a6cf79d8e4cc4cc208e",
+  "whole8FindingReviewSHA256": "1418e65a1e5756137f960501ed64ec5a8fe25e377f6b544ef84bd7a76617c934",
+  "sourceAdmission": {
+    "kind": "reviewed-registry-source-admission-v1",
+    "scope": "exact immutable inputs; registry source identity only; frozen install still unvalidated",
+    "manifestSHA256": "3d41d964b5310736e6042e63e2094be8658e5f79a30ef67a93c3844d97fd7494",
+    "candidateSHA256": "65a643aeb716a1244421aad864bf21be4898706ffaaa345de440bc482c6bf01f",
+    "context": {
+      "package.json": "973f6e067390931c6b0e2a8d9dfe3df74c99418070b352be717f34cdd7d16c8c",
+      "pnpm-lock.yaml": "1ae9556e7a67d8bc67a67a5c09f87203f98ef739f945e8d62db9410cf38239a6",
+      "pnpm-workspace.yaml": "46d0deb6f6f25bc4dded4e13e419113750bcdb2d4c187144ea8b3583b8e48eb1",
+      "patches/@malept__flatpak-bundler@0.4.0.patch": "c787371eeb2af011ea934e8818a0dad6d7dcb2df31bbb1686babc7231af0183c",
+      "patches/electron-is@3.0.0.patch": "08664a5453f092fe45542f9005ffc07527b1f207447318374cba0f4d30f466a0",
+      "patches/kuromoji@0.1.2.patch": "4a948f1ea45c61779fa371feb020253ccf7a24e1f7c6b2e250b3ce53d86216d4",
+      "patches/mdui@2.1.4.patch": "e6f91e8e974b4ccc0903ec27b2c840fa3a84048144098e96671fc9915df47ef1",
+      "patches/vudio@2.1.1.patch": "0e06c2ed11c02bdc490c209fa80070e98517c2735c641f5738b6e15d7dc1959d"
+    },
+    "patchExceptions": [
+      {
+        "id": "@malept/flatpak-bundler@0.4.0",
+        "path": "patches/@malept__flatpak-bundler@0.4.0.patch",
+        "sha256": "c787371eeb2af011ea934e8818a0dad6d7dcb2df31bbb1686babc7231af0183c"
+      },
+      {
+        "id": "electron-is@3.0.0",
+        "path": "patches/electron-is@3.0.0.patch",
+        "sha256": "08664a5453f092fe45542f9005ffc07527b1f207447318374cba0f4d30f466a0"
+      },
+      {
+        "id": "kuromoji@0.1.2",
+        "path": "patches/kuromoji@0.1.2.patch",
+        "sha256": "4a948f1ea45c61779fa371feb020253ccf7a24e1f7c6b2e250b3ce53d86216d4"
+      },
+      {
+        "id": "mdui@2.1.4",
+        "path": "patches/mdui@2.1.4.patch",
+        "sha256": "e6f91e8e974b4ccc0903ec27b2c840fa3a84048144098e96671fc9915df47ef1"
+      },
+      {
+        "id": "vudio@2.1.1",
+        "path": "patches/vudio@2.1.1.patch",
+        "sha256": "0e06c2ed11c02bdc490c209fa80070e98517c2735c641f5738b6e15d7dc1959d"
+      }
+    ],
+    "auditRecordSHA256": "74435a6978d1e6e71b8a5d57f624bdcf14022c4435f4a8f2b76879dcd1fbb6d7",
+    "auditorSourceSHA256": "54138de7e7a60f8e6d2cdfe133f506d43d2bf3222457413900f8f7b610357007",
+    "completeSourceFieldAudit": true,
+    "candidateIntegrityOnlyRecords": 950,
+    "baseIntegrityOnlyRecords": 896,
+    "patchManifestFieldRecords": 11,
+    "patchApplicationAndGraph": "unvalidated inherited exceptions; actual frozen install remains decisive",
+    "runtimeParsing": "none; admission hash plus exact raw input/context binding"
+  },
+  "sourceAdmissionStatus": "PRIVATE_PROPOSED_COMPLETE_AUDIT_PENDING_INDEPENDENT_MAIN_NOT_EXECUTION_AUTHORITY",
+  "toolPreflight": {
+    "actionRef": "fc06bc1257f339d1d5d8b3a19a8cae5388b55320",
+    "actionContractSHA256": "80822ff4c9bf57c6b60b57d6e7565b566006aae6a1e594a4e850f9e6678012fa",
+    "actionReferenceSHA256": "09ad06a1bc3d93dc6835dfc978d4f02454acd3fbb3c7cc3a8ee1b7df132d83f1",
+    "configuredDestination": "RUNNER_TEMP/sdk130-pnpm-tool",
+    "declaredOutputs": [
+      "dest",
+      "bin_dest"
+    ],
+    "launcher": "bin_dest/pnpm",
+    "exactVersion": "11.28.6",
+    "timeoutMs": 5000,
+    "stdoutBytes": 128,
+    "stderrBytes": 128,
+    "ambientCommandV": "diagnostic_only_no_fallback_or_denial",
+    "ancestorMetadata": "not_version_authority",
+    "nodeBinaryHash": {
+      "maxBytes": 268435456,
+      "maxChunkBytes": 1048576,
+      "policy": "positive regular current process.execPath file, descriptor-bound chunkSHA256, type/size/read/identity/close guards; no executable-mode restriction; no Linux size claim"
+    },
+    "packageManagerPolicy": {
+      "environment": {
+        "PNPM_CONFIG_PM_ON_FAIL": "error"
+      },
+      "installArgument": "--pm-on-fail=error",
+      "cliPrecedesEnvironment": true,
+      "semantics": "pnpm11.28.6 error policy; no automatic package-manager download/switch; mismatch remains failure",
+      "contractReportSHA256": "8b3074e556028b034cfd6aa2fc5a2b9396557ac5bbc2059af4b563ba5b1330ea"
+    }
+  },
+  "preservedFailedAttempt": {
+    "head": "f0eeaaefacee5f18568b30be67f2329a063b10d9",
+    "run": 39167707716,
+    "attempt": 1,
+    "job": 117794039173,
+    "classification": "prepare pnpm_version before managed child; actual launcher remains unknown"
+  },
+  "futureBranch": "audit/sdk130-json-exception-probe-m71-20261019",
+  "pmPolicyPreparation": {
+    "rootAdmissionSHA256": "9daaabae05f13a5fd58a1fe8428c652326a7ec8c1552df4ed00996988b1d21b0",
+    "futureBranch": "audit/sdk130-pm-policy-probe-m71-20261019",
+    "baseSourceFreezeSHA256": "5d78b21dff427974ef0a3ff22c0d68e76a3f1f64285f2a6cf79d8e4cc4cc208e",
+    "inheritedAdmissionLineage": {
+      "privateAdmissionSHA256": "e17bb4d6aaa112497d3aa6c8335f8208a83e4fcd9bcad7b89bd263fd2e16ad1b",
+      "priorPrivateAdmissionSHA256": "e45a76075305b9f7e2ff9b19f19073060967a342053f2fd499f73adcc67c7656",
+      "priorSourceFreezeSHA256": "bdbae4de9ff37674ea44f9dff1ed4fa40b33f26796f46cd2b7f6c2c20a089e26"
+    },
+    "preservedActualInstallFailure": {
+      "head": "3a3a181536485c3c0796e72ae8b2365f857d2f36",
+      "tree": "3d2fcd3944068ef8abf06589e67813d625e2b33a",
+      "run": 39182048845,
+      "attempt": 1,
+      "job": 117836682323,
+      "classification": "INSTALL_EXIT_UNKNOWN_OPTION_NO_ADOPTION",
+      "actualMainReportSHA256": "f1785408db3828fea0cc2316c9bfb61191d621d6c56cc237d2d6633bca282d62"
+    },
+    "toolContractReportSHA256": "8b3074e556028b034cfd6aa2fc5a2b9396557ac5bbc2059af4b563ba5b1330ea",
+    "scope": "SOURCE_PREPARATION_ONLY_PENDING_FRESH_INDEPENDENT_WHOLE8_MAIN; no execution/publication/adoption authority"
+  },
+  "aggregateBudgetPreparation": {
+    "baseSourceFreezeSHA256": "2fb2f6b1520dff1c943970518961060ab7b0eb713b32fbf7fc7f77c19bdafeee",
+    "priorPrivateAdmissionSHA256": "9daaabae05f13a5fd58a1fe8428c652326a7ec8c1552df4ed00996988b1d21b0",
+    "policySHA256": "44981c79dfe37a405759c5dd8e4be3b11bff778e55fd380ad629f8a69d96e760",
+    "aggregateScopes": [
+      "owned_work_pre_copy",
+      "owned_work_copy_resample",
+      "owned_work_post_copy",
+      "owned_work_monitor"
+    ],
+    "aggregateEntries": 500000,
+    "singleTreeEntries": 100000,
+    "scanCheckEntries": 128,
+    "scanCheckMs": 50,
+    "preservedTerminalActual": {
+      "run": 39188054417,
+      "attempt": 1,
+      "job": 117854564662,
+      "source": "699f707196dd52e7f05af02d50745ff923984a27",
+      "classification": "INSTALL_TREE_COUNT_RESOURCE_FAILURE_NO_ADOPTION"
+    },
+    "actualMainReportSHA256": "e1ac7a701a2ab10e685ec525adb87f92125a55da205c86acd0f13e51902f2713",
+    "resourceProposalSHA256": "20ef08203b31a24c0c28b16712a2a40d3900d92fb9bd0c340ae3ce6c168e9de7",
+    "executionAuthority": false
+  },
+  "liveInstallSamplingPreparation": {
+    "baseSourceFreezeSHA256": "1c7da5e8a14e1825fdf66e0fa65f306861a8f0ae29475dc82499e6d3c90e4f7e",
+    "priorPrivateAdmissionSHA256": "44981c79dfe37a405759c5dd8e4be3b11bff778e55fd380ad629f8a69d96e760",
+    "policySHA256": "1289dc5968776254242246f13c81b6561904c4c94ec630d6c30ccc2ebad9b358",
+    "cumulativeVanishedOperationsPerOwner": 4096,
+    "executionAuthority": false,
+    "preservedTerminalActual": {
+      "run": 39191928451,
+      "attempt": 1,
+      "job": 117866424204,
+      "source": "5d8446f14c4063ddf34833d8db5a9e5bfb132698",
+      "classification": "INSTALL_MONITOR_ENOENT_NO_COMPLETION_NO_SDK_PROBES",
+      "actualOperationAndPath": "UNKNOWN",
+      "cause": "UNPROVEN"
+    },
+    "actualPacketSHA256SUMS": "01401972439210df58cde9e39c1046e1ab8697981ddd648663af957506882855"
+  },
+  "exceptionCompletionPreparation": {
+    "baseSourceFreezeSHA256": "6dc6324f8c70ec62835aadf21efeb106f37f8e77a36917972562aecb444b7161",
+    "baseSignedSource": "6ee1c3725417a141a930eecae74a7bd3af34a96a",
+    "rootSelectionSHA256": "3c4bc0462457c47b5558c69ac71eaf848c0f8ae80a876a67a5ba42450a192196",
+    "priorPrivateAdmissionSHA256": "1289dc5968776254242246f13c81b6561904c4c94ec630d6c30ccc2ebad9b358",
+    "policySHA256": "58c66e1bebbd878226976b3d42529998ef05b222973212a0584075a5c74a5889",
+    "basis": {
+      "api-sdk-r-exception-completion-proposal-2026-10-19": "40236187e4fb854d328e90d0efc6d60612cc182452f1ef059194b28f32b9d27e",
+      "api-sdk-r-admitted-probe-domain-readonly-2026-10-19": "c128df8e2de3ca32c6987e808adba4254a2a6406ccfea19da2c37fc28ae6b63d",
+      "api-sdk-r-exception-completion-proposal-main-review-2026-10-19": "f26be03883f13190a5f269a83ce5c1fe32c32f3122e9ba81ee043e513df20f8f"
+    },
+    "diagnosticDomain": "ORIGINAL16_OWN_PLAIN_RESULT_PATHS_ONLY",
+    "vendorRuntimeValidated": false,
+    "actualCJSExceptionalRed": "NOT_OBSERVED",
+    "preservedTerminalActual": {
+      "run": 39197129639,
+      "attempt": 1,
+      "job": 117882200968,
+      "source": "6ee1c3725417a141a930eecae74a7bd3af34a96a",
+      "manifestSHA256": "ce6307956e963024ff0cc6989cd08f8a1b367bb611afb9998a180bd40c911f5b",
+      "classification": "FAILED_REQUIRED_CONTROLS_NO_ADOPTION",
+      "baselineESM_CJS_ordinaryRed": true,
+      "patchedESM": {
+        "pass": 14,
+        "fail": [
+          "serialization_before_cleanup_REQUIRED",
+          "initialize_cancel_negative"
+        ]
+      },
+      "patchedCJS": "NOT_RUN"
+    },
+    "executionAuthority": false
+  }
+}
