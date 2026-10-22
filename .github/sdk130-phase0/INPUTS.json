@@ -1,0 +1,229 @@
+{
+  "status": "SOURCE_PREPARATION_ONLY_NOT_EXECUTION_ADMISSION",
+  "base": "812336b9d8a65fa303d054696f43a321b3589437",
+  "tree": "5ae41838415040cb8e0c695b2a3165d6bc7c0d5a",
+  "allowedPaths": [
+    ".github/sdk130-phase0/EXPECTED-SDK.json",
+    ".github/sdk130-phase0/INPUTS.json",
+    ".github/sdk130-phase0/inputs/expected-sdk-candidate.yaml",
+    ".github/sdk130-phase0/inputs/package.json",
+    ".github/sdk130-phase0/inputs/pnpm-lock.M73.yaml",
+    ".github/sdk130-phase0/inputs/pnpm-workspace.yaml",
+    ".github/sdk130-phase0/inputs/sdk-1.30.0.tgz",
+    ".github/sdk130-phase0/normal-json-cleanup.patch",
+    ".github/sdk130-phase0/probe.mjs",
+    ".github/sdk130-phase0/qualification.cjs",
+    ".github/sdk130-phase0/run.cjs",
+    ".github/sdk130-phase0/source-audit.cjs",
+    ".github/workflows/sdk130-json-phase0.yml"
+  ],
+  "declaredSourceCount": 13,
+  "inputs": {
+    ".github/sdk130-phase0/EXPECTED-SDK.json": "e7da562a5652291e47f867072f4b66eadbf81ae05dc07f18d1bdda5661aa1ddf",
+    ".github/sdk130-phase0/inputs/expected-sdk-candidate.yaml": "65a643aeb716a1244421aad864bf21be4898706ffaaa345de440bc482c6bf01f",
+    ".github/sdk130-phase0/inputs/package.json": "467e5ac91be8516726be4af5e63cc10f893688b57b70b64abb5836f5a4e18396",
+    ".github/sdk130-phase0/inputs/pnpm-lock.M73.yaml": "369082d23c177293e7d6a463f47965ee1565455d9599dfee42a58cd585c70cba",
+    ".github/sdk130-phase0/inputs/pnpm-workspace.yaml": "340d493fe473e28327d89f30ff67b29767cd5f57b4131171e1fa9b23da612741",
+    ".github/sdk130-phase0/inputs/sdk-1.30.0.tgz": "2cac3f3e38fec2815ed9efafa2947faf8c6957310684f99703f3d180f3e9af1a",
+    ".github/sdk130-phase0/normal-json-cleanup.patch": "29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9",
+    ".github/sdk130-phase0/probe.mjs": "672a700a7cfa3bc14ebd2540e7db7d72e2564a80ee6a7a8470835a1c93fb1446",
+    ".github/sdk130-phase0/qualification.cjs": "17eab2b2b8bd78499210ea24c6e3248df43c7d5927f296eab6f0ea2874bd90f1",
+    ".github/sdk130-phase0/run.cjs": "61e81c86b8989c302fca9e2dc51fc8ebef1b416f0d52059d24df7669afe38510",
+    ".github/sdk130-phase0/source-audit.cjs": "41785e37fdb882558032973a863b8634bd0d081a3b143213bf4739c010de9e29"
+  },
+  "context": {
+    "package.json": "973f6e067390931c6b0e2a8d9dfe3df74c99418070b352be717f34cdd7d16c8c",
+    "pnpm-lock.yaml": "369082d23c177293e7d6a463f47965ee1565455d9599dfee42a58cd585c70cba",
+    "pnpm-workspace.yaml": "0a69f8427ba6059055a6d53dcbe30f6398160f52e40b325c21b7db92ca05cfa8",
+    "patches/@malept__flatpak-bundler@0.4.0.patch": "c787371eeb2af011ea934e8818a0dad6d7dcb2df31bbb1686babc7231af0183c",
+    "patches/electron-is@3.0.0.patch": "08664a5453f092fe45542f9005ffc07527b1f207447318374cba0f4d30f466a0",
+    "patches/kuromoji@0.1.2.patch": "4a948f1ea45c61779fa371feb020253ccf7a24e1f7c6b2e250b3ce53d86216d4",
+    "patches/mdui@2.1.4.patch": "e6f91e8e974b4ccc0903ec27b2c840fa3a84048144098e96671fc9915df47ef1",
+    "patches/vudio@2.1.1.patch": "0e06c2ed11c02bdc490c209fa80070e98517c2735c641f5738b6e15d7dc1959d"
+  },
+  "m73Source": {
+    "paths": 778,
+    "lsTreeSHA256": "585cb7f1ce1c5abfa22e2ca35e2187150b864ac7005bf435a9d9460e056f83f7"
+  },
+  "manifestSHA256": "467e5ac91be8516726be4af5e63cc10f893688b57b70b64abb5836f5a4e18396",
+  "workspaceSHA256": "340d493fe473e28327d89f30ff67b29767cd5f57b4131171e1fa9b23da612741",
+  "patchSHA256": "29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9",
+  "sdkArchiveSHA256": "2cac3f3e38fec2815ed9efafa2947faf8c6957310684f99703f3d180f3e9af1a",
+  "sdkSRI": "sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==",
+  "sdk": [
+    {
+      "member": "package/package.json",
+      "sha256": "0690cbe02511a95d1ff199acf20b5a12ac4dfde1bbe30c82a0de73afa92dffc9",
+      "bytes": 6511
+    },
+    {
+      "member": "package/LICENSE",
+      "sha256": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
+      "bytes": 1071
+    },
+    {
+      "member": "package/dist/esm/server/mcp.d.ts",
+      "sha256": "45b14dbeb3e96def50e3a43febf875d4849fb8f3653f9e03a8bcbbd84692abfe",
+      "bytes": 16927
+    },
+    {
+      "member": "package/dist/esm/types.d.ts",
+      "sha256": "992f47b4534fed1f6064c90095c171d60118412a63d4432b5983b08d0148c880",
+      "bytes": 381960
+    },
+    {
+      "member": "package/dist/esm/server/mcp.js",
+      "sha256": "a5caaddfa0f6aadea64604aa57136bab6540298b846bbe861a80bf7392ae5aad",
+      "bytes": 40694
+    },
+    {
+      "member": "package/dist/esm/types.js",
+      "sha256": "962836b0f8dad85bcd398ad3ddb5ba81a7c7530c706955aa846dd8dfc02dd6a9",
+      "bytes": 73271
+    },
+    {
+      "member": "package/dist/esm/server/zod-compat.d.ts",
+      "sha256": "361b4fff69ca3e465ca01f81803f83815c2b19f77fe7870d8449a7d64e337f7a",
+      "bytes": 3321
+    },
+    {
+      "member": "package/dist/esm/server/zod-compat.js",
+      "sha256": "66b539b003646258b9d82c382f2832836291e4ce2b0a37e253cfdc1222dafde1",
+      "bytes": 7423
+    },
+    {
+      "member": "package/dist/esm/shared/protocol.d.ts",
+      "sha256": "beb2cdafa1697caece370cedc97cddc7638b2df66310193cd2ab2a76029828e8",
+      "bytes": 18746
+    },
+    {
+      "member": "package/dist/esm/server/webStandardStreamableHttp.js",
+      "sha256": "7f13981326b31e78ae7c66406e2961176c2619bb1b2f6b6e4b99ac78e90f1d8c",
+      "bytes": 45259
+    },
+    {
+      "member": "package/dist/esm/shared/protocol.js",
+      "sha256": "8de524602541771e084f7185e7d0fc418b8142a9cae1bd80a3ee7c70e9a9e132",
+      "bytes": 51762
+    },
+    {
+      "member": "package/dist/esm/server/index.js",
+      "sha256": "8b4fbdc0d0bbdc9ad74f385c41c0152d85445187f47cfc3941ff0d2a14a2696e",
+      "bytes": 20763
+    },
+    {
+      "member": "package/dist/esm/client/streamableHttp.js",
+      "sha256": "a181da6a31e8a34acd3e011ce5e574e8f1381b17f4541f64afcfb6b7209bafa3",
+      "bytes": 22564
+    },
+    {
+      "member": "package/dist/esm/client/streamableHttp.d.ts",
+      "sha256": "56641c2f34817ea03023da73fe6739706c1251996fbab7002461df98844a0fb8",
+      "bytes": 7032
+    },
+    {
+      "member": "package/dist/esm/client/index.js",
+      "sha256": "db6cc643f5cc095b2fd0b70bf691d1775f07a317e97555e3928559e815f5e32a",
+      "bytes": 29275
+    },
+    {
+      "member": "package/dist/esm/client/index.d.ts",
+      "sha256": "94c7286929d33877f7f09c1068964028f4e69f7ca9d33c2663474d1a0c33ab2d",
+      "bytes": 23066
+    },
+    {
+      "member": "package/dist/esm/server/webStandardStreamableHttp.d.ts",
+      "sha256": "b699d7545ae5fe214037df97b15f13565bad5aa1a021ffbda4402ed4686e0813",
+      "bytes": 11354
+    },
+    {
+      "member": "package/dist/esm/shared/transport.d.ts",
+      "sha256": "c69e129aad89bafd97ecda53ce74c0148982dba42f11c9d517db5352809ce899",
+      "bytes": 3744
+    },
+    {
+      "member": "package/dist/cjs/server/webStandardStreamableHttp.js",
+      "sha256": "51f0bb018442341032d7d5897e204ce48a65cbe5df14db03083fa07e3ca325c1",
+      "bytes": 45617
+    }
+  ],
+  "patchTargets": [
+    "dist/esm/server/webStandardStreamableHttp.js",
+    "dist/cjs/server/webStandardStreamableHttp.js"
+  ],
+  "candidateClassification": "UNVALIDATED",
+  "candidateResolved": false,
+  "futureBranch": "audit/sdk130-m73-known-closure-20261022",
+  "bindingRule": "Pins11 companion code/data files. Workflow pins this manifest; ROOT external gate binds all13 exact additions on sole M73 parent and eventual signed commit/tree. Source-only, no execution authority.",
+  "rootSelectionSHA256": "e43f30c278077a7a76e9b404d70db27948e17e66c1473885b0592f6c7197ba13",
+  "rootGraphClarificationSHA256": "9a62c828c11c9e11e30d7fd39a5d09a5dd07f79eaf12562bce95a546fa18d781",
+  "priorDiagnosticQualification": {
+    "sha256": "3fd205deafb3928a983b63936daad933428d97fdd07198569c492e7851b4acda",
+    "run": 39203799297,
+    "job": 117902151917,
+    "domain": "ORIGINAL16_PATCHED_ESM_AND_CJS",
+    "currentRunBaselineReproduced": false
+  },
+  "sourceProfile": {
+    "mode": "closed_expected_semantic_successor_with_exact_scoped_jose_pin",
+    "oldCandidate": "COMPARISON_DATA_ONLY_NEVER_RUNTIME_LOCK",
+    "unknown": "PENDING_STATIC_GRAPH_NO_FROZEN_INSTALL_NO_VENDOR_PROBE",
+    "observedRegistration": "64hex_observed_from_actual_generated_lock_not_algorithm_proof",
+    "requiredAfterSemanticMatch": "managed_frozen_install_exact_lock_then_actual_SDK693_and_two_patched_hashes",
+    "scopedOverride": {
+      "selector": "@modelcontextprotocol/sdk@1.30.0>jose",
+      "version": "6.2.12",
+      "unknownScopedSelectors": "reject",
+      "unreviewedJose13": "reject",
+      "comparison65a": "unchanged historical DATA only; never runtime seed"
+    }
+  },
+  "toolPreflight": {
+    "actionRef": "fc06bc1257f339d1d5d8b3a19a8cae5388b55320",
+    "actionContractSHA256": "80822ff4c9bf57c6b60b57d6e7565b566006aae6a1e594a4e850f9e6678012fa",
+    "actionReferenceSHA256": "09ad06a1bc3d93dc6835dfc978d4f02454acd3fbb3c7cc3a8ee1b7df132d83f1",
+    "configuredDestination": "RUNNER_TEMP/sdk130-pnpm-tool",
+    "declaredOutputs": [
+      "dest",
+      "bin_dest"
+    ],
+    "launcher": "bin_dest/pnpm",
+    "exactVersion": "11.28.6",
+    "timeoutMs": 5000,
+    "stdoutBytes": 128,
+    "stderrBytes": 128,
+    "ambientCommandV": "diagnostic_only_no_fallback_or_denial",
+    "ancestorMetadata": "not_version_authority",
+    "nodeBinaryHash": {
+      "maxBytes": 268435456,
+      "maxChunkBytes": 1048576,
+      "policy": "positive regular current process.execPath file, descriptor-bound chunkSHA256, type/size/read/identity/close guards; no executable-mode restriction; no Linux size claim"
+    },
+    "packageManagerPolicy": {
+      "environment": {
+        "PNPM_CONFIG_PM_ON_FAIL": "error"
+      },
+      "installArgument": "--pm-on-fail=error",
+      "cliPrecedesEnvironment": true,
+      "semantics": "pnpm11.28.6 error policy; no automatic package-manager download/switch; mismatch remains failure",
+      "contractReportSHA256": "8b3074e556028b034cfd6aa2fc5a2b9396557ac5bbc2059af4b563ba5b1330ea"
+    }
+  },
+  "budgets": {
+    "sharedPMms": 480000,
+    "probeMs": 360000,
+    "workMs": 960000,
+    "finalMs": 120000,
+    "regularBytesIncludingReserve": 3221225472,
+    "artifactReserve": 8388608,
+    "installRSS": 2147483648,
+    "otherRSS": 1073741824,
+    "aggregateRSS": 4294967296,
+    "strictEntries": 100000,
+    "aggregateEntries": 500000,
+    "vanishedOpsPerLivePMOwner": 4096
+  },
+  "executionAuthority": false,
+  "priorRootSelectionSHA256": "8d25edad154d4d03f6d0f1ff1a1d8e2f358290ed43a406cd4f735ebf003a06e1",
+  "parentActualQualificationSHA256": "17f8d7783c797e979c0296c01aabad18739ab1a8f08324ffc50610ae87d8b018"
+}

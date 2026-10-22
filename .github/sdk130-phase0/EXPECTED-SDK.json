@@ -1,0 +1,3486 @@
+{
+  "status": "EXPECTED_SDK_SOURCE_DATA_ONLY_NOT_INSTALLATION_PROOF",
+  "sdkVersion": "1.30.0",
+  "archiveSHA256": "2cac3f3e38fec2815ed9efafa2947faf8c6957310684f99703f3d180f3e9af1a",
+  "actualRootQualificationSHA256": "3fd205deafb3928a983b63936daad933428d97fdd07198569c492e7851b4acda",
+  "patchSHA256": "29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9",
+  "baseline693": [
+    {
+      "path": "dist/cjs/client/auth-extensions.d.ts",
+      "bytes": 6229,
+      "sha256": "cd5e2570490ca3cea033753ac71ca9a6cb166aa675454f9ef22c46df305071b7"
+    },
+    {
+      "path": "dist/cjs/client/auth-extensions.d.ts.map",
+      "bytes": 2869,
+      "sha256": "26fc7126e5db1ea6506c48f969d01b6d717d8a1b5010e0cf7f0415b24a1f09e5"
+    },
+    {
+      "path": "dist/cjs/client/auth-extensions.js",
+      "bytes": 10650,
+      "sha256": "1cbf89fb27195f05860636c45a5a489cde7ce3c10e53aa202b709e41ffc1111b"
+    },
+    {
+      "path": "dist/cjs/client/auth-extensions.js.map",
+      "bytes": 6138,
+      "sha256": "4d100e3a66b1d88217ac01071dafa62a20db08bd4072b69b15601d11bdb72f21"
+    },
+    {
+      "path": "dist/cjs/client/auth.d.ts",
+      "bytes": 20856,
+      "sha256": "887ef52663627d631a0410f18ead7a22558c8dc6bd96b3686c75c39d6951c54d"
+    },
+    {
+      "path": "dist/cjs/client/auth.d.ts.map",
+      "bytes": 6475,
+      "sha256": "381827ede80166890a2dc8e6633501f9932be5f5178109270efa77f353f8765b"
+    },
+    {
+      "path": "dist/cjs/client/auth.js",
+      "bytes": 41502,
+      "sha256": "03124cd02429c00e03433d94caedc15db969729ed74802d9e6dcd71cf4904c2a"
+    },
+    {
+      "path": "dist/cjs/client/auth.js.map",
+      "bytes": 23213,
+      "sha256": "dcce7fe3f1277b79c742f93ae125f212a6d80cc88bd667967af28a1b1110a810"
+    },
+    {
+      "path": "dist/cjs/client/index.d.ts",
+      "bytes": 23066,
+      "sha256": "94c7286929d33877f7f09c1068964028f4e69f7ca9d33c2663474d1a0c33ab2d"
+    },
+    {
+      "path": "dist/cjs/client/index.d.ts.map",
+      "bytes": 4389,
+      "sha256": "4e862e50e93f028e2aec6d3e1306e8091e118b48771b31517d4607add585e2b4"
+    },
+    {
+      "path": "dist/cjs/client/index.js",
+      "bytes": 29575,
+      "sha256": "e2f909e827a6e08870b400f44f9e90f9545ef5655d6e10f9cc7d0a91a374af45"
+    },
+    {
+      "path": "dist/cjs/client/index.js.map",
+      "bytes": 18414,
+      "sha256": "a2f590ad87f31e6e24878b1af4839bae7ebc14fb91414d9493c0422d1b73901a"
+    },
+    {
+      "path": "dist/cjs/client/middleware.d.ts",
+      "bytes": 6215,
+      "sha256": "7c48b52bc59a6473183272734879ac83b22960eaffe5e28d77fefa3f0515101c"
+    },
+    {
+      "path": "dist/cjs/client/middleware.d.ts.map",
+      "bytes": 1281,
+      "sha256": "3e15e27aee4ce4cb63a8d717609984ef3bcf5216a1b49ab99ec2502e3f78fc82"
+    },
+    {
+      "path": "dist/cjs/client/middleware.js",
+      "bytes": 10264,
+      "sha256": "e0aae3414dd74b3d5335dee4c13ff79aee74a23c36bc1477729301e8e70cfa07"
+    },
+    {
+      "path": "dist/cjs/client/middleware.js.map",
+      "bytes": 4895,
+      "sha256": "f605cb943523c994df2a276dab32b7cfcc41a782779fb7d2202f214d4b61cfe3"
+    },
+    {
+      "path": "dist/cjs/client/sse.d.ts",
+      "bytes": 3868,
+      "sha256": "eb006a02538b190582c5a8ca6c1f9be6f33d1fd555a8f728c4485aec2588f351"
+    },
+    {
+      "path": "dist/cjs/client/sse.d.ts.map",
+      "bytes": 1592,
+      "sha256": "60f7d511bdfb659e1c66972b3b2ef401225fff36ad9785afb36f7f86a39dbd94"
+    },
+    {
+      "path": "dist/cjs/client/sse.js",
+      "bytes": 8750,
+      "sha256": "1dc332e0da786dc2e0b9d8393e82a66539c2735171553a79e6d22e7df3323dd4"
+    },
+    {
+      "path": "dist/cjs/client/sse.js.map",
+      "bytes": 6609,
+      "sha256": "193f69fae69c199670c333921a19dbad7686c770908f737be07e57cd39e5a7c3"
+    },
+    {
+      "path": "dist/cjs/client/stdio.d.ts",
+      "bytes": 2995,
+      "sha256": "2531c33a908e9cc23229f9112b5df8a0023ca17f5c64a901ba533211398f56db"
+    },
+    {
+      "path": "dist/cjs/client/stdio.d.ts.map",
+      "bytes": 1350,
+      "sha256": "2b0cc494035037278d133834351d167a5a9d0bdcc3292dc991601dcf2747a55e"
+    },
+    {
+      "path": "dist/cjs/client/stdio.js",
+      "bytes": 7110,
+      "sha256": "ab9d226de9deb01552e61f07c639593f29c5f8e6115076ece497d21b18075d30"
+    },
+    {
+      "path": "dist/cjs/client/stdio.js.map",
+      "bytes": 5152,
+      "sha256": "53677e7b21c2e3d0981066723639fb3fc0c075433ea17258f7e735cb853fe658"
+    },
+    {
+      "path": "dist/cjs/client/streamableHttp.d.ts",
+      "bytes": 7032,
+      "sha256": "56641c2f34817ea03023da73fe6739706c1251996fbab7002461df98844a0fb8"
+    },
+    {
+      "path": "dist/cjs/client/streamableHttp.d.ts.map",
+      "bytes": 2561,
+      "sha256": "2166511721c2fc6b534d34b7450a3b40e84476dd3cbde6a355ab2fbb16fc2deb"
+    },
+    {
+      "path": "dist/cjs/client/streamableHttp.js",
+      "bytes": 22968,
+      "sha256": "0a95e775cfc63eeb5eabce515227583a803b8415a976d4a1e5c648c518fa0793"
+    },
+    {
+      "path": "dist/cjs/client/streamableHttp.js.map",
+      "bytes": 14141,
+      "sha256": "3535da3bb722a113b162773d2318de074db8b4816dcb7c177305c6d0644a9dce"
+    },
+    {
+      "path": "dist/cjs/client/websocket.d.ts",
+      "bytes": 598,
+      "sha256": "adcaeee717f7e9cf74f764df1f17de1c7106d8cf1b45160d682349814b5d8f7a"
+    },
+    {
+      "path": "dist/cjs/client/websocket.d.ts.map",
+      "bytes": 610,
+      "sha256": "f70675e46c59ee61bb2d0510a1d1f603c7ae11689eca879577b9af1f23bac8b0"
+    },
+    {
+      "path": "dist/cjs/client/websocket.js",
+      "bytes": 1976,
+      "sha256": "a2f72f8f751d2b4ba9836a835fb736d74e6579aa903f593613194750aba05f0b"
+    },
+    {
+      "path": "dist/cjs/client/websocket.js.map",
+      "bytes": 1753,
+      "sha256": "a9be9cc2a83a45be9c661cc8ddbe775d139f24a0b949248735ea1ae59731e981"
+    },
+    {
+      "path": "dist/cjs/examples/client/elicitationUrlExample.d.ts",
+      "bytes": 62,
+      "sha256": "a9685498881eb4fdd6f26e6682d0da54013f531b1a0966f8c050b6c31e1cb6b4"
+    },
+    {
+      "path": "dist/cjs/examples/client/elicitationUrlExample.d.ts.map",
+      "bytes": 161,
+      "sha256": "5c6f2dc7ece8e42cbb09fa5f22dea563c7c6ac43845ecd15fda3619de776ea14"
+    },
+    {
+      "path": "dist/cjs/examples/client/elicitationUrlExample.js",
+      "bytes": 26524,
+      "sha256": "7bae3dc697daee77e0de54848766493c16e19beffee156526917b9dbe65e83ab"
+    },
+    {
+      "path": "dist/cjs/examples/client/elicitationUrlExample.js.map",
+      "bytes": 18862,
+      "sha256": "bb8d09719e1ed3d6a302f02d230417fe4e34f028a614b55c326c5ae78eb01b45"
+    },
+    {
+      "path": "dist/cjs/examples/client/multipleClientsParallel.d.ts",
+      "bytes": 64,
+      "sha256": "cf97311f3a6d98934243dd9e26977567563920d19cc3d7122c4f8e4bd033627a"
+    },
+    {
+      "path": "dist/cjs/examples/client/multipleClientsParallel.d.ts.map",
+      "bytes": 165,
+      "sha256": "dab3eaad7e00b6d485e9bc77aa239010d2b17c7fc5fdb67b343867469681f722"
+    },
+    {
+      "path": "dist/cjs/examples/client/multipleClientsParallel.js",
+      "bytes": 5103,
+      "sha256": "c274a6b7ee44a208a10e5e1489cb2519b75567e1052b1a11a72f06db05baa8e0"
+    },
+    {
+      "path": "dist/cjs/examples/client/multipleClientsParallel.js.map",
+      "bytes": 4018,
+      "sha256": "9ecf3349d462bc18d8eb6d2dffe500ba8b735e6c8ca5ef0ca909bdcb3ee036a5"
+    },
+    {
+      "path": "dist/cjs/examples/client/parallelToolCallsClient.d.ts",
+      "bytes": 64,
+      "sha256": "ddca523f8ecd18edb583078b0ed8403300328e3a45e4ef396acd01ea342686bb"
+    },
+    {
+      "path": "dist/cjs/examples/client/parallelToolCallsClient.d.ts.map",
+      "bytes": 165,
+      "sha256": "7b1ea7f32a734ea8c407003e7c9eed9c90c4336ddd39e0f59cf6189f983e5a90"
+    },
+    {
+      "path": "dist/cjs/examples/client/parallelToolCallsClient.js",
+      "bytes": 6733,
+      "sha256": "bf605673b25aff179f41e6561e7614677a1f88cee57a7c4ee3880ffd39d8974c"
+    },
+    {
+      "path": "dist/cjs/examples/client/parallelToolCallsClient.js.map",
+      "bytes": 4788,
+      "sha256": "57ebbbda2784ff1dfbcd1837e99274eeaf3d3954d837ab0734aa4564cdef5a85"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleClientCredentials.d.ts",
+      "bytes": 752,
+      "sha256": "78fc277ec93dfd9863c8a8ba400d41d7fadd741182fd47e4e7dd2b240b713e1a"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleClientCredentials.d.ts.map",
+      "bytes": 191,
+      "sha256": "80690730804347f5e4c7be09bf5e72e734f1df5edd1c061392b77c32ccba3813"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleClientCredentials.js",
+      "bytes": 2856,
+      "sha256": "7e44363762d3ffc9bfc8d3e999b42bc600a6161ce2f0f896d2b2b01c7fae80aa"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleClientCredentials.js.map",
+      "bytes": 1857,
+      "sha256": "0f22df93feece4efdaa33f1e95fc41f6439910409db143e579cb87c7dd8c879b"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleOAuthClient.d.ts",
+      "bytes": 78,
+      "sha256": "42a781cd65d6fb5c9bdef3b403b291a5a149fca83ae161bb6246c6e25b498dc2"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleOAuthClient.d.ts.map",
+      "bytes": 153,
+      "sha256": "11e88ca38299d3245c65b034b549b43544bce9afda8d86c7a89b5d773e151f84"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleOAuthClient.js",
+      "bytes": 15035,
+      "sha256": "7c9fb5f3eee420cf7ffa8ef51d9d47231542058f2d2858ab181cdd9870ecbc4a"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleOAuthClient.js.map",
+      "bytes": 11402,
+      "sha256": "2ee172c3529b0cd4313391f7730c9ef1a5278d000df8da5962653297e17d7e8d"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleOAuthClientProvider.d.ts",
+      "bytes": 1263,
+      "sha256": "0bccc138f7519e06da1a820e9d4404f94b871331606f7abfaa2c13cc757aa5d2"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleOAuthClientProvider.d.ts.map",
+      "bytes": 1015,
+      "sha256": "3aad23f409a4dc0336c970d25e87eb845e9ad4bce393ee81fb13914f3f791d86"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleOAuthClientProvider.js",
+      "bytes": 1568,
+      "sha256": "4a6ab97a5c0f12779fa83946605612ee5dcfbaa3ba86ae135d29ff6db9282f9d"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleOAuthClientProvider.js.map",
+      "bytes": 1167,
+      "sha256": "4c58905d463cf269861cf88809989da419aa0e1ef4474805e8a4647723a8c22f"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleStreamableHttp.d.ts",
+      "bytes": 61,
+      "sha256": "d493dfa003e8835caa394767377d2e13b454885432109ba5c1f1bc1c88cc482d"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleStreamableHttp.d.ts.map",
+      "bytes": 159,
+      "sha256": "c012683c5adf25b5aaa027eb58b466bca2d30041513c989cc699df6ac2b6d703"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleStreamableHttp.js",
+      "bytes": 35279,
+      "sha256": "18a5d5eb7325010280db859fcca438bed0e482d285ebcf06c21b29106e30b999"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleStreamableHttp.js.map",
+      "bytes": 27128,
+      "sha256": "cacd17ab8391560a7533115a4102ec252cc650d7b14fd62ce7a7be7f0a1aa718"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleTaskInteractiveClient.d.ts",
+      "bytes": 406,
+      "sha256": "6179019a15a5949731ac4e9449952681e9132081c06398f83c42030a67aa253d"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleTaskInteractiveClient.d.ts.map",
+      "bytes": 188,
+      "sha256": "200f6827c2868647daf1c4fd3783b524db1ed4e741e666098620dd318ba1d5ce"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleTaskInteractiveClient.js",
+      "bytes": 6377,
+      "sha256": "76273ee8c264303799701dbe5b705e7c853eeaceb415ba461afae9d5e5e087b5"
+    },
+    {
+      "path": "dist/cjs/examples/client/simpleTaskInteractiveClient.js.map",
+      "bytes": 5689,
+      "sha256": "5a946bbc40f0f59ae9707c25b6e5fb8ced6c9f4163ca6848ab5b2457ce05bc9e"
+    },
+    {
+      "path": "dist/cjs/examples/client/ssePollingClient.d.ts",
+      "bytes": 57,
+      "sha256": "afeee8d6fa1e172f9221b8dad88c9e2eb99ea47522bb185284319a8214ace28f"
+    },
+    {
+      "path": "dist/cjs/examples/client/ssePollingClient.d.ts.map",
+      "bytes": 151,
+      "sha256": "6ade1abc300b8f4434fd81ffdaf78414ad819fa0d395f414ffb88633deb196ba"
+    },
+    {
+      "path": "dist/cjs/examples/client/ssePollingClient.js",
+      "bytes": 3689,
+      "sha256": "df5c06f2d1200746212b84d207afda995ce84e9c919301de2a23ca2b6d86df82"
+    },
+    {
+      "path": "dist/cjs/examples/client/ssePollingClient.js.map",
+      "bytes": 2487,
+      "sha256": "a5369f2d6d82093b9f020b338540fe12f9f0cbe35a2ee53830dd1291f139ae3d"
+    },
+    {
+      "path": "dist/cjs/examples/client/streamableHttpWithSseFallbackClient.d.ts",
+      "bytes": 76,
+      "sha256": "f9cd0c31ff1527240039f5985a61de8dc8c8406c8b18c7a9b440cf97381edc9d"
+    },
+    {
+      "path": "dist/cjs/examples/client/streamableHttpWithSseFallbackClient.d.ts.map",
+      "bytes": 189,
+      "sha256": "5f336b66de9f2619e6cf3348f85483813d4586d1aee22c6dba16898ce2f7d93c"
+    },
+    {
+      "path": "dist/cjs/examples/client/streamableHttpWithSseFallbackClient.js",
+      "bytes": 6420,
+      "sha256": "4334d09523e7e8500446d7b1b35b44317a86c70fc81a4c8be8a5c7d3bdda905f"
+    },
+    {
+      "path": "dist/cjs/examples/client/streamableHttpWithSseFallbackClient.js.map",
+      "bytes": 4454,
+      "sha256": "72ec4497bb35d12a22f2d3aeeae52025673474e6f64acacc52ed54204c157fed"
+    },
+    {
+      "path": "dist/cjs/examples/server/demoInMemoryOAuthProvider.d.ts",
+      "bytes": 3573,
+      "sha256": "e10c76fe805a919888459f784f6aed02ff1c8df2d749df504617a8e30a7f60f8"
+    },
+    {
+      "path": "dist/cjs/examples/server/demoInMemoryOAuthProvider.d.ts.map",
+      "bytes": 1422,
+      "sha256": "18d017f228ad8e8eb84db47fafca30f28b6bd7350e1f0d34eb2eec59d67a9efb"
+    },
+    {
+      "path": "dist/cjs/examples/server/demoInMemoryOAuthProvider.js",
+      "bytes": 8014,
+      "sha256": "5fee7118900dcff721ad4b0fced2bb6aa3d4923d4675d7074723a44ad544bdc1"
+    },
+    {
+      "path": "dist/cjs/examples/server/demoInMemoryOAuthProvider.js.map",
+      "bytes": 6031,
+      "sha256": "68a4ed0c2806f34f10cc97ac8ff835219f1b514ad5ce9ce095d356160dc0eb37"
+    },
+    {
+      "path": "dist/cjs/examples/server/elicitationFormExample.d.ts",
+      "bytes": 63,
+      "sha256": "00b34e1be3545f426d23b121ae4e23f78d8d8c84f59255836b621858d4662da4"
+    },
+    {
+      "path": "dist/cjs/examples/server/elicitationFormExample.d.ts.map",
+      "bytes": 163,
+      "sha256": "6c506c599e9356e257f6e7c811092df94222d09fa3b5fe42c66dbf6c0393e8ec"
+    },
+    {
+      "path": "dist/cjs/examples/server/elicitationFormExample.js",
+      "bytes": 18545,
+      "sha256": "5683931a12a481cdf870de502b8b9144d3bae6074f89d3fcd751ad927548f970"
+    },
+    {
+      "path": "dist/cjs/examples/server/elicitationFormExample.js.map",
+      "bytes": 11194,
+      "sha256": "432833a21cf46b6aa64e0e6cadffb02ca56574917fce4ad8a4fd69d482c72d2c"
+    },
+    {
+      "path": "dist/cjs/examples/server/elicitationUrlExample.d.ts",
+      "bytes": 62,
+      "sha256": "a9685498881eb4fdd6f26e6682d0da54013f531b1a0966f8c050b6c31e1cb6b4"
+    },
+    {
+      "path": "dist/cjs/examples/server/elicitationUrlExample.d.ts.map",
+      "bytes": 161,
+      "sha256": "de4291b518249ff3f46cab158ad060534fd7d7e356460f969b24cd1ec4bd6631"
+    },
+    {
+      "path": "dist/cjs/examples/server/elicitationUrlExample.js",
+      "bytes": 28687,
+      "sha256": "2654a8a28d0bef9bec4617f280639d878a5d91475e2f2b21e4c4f26a04769cf9"
+    },
+    {
+      "path": "dist/cjs/examples/server/elicitationUrlExample.js.map",
+      "bytes": 16206,
+      "sha256": "a77326ab92833a0769e67149774c2a664fb6838e123c01302d8a7cb3106c6d02"
+    },
+    {
+      "path": "dist/cjs/examples/server/honoWebStandardStreamableHttp.d.ts",
+      "bytes": 395,
+      "sha256": "b540f3fef1d4fda9b06f42c6c7c52805f3e95b0f0db90a21e8d746dc006c4425"
+    },
+    {
+      "path": "dist/cjs/examples/server/honoWebStandardStreamableHttp.d.ts.map",
+      "bytes": 192,
+      "sha256": "98d7770bac0d99ff1619eaef73f0184851d20654484932b134d926009f8cbff7"
+    },
+    {
+      "path": "dist/cjs/examples/server/honoWebStandardStreamableHttp.js",
+      "bytes": 3528,
+      "sha256": "551041b579d3ed2b3251f60ccc3ace0bbe6053973763e138cc23a34631eed952"
+    },
+    {
+      "path": "dist/cjs/examples/server/honoWebStandardStreamableHttp.js.map",
+      "bytes": 1949,
+      "sha256": "51ca40994cd55e78906b02a4271d4a41b8b27bd477afd3ce7adcec4967598d06"
+    },
+    {
+      "path": "dist/cjs/examples/server/jsonResponseStreamableHttp.d.ts",
+      "bytes": 67,
+      "sha256": "e62510f014840f113369fa8b5baa88e88f497c9c1388e4fdfe94f41db0cd6849"
+    },
+    {
+      "path": "dist/cjs/examples/server/jsonResponseStreamableHttp.d.ts.map",
+      "bytes": 171,
+      "sha256": "80a7315b93713d1a6805785ee885446e1970e7f5e963035e0b46f7f48297f7f5"
+    },
+    {
+      "path": "dist/cjs/examples/server/jsonResponseStreamableHttp.js",
+      "bytes": 6557,
+      "sha256": "29644b5e131c9b5535fbf0c251932d6e7e78462f876b0271127cadb04e84536f"
+    },
+    {
+      "path": "dist/cjs/examples/server/jsonResponseStreamableHttp.js.map",
+      "bytes": 4138,
+      "sha256": "fde8eef4090b47d5ae5f3f28b96befdea0718409c16f6f5b43d98dcf99f5330d"
+    },
+    {
+      "path": "dist/cjs/examples/server/mcpServerOutputSchema.d.ts",
+      "bytes": 236,
+      "sha256": "ba52ca94c5d34121c7e7d10e5da365140deeb89a2b1874d3ecdfc325a3849b98"
+    },
+    {
+      "path": "dist/cjs/examples/server/mcpServerOutputSchema.d.ts.map",
+      "bytes": 173,
+      "sha256": "32a2fc1a782da315e7638862f793d5bb298e43baa9f94b9035ad4697abeb35cb"
+    },
+    {
+      "path": "dist/cjs/examples/server/mcpServerOutputSchema.js",
+      "bytes": 3494,
+      "sha256": "22deb58374b4688dbd12a83a61fbd7218d53d2eaa517632c776178911f03db61"
+    },
+    {
+      "path": "dist/cjs/examples/server/mcpServerOutputSchema.js.map",
+      "bytes": 2392,
+      "sha256": "2e05b29595778af19bc0fd3188e7debfecfd7a07cc84958fa39a41ab83208dbf"
+    },
+    {
+      "path": "dist/cjs/examples/server/progressExample.d.ts",
+      "bytes": 336,
+      "sha256": "403a1ae7d9fdd875751a1b17e80073ed15b95f4112b8b784f888b532357b052a"
+    },
+    {
+      "path": "dist/cjs/examples/server/progressExample.d.ts.map",
+      "bytes": 166,
+      "sha256": "b816954a665a075cb197a03316aa930308943df300cb2a0e70b293e9ee12d2a3"
+    },
+    {
+      "path": "dist/cjs/examples/server/progressExample.js",
+      "bytes": 1784,
+      "sha256": "e16eb1a03a605d814264a4baf206d4e684e1631b297c274e9a8d13d9052ec048"
+    },
+    {
+      "path": "dist/cjs/examples/server/progressExample.js.map",
+      "bytes": 1632,
+      "sha256": "fc060be90af1dbcb87ed6982b984c8d0c031cae0aced7c11068b4ee6b29c1b35"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleSseServer.d.ts",
+      "bytes": 56,
+      "sha256": "385659de8a269ca5c05fa730d18ba28cf13818d4661bed2239a7408f22a1e091"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleSseServer.d.ts.map",
+      "bytes": 149,
+      "sha256": "1073e57cc49bc8f7cafd91041dd9eb3797af898cee807609877a0c523ce8f425"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleSseServer.js",
+      "bytes": 6503,
+      "sha256": "70ccbe2fb3b9b612b8cebc816bb88556952d04d7f76588020bebcad30bc3ce29"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleSseServer.js.map",
+      "bytes": 4332,
+      "sha256": "eb5d918e17e3489983ea27df8cae3af865a146c4e0474e0cc51c44d9f0fb4b15"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleStatelessStreamableHttp.d.ts",
+      "bytes": 70,
+      "sha256": "d4dca66a9a1d2b828232d7caef5910a64530057b1701188475bb8a3f4a964d4e"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleStatelessStreamableHttp.d.ts.map",
+      "bytes": 177,
+      "sha256": "c4c0961cc115bd507b817ef2e4388b671af6e1699701e4c38b14f2964faf6da8"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleStatelessStreamableHttp.js",
+      "bytes": 5811,
+      "sha256": "d8161c9c858a18d1fe6807468543c3da30f888f6babcff7344cd0be51820a543"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleStatelessStreamableHttp.js.map",
+      "bytes": 4129,
+      "sha256": "0bb505000f3a2f01b5a78a6aa7ce38bdae46051eb53736fc389143232524307e"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleStreamableHttp.d.ts",
+      "bytes": 61,
+      "sha256": "d493dfa003e8835caa394767377d2e13b454885432109ba5c1f1bc1c88cc482d"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleStreamableHttp.d.ts.map",
+      "bytes": 159,
+      "sha256": "8da5252aae3ce2f029cee07189402a0f5a1826470536381601066f4448e5130b"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleStreamableHttp.js",
+      "bytes": 30701,
+      "sha256": "4a5aa6bf5822a6ed00a4adee3f9d611c66cf753d814396ea19aae8be32b32d48"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleStreamableHttp.js.map",
+      "bytes": 19715,
+      "sha256": "e6a708a1d43521bdf605c994271fb1a3e14693a3db33afbd543e097eb76c34b0"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleTaskInteractive.d.ts",
+      "bytes": 524,
+      "sha256": "5cf096d6e721ad1f5e47145d01fedb8dc1b3a5ba4eecf262791e5adaf5c4d5f0"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleTaskInteractive.d.ts.map",
+      "bytes": 178,
+      "sha256": "c347fc21bc8b3bd85082bf5d6d8b014626cd59309a5ade8fdd47f9dbe17b7304"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleTaskInteractive.js",
+      "bytes": 23571,
+      "sha256": "77ab60a7077361f1343c16430a478be2e448e1dc0bc06363e8e3fb53109f38e9"
+    },
+    {
+      "path": "dist/cjs/examples/server/simpleTaskInteractive.js.map",
+      "bytes": 18461,
+      "sha256": "9acce7d296cacd51f1277fb70788e208a782a81df915479dc0630fb0d8ea71e5"
+    },
+    {
+      "path": "dist/cjs/examples/server/sseAndStreamableHttpCompatibleServer.d.ts",
+      "bytes": 77,
+      "sha256": "32d14e4d9f6e81b1e0a9526244a9df76763ba3ebb09c820c9a0db0b1287c233d"
+    },
+    {
+      "path": "dist/cjs/examples/server/sseAndStreamableHttpCompatibleServer.d.ts.map",
+      "bytes": 191,
+      "sha256": "755095fea19aa3d5437fd316bf8f1bd8c311001cba05553a145e292680343162"
+    },
+    {
+      "path": "dist/cjs/examples/server/sseAndStreamableHttpCompatibleServer.js",
+      "bytes": 10312,
+      "sha256": "71e030ad51287a2cdec0037905218241ca03721164d91233d51aa1b5fab86912"
+    },
+    {
+      "path": "dist/cjs/examples/server/sseAndStreamableHttpCompatibleServer.js.map",
+      "bytes": 5964,
+      "sha256": "bb807bc1c90ba8ffa99dc2b9b4ffce40f653816dd9f1e7c088096e5e76154b17"
+    },
+    {
+      "path": "dist/cjs/examples/server/ssePollingExample.d.ts",
+      "bytes": 58,
+      "sha256": "c4f0b29b45c6856919b51f6401f9068f493ca000fc2d32b95bd963734129c9db"
+    },
+    {
+      "path": "dist/cjs/examples/server/ssePollingExample.d.ts.map",
+      "bytes": 153,
+      "sha256": "925568add6fee126568167b05cb4f34b055175930be4ba911c4f4be71f126d32"
+    },
+    {
+      "path": "dist/cjs/examples/server/ssePollingExample.js",
+      "bytes": 4741,
+      "sha256": "7652fda4e2caeec5a49aa540be8dbd6d79d422b62124c91b40c5b8cde01cfefe"
+    },
+    {
+      "path": "dist/cjs/examples/server/ssePollingExample.js.map",
+      "bytes": 3175,
+      "sha256": "44b0cbfb46dac5cd1a6e30fd9fc9ead394803a1e943df9236c6db6a1e725ef00"
+    },
+    {
+      "path": "dist/cjs/examples/server/standaloneSseWithGetStreamableHttp.d.ts",
+      "bytes": 75,
+      "sha256": "88a836da476505d4bfc0d9bbb2aace08be493eb8c01566085e642bcb22757783"
+    },
+    {
+      "path": "dist/cjs/examples/server/standaloneSseWithGetStreamableHttp.d.ts.map",
+      "bytes": 187,
+      "sha256": "90c9e0d9c3cd19aa7a6e06cc0ebd102e7c14414d315070cdffd4f0cd2287ad9a"
+    },
+    {
+      "path": "dist/cjs/examples/server/standaloneSseWithGetStreamableHttp.js",
+      "bytes": 4953,
+      "sha256": "5069a3da3d5c7c627402b9599c4fb59a9ee93b892d9efb9656e091b65ea6f48e"
+    },
+    {
+      "path": "dist/cjs/examples/server/standaloneSseWithGetStreamableHttp.js.map",
+      "bytes": 3874,
+      "sha256": "548795bdfedb83720fe2e48aa4de9521031f704f1236d909cf3960c9bec0adc2"
+    },
+    {
+      "path": "dist/cjs/examples/server/toolWithSampleServer.d.ts",
+      "bytes": 61,
+      "sha256": "5356927d0ef16728c22988993225f8602aeeeede5365ad01ac94b9974b18a3fe"
+    },
+    {
+      "path": "dist/cjs/examples/server/toolWithSampleServer.d.ts.map",
+      "bytes": 159,
+      "sha256": "21ce03590322878a56ee2447c08552fa2799512af26696d7c6cdd292434fbeeb"
+    },
+    {
+      "path": "dist/cjs/examples/server/toolWithSampleServer.js",
+      "bytes": 2683,
+      "sha256": "0a782961ef21c3827e80b689f1f9fb9d4f001104f102ae8bf965cf165ee5e584"
+    },
+    {
+      "path": "dist/cjs/examples/server/toolWithSampleServer.js.map",
+      "bytes": 1300,
+      "sha256": "44ff2fb3965030f6670aa16f7eb5345b870f4bae64f94dff6e78ba310ebfd76d"
+    },
+    {
+      "path": "dist/cjs/examples/shared/inMemoryEventStore.d.ts",
+      "bytes": 1139,
+      "sha256": "e9d256033509f4e69117260c42b68128d5708c8e79cfee0a23a225dc4a77ccef"
+    },
+    {
+      "path": "dist/cjs/examples/shared/inMemoryEventStore.d.ts.map",
+      "bytes": 657,
+      "sha256": "ec274fb8889aae1a1995b61adc5916252b2540a3094658771201b3f114d7535a"
+    },
+    {
+      "path": "dist/cjs/examples/shared/inMemoryEventStore.js",
+      "bytes": 2414,
+      "sha256": "779e3eaaf0e4464f2ca104ae4a2114cd50fd97b178dcfe824b62c5d6b4ea6e93"
+    },
+    {
+      "path": "dist/cjs/examples/shared/inMemoryEventStore.js.map",
+      "bytes": 1784,
+      "sha256": "59b6edeb8d7034f4d3e56a2c0e62dd1d450d21fa5ef67053f88ad153c96d64f5"
+    },
+    {
+      "path": "dist/cjs/experimental/index.d.ts",
+      "bytes": 369,
+      "sha256": "db7708c4cc95e0f60efca96ebb29143976dba82dfe0e103f3c15d96bde34ae2a"
+    },
+    {
+      "path": "dist/cjs/experimental/index.d.ts.map",
+      "bytes": 163,
+      "sha256": "ba0690f1eba7d6ddf50feab2f1a8f46275fbf219d6a9a6fff102a353d8c46faa"
+    },
+    {
+      "path": "dist/cjs/experimental/index.js",
+      "bytes": 1142,
+      "sha256": "112b971bdd7d22a1076f87e3d1203055567476366d19da31c7d3d633cdeafe6a"
+    },
+    {
+      "path": "dist/cjs/experimental/index.js.map",
+      "bytes": 167,
+      "sha256": "284dffcdc0ec9e887c9bf7c86b95cedc3fb1d3e973a661411967b98a4b8cee2f"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/client.d.ts",
+      "bytes": 5194,
+      "sha256": "10f984c959d0f6394545aaf1b1e0ee5120e2ba00351b4dc2d278fdc0cf7f5aad"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/client.d.ts.map",
+      "bytes": 1718,
+      "sha256": "582296c60e6674b775efac53316e0ffd68ccc1d71e771ecf11d9de818ee0bf37"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/client.js",
+      "bytes": 7876,
+      "sha256": "5bdcebf959ddb975fe3a29f5250cf9289b4ed065215537ac4ad7afb94b1c7ddd"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/client.js.map",
+      "bytes": 2867,
+      "sha256": "a939f49de9a71d25715c56a741548f892ee4d7f29691fb41643806f55ccd342a"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/helpers.d.ts",
+      "bytes": 1667,
+      "sha256": "9023db8c173c505c66e72e11edfe2920633e4b9756e2a605bf9fa7da781399e1"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/helpers.d.ts.map",
+      "bytes": 645,
+      "sha256": "cff10ad731678a7acf4bacc9df23455af3bf97f6a47dc6df06435e22e6fbbd57"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/helpers.js",
+      "bytes": 2610,
+      "sha256": "cc82f45b41c2f33551a1daeeb3c8e4647a944c91245e4fc1c8a862de81265246"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/helpers.js.map",
+      "bytes": 1127,
+      "sha256": "bf97a55b6e606ae5800ab08684d118b7d30cff6033535e5f811e84af34c9cfa3"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/index.d.ts",
+      "bytes": 635,
+      "sha256": "78d47fe46f72a6d5a4bf817cd6e2ac26deed7e41c677a5869642850e1df678c5"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/index.d.ts.map",
+      "bytes": 452,
+      "sha256": "75fefc42ac932124b3d98e0b5432b9fec2a38268c7b5e075eba76696542f40f6"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/index.js",
+      "bytes": 1804,
+      "sha256": "71ff255143f2f382de17325b1221f923f751eb2016fd13353a7c839eb73aa574"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/index.js.map",
+      "bytes": 371,
+      "sha256": "05d14400682fdc36f63dc59988d4060796cf19e1560f48edd4092a1465d58ba9"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/interfaces.d.ts",
+      "bytes": 10185,
+      "sha256": "cbf22a2738f4609132875733c7ec4834c96dc541471b77ef132ac993e2c83944"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/interfaces.d.ts.map",
+      "bytes": 4151,
+      "sha256": "a1ff34e30e986ec296f4386da4c5bc77a8b14f0489101ceb06ccdaa7948dee79"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/interfaces.js",
+      "bytes": 671,
+      "sha256": "abc43f2f13a03e80cd24af4c97d2e1c3892411b85ebfbed1e36db8e4cd99abc9"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/interfaces.js.map",
+      "bytes": 290,
+      "sha256": "0a48975291e7e8c0a311dd1e85a08213b22e43b8ce818e04d10144f7bb8bc032"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/mcp-server.d.ts",
+      "bytes": 2973,
+      "sha256": "bed9de03b39d2a2010a13db7173c55104980dea603bea05844c95e71e5acbdaa"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/mcp-server.d.ts.map",
+      "bytes": 1289,
+      "sha256": "a8f011d23a20edd018bc313b30849bda26a5073cd665bf4070f67ad090a32e7a"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/mcp-server.js",
+      "bytes": 1421,
+      "sha256": "d8edc08c3c892392957a3d38a047d7f7cfda01ee1ce773499b757288dbef8eb9"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/mcp-server.js.map",
+      "bytes": 774,
+      "sha256": "5e33b1a4c37f89e34aa1aa7f2bb9c1b4fce684d24ad0e6540f205c87c0668963"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/server.d.ts",
+      "bytes": 6981,
+      "sha256": "604c9d1403b2662b731190b0dc00f9abf462aee0bc807375e520868f278fbf0c"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/server.d.ts.map",
+      "bytes": 1774,
+      "sha256": "594dfdf67327b12688c582898466377c47aed4e8defb32b974cd611d46b66a2c"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/server.js",
+      "bytes": 10254,
+      "sha256": "5b9c780681fe06fe681da99a1027d6eded807c45526e9e18e98adac1e1ea352b"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/server.js.map",
+      "bytes": 4145,
+      "sha256": "f5482ddd4c99d54233feec4e35b1edea28f095ff347d8d739d9706635cea345e"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/stores/in-memory.d.ts",
+      "bytes": 4104,
+      "sha256": "40c611c81a732f8b8509d37c2a28fa68c0360b59af35072d2451787aed46acd3"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/stores/in-memory.d.ts.map",
+      "bytes": 1736,
+      "sha256": "52525afd67113ca73dea1405222ddd203536a0e95419a1a416affb2ef88c100f"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/stores/in-memory.js",
+      "bytes": 9691,
+      "sha256": "3bcac119ac9fbe5e29fa1aa5457ad89e9cddc60fbd304974f53ab9820c569270"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/stores/in-memory.js.map",
+      "bytes": 6704,
+      "sha256": "3d691a335a3ef7a3321eaf135c9ebe02668111ed87fdba9d9de61ff31590b2f6"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/types.d.ts",
+      "bytes": 1032,
+      "sha256": "42474121cc99602c81358c7a3d89a362e15be166668f914c48ac737bc991da80"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/types.d.ts.map",
+      "bytes": 560,
+      "sha256": "37503a66051a192c582a07e87c68ebe63da3720a2e2de00b3feb50a55861a149"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/types.js",
+      "bytes": 3202,
+      "sha256": "5e6c315228b5c9086f080de4f00cc2bc374bc2a46b53f20101608341c8b0eec0"
+    },
+    {
+      "path": "dist/cjs/experimental/tasks/types.js.map",
+      "bytes": 530,
+      "sha256": "224463a968acf937603942cc402634071780592f1b5f7785a236df3ef880dccc"
+    },
+    {
+      "path": "dist/cjs/inMemory.d.ts",
+      "bytes": 1163,
+      "sha256": "9e8277f2b16d0feb52bf1fa6f433c6cb3d20ee8a9b65d698dbf40f47f6c322d4"
+    },
+    {
+      "path": "dist/cjs/inMemory.d.ts.map",
+      "bytes": 882,
+      "sha256": "46c63b849378fdf27c8d3a0ab77da06667a9fc2f12d3e82f2a9619a94fe04bdd"
+    },
+    {
+      "path": "dist/cjs/inMemory.js",
+      "bytes": 1870,
+      "sha256": "c4b20556354a84b7119afff069e5a5e81c5cd223a7dea284d4f52690b4ed8b90"
+    },
+    {
+      "path": "dist/cjs/inMemory.js.map",
+      "bytes": 1313,
+      "sha256": "ac70829286c77dfc088edc52a8b29b15b26a0fef1380d876a5eecbba2cafec76"
+    },
+    {
+      "path": "dist/cjs/package.json",
+      "bytes": 21,
+      "sha256": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+    },
+    {
+      "path": "dist/cjs/server/auth/clients.d.ts",
+      "bytes": 1266,
+      "sha256": "10b45db07bdc125492398a2de9b294299a9314dcd2f7bbdf76cee75456c9b625"
+    },
+    {
+      "path": "dist/cjs/server/auth/clients.d.ts.map",
+      "bytes": 453,
+      "sha256": "7db39417cfcd78f088f29e095c93b440ca69d36c6e5934980da6463c82d50ec6"
+    },
+    {
+      "path": "dist/cjs/server/auth/clients.js",
+      "bytes": 112,
+      "sha256": "390550f153c63c5a58055a90b804350dd300c9eb28a34829c54edbfef6f3367c"
+    },
+    {
+      "path": "dist/cjs/server/auth/clients.js.map",
+      "bytes": 127,
+      "sha256": "9d585a806d258815fb0281fd336ef98bfa254b18ac3a36e39b27296d4f36d7f4"
+    },
+    {
+      "path": "dist/cjs/server/auth/errors.d.ts",
+      "bytes": 4926,
+      "sha256": "5a93fa71c204b212bb8e8a97825b606ea8a9bac41fff5bd7c13ef9917bc04360"
+    },
+    {
+      "path": "dist/cjs/server/auth/errors.d.ts.map",
+      "bytes": 1850,
+      "sha256": "9667413d24fb9138d9105aee22218b86df4b2bfa73048eef817d5c2842b32c92"
+    },
+    {
+      "path": "dist/cjs/server/auth/errors.js",
+      "bytes": 7999,
+      "sha256": "0203cabb3be4728996de7f9b1809874e5a65ff1cc4006051c399ad65cee94ca4"
+    },
+    {
+      "path": "dist/cjs/server/auth/errors.js.map",
+      "bytes": 3036,
+      "sha256": "c19524ad480428dbaa47b388173239d20f1bb4c545bfd3c3df4589c357bfc6b9"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/authorize.d.ts",
+      "bytes": 1130,
+      "sha256": "be499fd45457a0dc4e471a576a5f718a68835f63eda6b974d7409c74f284a876"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/authorize.d.ts.map",
+      "bytes": 604,
+      "sha256": "b750b1ad580acc7b618a574dd1d410e5dba9487f77e2adf0f32b424837e13eac"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/authorize.js",
+      "bytes": 9048,
+      "sha256": "96deb78e1f2f0be6efdd240843658cfdd40443c7bb9bcb5dfedc1b2d796d2c62"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/authorize.js.map",
+      "bytes": 5699,
+      "sha256": "b11170b0e575f1688eca7393b5bf4eb6111a35805144a823bb6f9736495667dc"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/metadata.d.ts",
+      "bytes": 284,
+      "sha256": "cda09dad62870e0a0d25c412fd6cfbf846f270901bf552a6a055199079968d1b"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/metadata.d.ts.map",
+      "bytes": 304,
+      "sha256": "ceae99d3c8ac07cf9411cb2522c98e695bf914f40eb567204699ce2f6ec65878"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/metadata.js",
+      "bytes": 940,
+      "sha256": "c314febee1d07ffc74930e35266e1c473712b3a51b6e011c414eda0377ec6b86"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/metadata.js.map",
+      "bytes": 613,
+      "sha256": "b9cb5eb18808632f5c36b2aaacea2f787535836fe128ef763981941b7fe1feb7"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/register.d.ts",
+      "bytes": 1321,
+      "sha256": "6e69684f82a6067111ba5214a66d1eee04edb37c5256bc150b19d06da7a4c368"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/register.d.ts.map",
+      "bytes": 638,
+      "sha256": "e89b286f4dd8661335b7c91c48a78d680cc8531b00fc0cf2181c26ae3e436931"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/register.js",
+      "bytes": 4062,
+      "sha256": "3ec002c0b051ca00c6e75ca4df5550805fbec65c39814140c99f72b4e278902c"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/register.js.map",
+      "bytes": 2774,
+      "sha256": "8eef5e035506c168d189bfde60f4671c5bf760fb7ef23398366b7331ffeb8748"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/revoke.d.ts",
+      "bytes": 605,
+      "sha256": "f2a001eb3629765836d85cf5d99a76a33eee41df8a36461169eeddd518b13dc9"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/revoke.d.ts.map",
+      "bytes": 504,
+      "sha256": "6dc7fd02c84fd1fcd44a6bd7743c72594499776a6968655471849da797540d82"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/revoke.js",
+      "bytes": 3063,
+      "sha256": "fcf75999495b9ce0fea82f90b657a00d0d936f717b32a0d4e43fa2a2c6e9f2e1"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/revoke.js.map",
+      "bytes": 2175,
+      "sha256": "1a6a4f7e60ce472cc4243586dbdd694e76d53fb5cd38c440ef1b6f9cba894fb2"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/token.d.ts",
+      "bytes": 578,
+      "sha256": "f2d4e42d4e1684d829c458f661dd8a1dbc8339b48fd701977335c37158aa6f93"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/token.d.ts.map",
+      "bytes": 501,
+      "sha256": "36dd525e074fd20dece949a3b8315a0c8846cb75ad7505b2f8ca06da7209b0e1"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/token.js",
+      "bytes": 6792,
+      "sha256": "91aecf87c02cabe4568e5677ee81a286fefb38e370aa376ce62843a68809ffda"
+    },
+    {
+      "path": "dist/cjs/server/auth/handlers/token.js.map",
+      "bytes": 4242,
+      "sha256": "fc30a98df88275efc0df22d8dc9e78d6b8bd1321f7d9aecb0db2730ea93f46ed"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/allowedMethods.d.ts",
+      "bytes": 451,
+      "sha256": "1193a94a487d5ebe828df124f470835fcfeee9ce3b0b0c33d5027146ccd79564"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/allowedMethods.d.ts.map",
+      "bytes": 269,
+      "sha256": "dcb546c3cb59fb56f2832734a21c2fc4406f07d76044b982c072fb4b07ef69c6"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/allowedMethods.js",
+      "bytes": 891,
+      "sha256": "f24a93a1c648672a21098127ebaec0bfae8725310b708ba2972da4181d934de5"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/allowedMethods.js.map",
+      "bytes": 618,
+      "sha256": "a2a1574b8711388dbc301cff35d7a9fcab3d2c93fa9feded5eb4c1b5dcf8bace"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/bearerAuth.d.ts",
+      "bytes": 1274,
+      "sha256": "78931125189008806685130b2cf5180506b5ed0cf615dc5f3e110de0962c276e"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/bearerAuth.d.ts.map",
+      "bytes": 645,
+      "sha256": "18d77ac863fcd5852fbb5aa11bb034313f0fb854e07389dcffa7f491d76a3a94"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/bearerAuth.js",
+      "bytes": 3617,
+      "sha256": "e73a49a60d521f0b600ae7f6d113c7111a6840d52c52c5018adf89bca10dcfad"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/bearerAuth.js.map",
+      "bytes": 2664,
+      "sha256": "14bf5a2d8a8b68559dde7d0c95a79789017ba115e2a869704e73824f09ae074c"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/clientAuth.d.ts",
+      "bytes": 771,
+      "sha256": "534f1f039f670a5d34b99ec13de00a26764c6af72effca845770342b10e8c607"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/clientAuth.d.ts.map",
+      "bytes": 519,
+      "sha256": "9318048ec2614d72bf83f808a50f230556cfe971c1101860984e9586d577a8b0"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/clientAuth.js",
+      "bytes": 3088,
+      "sha256": "116ad5eb83c59b8611205c29022f9af9a4228504e9e48846a7b4d74ee59c15e3"
+    },
+    {
+      "path": "dist/cjs/server/auth/middleware/clientAuth.js.map",
+      "bytes": 1780,
+      "sha256": "b52953bcbd14d7c520ff75d4cb3530eb16071a4686c88bafef8c94432d6f1e47"
+    },
+    {
+      "path": "dist/cjs/server/auth/provider.d.ts",
+      "bytes": 3092,
+      "sha256": "bfdbbc8d7f2e0c1a4a69b945af04ae93a995b7c134294abcb8532f80446dffad"
+    },
+    {
+      "path": "dist/cjs/server/auth/provider.d.ts.map",
+      "bytes": 1477,
+      "sha256": "b334e1b088c35c2c892a95db9d34f5be50dfbb3f9c0974c1db61d21e9478802f"
+    },
+    {
+      "path": "dist/cjs/server/auth/provider.js",
+      "bytes": 113,
+      "sha256": "f893a79f9fd97de3619c1262622ea224779f072739a9f1438deb9b5fd674acae"
+    },
+    {
+      "path": "dist/cjs/server/auth/provider.js.map",
+      "bytes": 129,
+      "sha256": "6c9595e18422b9bffbdccab5af28052fa3e108e9316d2f0d5d4d8cc1ff7c9cd7"
+    },
+    {
+      "path": "dist/cjs/server/auth/providers/proxyProvider.d.ts",
+      "bytes": 2424,
+      "sha256": "086cf685b8ac888e5ba2d3ff091e1920b5bb9742bea5af00f58ae8ce3bcfceab"
+    },
+    {
+      "path": "dist/cjs/server/auth/providers/proxyProvider.d.ts.map",
+      "bytes": 1926,
+      "sha256": "c8534d18ed82159294a5845bfbb2c0473b2e85c16767687b7eba6b7a07006abd"
+    },
+    {
+      "path": "dist/cjs/server/auth/providers/proxyProvider.js",
+      "bytes": 6467,
+      "sha256": "fe2e98841653d80586bf03e4f4d543f82ca081e55737846f659d30b00cbc046c"
+    },
+    {
+      "path": "dist/cjs/server/auth/providers/proxyProvider.js.map",
+      "bytes": 5198,
+      "sha256": "16942ffc7406f08c2329b1a97cf5c2c232f914b4cd74780ff4e4a86b06ad0e75"
+    },
+    {
+      "path": "dist/cjs/server/auth/router.d.ts",
+      "bytes": 4124,
+      "sha256": "f5eb18f3a4b1a366622b4880191eef9e7b12581a686bd7611c27e59b527364e0"
+    },
+    {
+      "path": "dist/cjs/server/auth/router.d.ts.map",
+      "bytes": 1687,
+      "sha256": "9cb607bc8a618329edf16df23043edef9bc0224a1c074f1231bae57f6e03d069"
+    },
+    {
+      "path": "dist/cjs/server/auth/router.js",
+      "bytes": 7008,
+      "sha256": "a70077e9fbc6a04ee23d2502743fd491e2ec230dd6c18282331dfcac18e02cb1"
+    },
+    {
+      "path": "dist/cjs/server/auth/router.js.map",
+      "bytes": 4445,
+      "sha256": "782ef4219045eb06fea51bc28bcf8cc78100f881f7f7a1e732e4139bfab563ce"
+    },
+    {
+      "path": "dist/cjs/server/auth/types.d.ts",
+      "bytes": 882,
+      "sha256": "106d2e4be2d1352f266d610a47021dcfb368e28c507a7beeaae3f07394dda2d9"
+    },
+    {
+      "path": "dist/cjs/server/auth/types.d.ts.map",
+      "bytes": 428,
+      "sha256": "53b21d6ce7534e18369935476c8a75b5c3e4a47fa593f33f6794199dfa17697f"
+    },
+    {
+      "path": "dist/cjs/server/auth/types.js",
+      "bytes": 110,
+      "sha256": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149"
+    },
+    {
+      "path": "dist/cjs/server/auth/types.js.map",
+      "bytes": 123,
+      "sha256": "5dc45916f23e2c7f3881ef50047fb5896dcb0e251833079951326a00d86df839"
+    },
+    {
+      "path": "dist/cjs/server/completable.d.ts",
+      "bytes": 1649,
+      "sha256": "562e0ce2b6beae4ea6cf38e867cccc0806d38f0f38a3e1e40b1d32376f3eae50"
+    },
+    {
+      "path": "dist/cjs/server/completable.d.ts.map",
+      "bytes": 1356,
+      "sha256": "beed250c3e27ee8d62d80787e5c91a4755e7d8556d1c23f778fa13769943e411"
+    },
+    {
+      "path": "dist/cjs/server/completable.js",
+      "bytes": 1652,
+      "sha256": "cc67080e7864b0fa5d7b0bba4107210ca462945df307c4b30ccbefbe08004386"
+    },
+    {
+      "path": "dist/cjs/server/completable.js.map",
+      "bytes": 921,
+      "sha256": "7d6ab510bdf0b6405156a506568a10d64202d0fa97ab1831ddd0ed7f93b78bf1"
+    },
+    {
+      "path": "dist/cjs/server/express.d.ts",
+      "bytes": 1811,
+      "sha256": "3f662ab6aa827d33cfd225da6fc15edb5b08f4c31a5a99dff9e8bee6e757f68a"
+    },
+    {
+      "path": "dist/cjs/server/express.d.ts.map",
+      "bytes": 385,
+      "sha256": "607df7918eaece09089fd8c2025a537193da361a7d8ebe8a3f1b8767b3f9bd01"
+    },
+    {
+      "path": "dist/cjs/server/express.js",
+      "bytes": 2538,
+      "sha256": "ae3e854a837bd131f95978d9543a6259058b01771705d3025814dace3fb20e98"
+    },
+    {
+      "path": "dist/cjs/server/express.js.map",
+      "bytes": 915,
+      "sha256": "6ae5e90aaeb5900019b2a2dc0644fc215e6da04190f908a98d2e8bbb3a7fdc59"
+    },
+    {
+      "path": "dist/cjs/server/index.d.ts",
+      "bytes": 9035,
+      "sha256": "ecd9be374cf01ba99c9696e59b50f8baf8fae65ddaa43f0d375471933f989788"
+    },
+    {
+      "path": "dist/cjs/server/index.d.ts.map",
+      "bytes": 3313,
+      "sha256": "32db73a5d024a3d3b75f18d5c7227349b5b2bc7b406a88ffb4a12241f65a643e"
+    },
+    {
+      "path": "dist/cjs/server/index.js",
+      "bytes": 20924,
+      "sha256": "710624ac309f70a33995010301e2aa020cabbd1a5746a7b0e2c0a501c781993a"
+    },
+    {
+      "path": "dist/cjs/server/index.js.map",
+      "bytes": 12969,
+      "sha256": "0e45bac35aecc8710bc6f80bc9a608a8bd117cc8f8c405d59d3263e14c25757f"
+    },
+    {
+      "path": "dist/cjs/server/mcp.d.ts",
+      "bytes": 16927,
+      "sha256": "45b14dbeb3e96def50e3a43febf875d4849fb8f3653f9e03a8bcbbd84692abfe"
+    },
+    {
+      "path": "dist/cjs/server/mcp.d.ts.map",
+      "bytes": 9024,
+      "sha256": "e99f6bce972478bd4244f27d4a6eee861100b6ce076945288e792f4cb22f58f0"
+    },
+    {
+      "path": "dist/cjs/server/mcp.js",
+      "bytes": 41771,
+      "sha256": "9019429d1ae89ade33f57c2d4f314f8b3f78294e1259f00e13b086c3c0e9d3fd"
+    },
+    {
+      "path": "dist/cjs/server/mcp.js.map",
+      "bytes": 30097,
+      "sha256": "5e041223e07fe2e894ade089b2b920702209c657a85635045f265f6ff5e9a115"
+    },
+    {
+      "path": "dist/cjs/server/middleware/hostHeaderValidation.d.ts",
+      "bytes": 1247,
+      "sha256": "b64109e99f0b635465630e654df4464c713c26a6f3c7aea700600859fd0ac7db"
+    },
+    {
+      "path": "dist/cjs/server/middleware/hostHeaderValidation.d.ts.map",
+      "bytes": 345,
+      "sha256": "484dc78a660c2fba0dfa2d1cb9366a0bf0564a48226508dafe429811e7855f5d"
+    },
+    {
+      "path": "dist/cjs/server/middleware/hostHeaderValidation.js",
+      "bytes": 2610,
+      "sha256": "5899a6094fbc2df226a8520918775e00af2abe9fa50f8379cf8d3d77fbeb9530"
+    },
+    {
+      "path": "dist/cjs/server/middleware/hostHeaderValidation.js.map",
+      "bytes": 1355,
+      "sha256": "37035fb9491f5fe74a0fa08cbe4cb3e2b21773d34e262653d601a139aa4f8c38"
+    },
+    {
+      "path": "dist/cjs/server/sse.d.ts",
+      "bytes": 3793,
+      "sha256": "5c435aa7cca26998511dcc4019319066f3d9ccf86ddda45d9b824654d1ea8f56"
+    },
+    {
+      "path": "dist/cjs/server/sse.d.ts.map",
+      "bytes": 1393,
+      "sha256": "296f48d2c0dc97b51758fc843261282b65a615a0073376ddcd1a9a244346e96e"
+    },
+    {
+      "path": "dist/cjs/server/sse.js",
+      "bytes": 6922,
+      "sha256": "f7112c093ddbfa9a0dfc7c186ac5ef5ccb183a415b91b8ae8c97048d25922ee9"
+    },
+    {
+      "path": "dist/cjs/server/sse.js.map",
+      "bytes": 4766,
+      "sha256": "a3c50012d65913b7b7099b090aedf5a2d90c122072152a24487b6d81679a5b18"
+    },
+    {
+      "path": "dist/cjs/server/sseKeepAlive.d.ts",
+      "bytes": 359,
+      "sha256": "d67c7ea7fee07758b306473de31873606afbae0ba2463d79c99d4a7f4b3ead96"
+    },
+    {
+      "path": "dist/cjs/server/sseKeepAlive.d.ts.map",
+      "bytes": 297,
+      "sha256": "de0a1dabd0bd4af5b04c3d18a0ce775b1bcd9602da7c7f9b64b06c7ba955b5dd"
+    },
+    {
+      "path": "dist/cjs/server/sseKeepAlive.js",
+      "bytes": 682,
+      "sha256": "d4ba63ed93107d604ae6f62f28c3328b7d12d43ee12587b15ecc5029e2bcbc59"
+    },
+    {
+      "path": "dist/cjs/server/sseKeepAlive.js.map",
+      "bytes": 561,
+      "sha256": "73b5fffa8cf0f8a8719b3e7a41623030fdeb5d7ea9b130c9cdfd982c4866ff97"
+    },
+    {
+      "path": "dist/cjs/server/stdio.d.ts",
+      "bytes": 1253,
+      "sha256": "9afd00f33a32d0ea31b8433f3af7a97b9bb371e75650766d56bc30960d6e33e3"
+    },
+    {
+      "path": "dist/cjs/server/stdio.d.ts.map",
+      "bytes": 868,
+      "sha256": "038ca501ad46485ce1ce46d17b6d0217b54e3395e70ea65047c96d528cb971a5"
+    },
+    {
+      "path": "dist/cjs/server/stdio.js",
+      "bytes": 3195,
+      "sha256": "1943b9fb037788c7ec04b0dc34a23bfcba0395b4ea4aa914b40a4348a5d890bf"
+    },
+    {
+      "path": "dist/cjs/server/stdio.js.map",
+      "bytes": 2300,
+      "sha256": "ee81d64f0fd2e8f18d0f300664947f98e20c0519d6221b0622db8ae7d0c4303d"
+    },
+    {
+      "path": "dist/cjs/server/streamableHttp.d.ts",
+      "bytes": 5048,
+      "sha256": "425b22fcc2fd435f20a99a0f8ac9babb39aef8b9b56749f735b13b1410cc0413"
+    },
+    {
+      "path": "dist/cjs/server/streamableHttp.d.ts.map",
+      "bytes": 1773,
+      "sha256": "790e132a0147018b11cf0669c578f7edf3ad6e2ec58e445c90a95eb9a147fcd5"
+    },
+    {
+      "path": "dist/cjs/server/streamableHttp.js",
+      "bytes": 6779,
+      "sha256": "a7e349482724fca3c077e50516f90cbea5813244c2c7849df371b684c4fe88ff"
+    },
+    {
+      "path": "dist/cjs/server/streamableHttp.js.map",
+      "bytes": 2318,
+      "sha256": "a4278ce03fac94a6f958b6d19fed88c25a52cad8b84cf98a21cbf879dd627a18"
+    },
+    {
+      "path": "dist/cjs/server/webStandardStreamableHttp.d.ts",
+      "bytes": 11354,
+      "sha256": "b699d7545ae5fe214037df97b15f13565bad5aa1a021ffbda4402ed4686e0813"
+    },
+    {
+      "path": "dist/cjs/server/webStandardStreamableHttp.d.ts.map",
+      "bytes": 3183,
+      "sha256": "6d9946228373f840dd28536e2c3346c11aabd4716b9854fe7834ecfd8432b43a"
+    },
+    {
+      "path": "dist/cjs/server/webStandardStreamableHttp.js",
+      "bytes": 45617,
+      "sha256": "51f0bb018442341032d7d5897e204ce48a65cbe5df14db03083fa07e3ca325c1"
+    },
+    {
+      "path": "dist/cjs/server/webStandardStreamableHttp.js.map",
+      "bytes": 26351,
+      "sha256": "708fae26ea8e11ad2f32fb2c047d0cbb837dc47f4fc263d1ed7e460b9d6b8ddb"
+    },
+    {
+      "path": "dist/cjs/server/zod-compat.d.ts",
+      "bytes": 3321,
+      "sha256": "361b4fff69ca3e465ca01f81803f83815c2b19f77fe7870d8449a7d64e337f7a"
+    },
+    {
+      "path": "dist/cjs/server/zod-compat.d.ts.map",
+      "bytes": 2713,
+      "sha256": "63628d4ec41a6807a226134ae62674da71f29c6767b18c06f741bc665b073d78"
+    },
+    {
+      "path": "dist/cjs/server/zod-compat.js",
+      "bytes": 8923,
+      "sha256": "083cdae912fcc72bfaf7f072f10471d7a07fb8b9d5388b9f5389394802c874da"
+    },
+    {
+      "path": "dist/cjs/server/zod-compat.js.map",
+      "bytes": 6096,
+      "sha256": "6a1d50f721cc21f1470f3497b9b912b4ad058bd29e75d35117549df45108150d"
+    },
+    {
+      "path": "dist/cjs/server/zod-json-schema-compat.d.ts",
+      "bytes": 597,
+      "sha256": "8ad0f709b1e79ff8aac79a814d466daa2da7f8e36e78df98f381507fdfd7489e"
+    },
+    {
+      "path": "dist/cjs/server/zod-json-schema-compat.d.ts.map",
+      "bytes": 633,
+      "sha256": "9621783d25badeff80e35ea4ef87d4b68ca52f77fa50b6de2456e60f7b25df4b"
+    },
+    {
+      "path": "dist/cjs/server/zod-json-schema-compat.js",
+      "bytes": 3145,
+      "sha256": "1e642542a22f273cb3b9cd17f8c9deb540be84ba35cc0c3e0872a0185760541a"
+    },
+    {
+      "path": "dist/cjs/server/zod-json-schema-compat.js.map",
+      "bytes": 1578,
+      "sha256": "b17777a34406b78f6e4d97ee356729cf4389da740ad14a1f6bc9fbb475057284"
+    },
+    {
+      "path": "dist/cjs/shared/auth-utils.d.ts",
+      "bytes": 1026,
+      "sha256": "5b9268edcfc32085f43c1f84b81e0003154b251df345067489a94898e5e9bce4"
+    },
+    {
+      "path": "dist/cjs/shared/auth-utils.d.ts.map",
+      "bytes": 390,
+      "sha256": "cb215d3aff0ce5bb9797bf3398abc365b84f421af8f2aa6cd25aa667b21ec574"
+    },
+    {
+      "path": "dist/cjs/shared/auth-utils.js",
+      "bytes": 2448,
+      "sha256": "71646bb5396b10af2510b79726624f8808dc0427f87cefea51c284f2a732b6e6"
+    },
+    {
+      "path": "dist/cjs/shared/auth-utils.js.map",
+      "bytes": 1401,
+      "sha256": "9c54c7c557227d24875d998bb5d9936edb8eeb0cb3eea6092f1aca3cbcdb5cb9"
+    },
+    {
+      "path": "dist/cjs/shared/auth.d.ts",
+      "bytes": 12938,
+      "sha256": "e97ead9f1f42bef3f253e0ab8131a37b81c0f2bd908c1f7b5810fdde780a99b5"
+    },
+    {
+      "path": "dist/cjs/shared/auth.d.ts.map",
+      "bytes": 1767,
+      "sha256": "bbefefb73e727f277ba9f0d34442b7e4e3a0ad4275b99346a5a969dbb2bd5b13"
+    },
+    {
+      "path": "dist/cjs/shared/auth.js",
+      "bytes": 9967,
+      "sha256": "f53a3f26994329244ad45b56abaf247ca6dfba120228872d9a78c2506410e4d4"
+    },
+    {
+      "path": "dist/cjs/shared/auth.js.map",
+      "bytes": 7741,
+      "sha256": "2be138f9a7f21680cbe9d208c1255579a5015445c8ec61a60ec0dbc31d6f10a8"
+    },
+    {
+      "path": "dist/cjs/shared/mediaType.d.ts",
+      "bytes": 1754,
+      "sha256": "bfd17ddde15e22f23c7f5a9828027a473ff08ed69d46de9d84b847ffade4dd70"
+    },
+    {
+      "path": "dist/cjs/shared/mediaType.d.ts.map",
+      "bytes": 331,
+      "sha256": "cb911233fe55d72cafbfebef26337dfafbf3b3e4a972fcc388dcf987a03c1c3d"
+    },
+    {
+      "path": "dist/cjs/shared/mediaType.js",
+      "bytes": 2844,
+      "sha256": "e6275d088db495052332a6971b333c61cb54f3aa72dcdd65a1afba25e8c55186"
+    },
+    {
+      "path": "dist/cjs/shared/mediaType.js.map",
+      "bytes": 932,
+      "sha256": "80aba750fa0fa549805aee5e4347f66d3fab20d05ea9dad697bd2e562c48af60"
+    },
+    {
+      "path": "dist/cjs/shared/metadataUtils.d.ts",
+      "bytes": 575,
+      "sha256": "3238e5ee802337c23db93d38795961e57ec1d857f86309252f2f81fe5d4dadd1"
+    },
+    {
+      "path": "dist/cjs/shared/metadataUtils.d.ts.map",
+      "bytes": 341,
+      "sha256": "c74b62b369f20c1e76d276c46c7c0afaeb375f583e3eaed9ffa7dbd91ea41510"
+    },
+    {
+      "path": "dist/cjs/shared/metadataUtils.js",
+      "bytes": 954,
+      "sha256": "70bbfc5af36a781aece14c8ae4248c18bf256c481b21f8965771c6ef629111b3"
+    },
+    {
+      "path": "dist/cjs/shared/metadataUtils.js.map",
+      "bytes": 511,
+      "sha256": "40e8b96831e0ad755b394f1efb03b55fb9a3942c38927a3f2936fc0916620afe"
+    },
+    {
+      "path": "dist/cjs/shared/protocol.d.ts",
+      "bytes": 18746,
+      "sha256": "beb2cdafa1697caece370cedc97cddc7638b2df66310193cd2ab2a76029828e8"
+    },
+    {
+      "path": "dist/cjs/shared/protocol.d.ts.map",
+      "bytes": 6657,
+      "sha256": "29f0670b132685560bbaac8b5380c95bb86c5f7dec3be8a2f9ebd42335e844e6"
+    },
+    {
+      "path": "dist/cjs/shared/protocol.js",
+      "bytes": 52787,
+      "sha256": "cd1451d0a079cac3783e5259ab27fd547bb8aec75fbe04c57f7cf3961b1ca97e"
+    },
+    {
+      "path": "dist/cjs/shared/protocol.js.map",
+      "bytes": 33750,
+      "sha256": "2b0dd413e65b593169410384a48eae98343cc972d8813e9ff064f68a312dee0e"
+    },
+    {
+      "path": "dist/cjs/shared/responseMessage.d.ts",
+      "bytes": 1554,
+      "sha256": "dc94ff78ce389635f8320c2814824cc82ac9e048d41ac45b6207030265d0df69"
+    },
+    {
+      "path": "dist/cjs/shared/responseMessage.d.ts.map",
+      "bytes": 1169,
+      "sha256": "75a8b5f4feb8c86fff928517661cc67f8c34334e3023abcf3c76672e1843985e"
+    },
+    {
+      "path": "dist/cjs/shared/responseMessage.js",
+      "bytes": 588,
+      "sha256": "708dc5d18e6f9b3a83f3d98b7713d071aa4af2ecc08441b16b799e68e6fd9deb"
+    },
+    {
+      "path": "dist/cjs/shared/responseMessage.js.map",
+      "bytes": 677,
+      "sha256": "bde396d6dbe5541ac42dd5bca28d19f2292212e411472b3fe6f9de355ed95d43"
+    },
+    {
+      "path": "dist/cjs/shared/stdio.d.ts",
+      "bytes": 616,
+      "sha256": "8a014a87c4bbe9865f96236d3ab5f461becc29b92cbeca4d01cf80c9c03e7a13"
+    },
+    {
+      "path": "dist/cjs/shared/stdio.d.ts.map",
+      "bytes": 542,
+      "sha256": "b97f5e8af34ab1e19e9de0c2ee454b2a615b7ac7904dc6f478fedb34c82e1e88"
+    },
+    {
+      "path": "dist/cjs/shared/stdio.js",
+      "bytes": 1614,
+      "sha256": "edf22693bf4e4693d0fdca325ae52071de9fc777c9c45ae7af9037ebfc186028"
+    },
+    {
+      "path": "dist/cjs/shared/stdio.js.map",
+      "bytes": 1482,
+      "sha256": "12d1a09c3030a2b3ea15eec099dcd7b62a3117d2b226b7a4c514d36b46976ebe"
+    },
+    {
+      "path": "dist/cjs/shared/toolNameValidation.d.ts",
+      "bytes": 1241,
+      "sha256": "3068163a94d7815e811d5e05bafebe9fd2d18e68e983bd6f162efc44a707b04b"
+    },
+    {
+      "path": "dist/cjs/shared/toolNameValidation.d.ts.map",
+      "bytes": 446,
+      "sha256": "622af084b0312c9dc6d4e9b33e5fd9f2386e825a001a9c5b167e53548596c177"
+    },
+    {
+      "path": "dist/cjs/shared/toolNameValidation.js",
+      "bytes": 4003,
+      "sha256": "23f757c970249e029086364651f364167643912e6249faaa1e5d546ba336dc05"
+    },
+    {
+      "path": "dist/cjs/shared/toolNameValidation.js.map",
+      "bytes": 2298,
+      "sha256": "ea74b21a16261e9774c3ae3d1f41d8d1bcdafa8d29a90323313da1081f4ba241"
+    },
+    {
+      "path": "dist/cjs/shared/transport.d.ts",
+      "bytes": 3744,
+      "sha256": "c69e129aad89bafd97ecda53ce74c0148982dba42f11c9d517db5352809ce899"
+    },
+    {
+      "path": "dist/cjs/shared/transport.d.ts.map",
+      "bytes": 1298,
+      "sha256": "6bc0057c7678d4802add6548fdabb40b8b2fe0ccbea05160c48bdfae177895a9"
+    },
+    {
+      "path": "dist/cjs/shared/transport.js",
+      "bytes": 1637,
+      "sha256": "d608390bb25704f972d3241a1c5b5aa421fbb7b32979a7d590e02035d904fd16"
+    },
+    {
+      "path": "dist/cjs/shared/transport.js.map",
+      "bytes": 987,
+      "sha256": "f3cb12f449ed83d71d62d992b564b4d88f8a2edc320eb9b09a362b80e63917ce"
+    },
+    {
+      "path": "dist/cjs/shared/uriTemplate.d.ts",
+      "bytes": 828,
+      "sha256": "a6cd848cea6d42a5ab781c8594817a678db50a38321c2965d11b6cc03e382cbc"
+    },
+    {
+      "path": "dist/cjs/shared/uriTemplate.d.ts.map",
+      "bytes": 716,
+      "sha256": "ad609fe121cd75820d6806cca00a97288e57d66027bdd9f4e27861981ec17187"
+    },
+    {
+      "path": "dist/cjs/shared/uriTemplate.js",
+      "bytes": 8859,
+      "sha256": "4f027bcc629e453f885ca9dbe650dc92c85ca24ff0d8b1c11b2c7156d5723344"
+    },
+    {
+      "path": "dist/cjs/shared/uriTemplate.js.map",
+      "bytes": 8809,
+      "sha256": "aee9c43364d1f95ee5e6cb58a0d1e4ea7a78a0e3ca3d128084f2fd482273ccf4"
+    },
+    {
+      "path": "dist/cjs/spec.types.d.ts",
+      "bytes": 68886,
+      "sha256": "f612706dcbe34de49a77f2458ba4e0ef9e767efffc0f38024e3d84a8f1f66414"
+    },
+    {
+      "path": "dist/cjs/spec.types.d.ts.map",
+      "bytes": 23243,
+      "sha256": "d68a942295145ae3d9eeb20296bb0cde2342c6f9ce276af2708ea45fbb988c83"
+    },
+    {
+      "path": "dist/cjs/spec.types.js",
+      "bytes": 1307,
+      "sha256": "39970ce81eaf260130f3661008060e7d079d2d0b8014a1b66028a3ce840cd6bd"
+    },
+    {
+      "path": "dist/cjs/spec.types.js.map",
+      "bytes": 494,
+      "sha256": "5d669ed64d4fb02395ef711175eec699dc00129ed23c02181e287ca21e647f7e"
+    },
+    {
+      "path": "dist/cjs/types.d.ts",
+      "bytes": 381960,
+      "sha256": "992f47b4534fed1f6064c90095c171d60118412a63d4432b5983b08d0148c880"
+    },
+    {
+      "path": "dist/cjs/types.d.ts.map",
+      "bytes": 29917,
+      "sha256": "dcb9a3cf1ce524e3252fe326a679106744fabec31614f2fce943e296f491079e"
+    },
+    {
+      "path": "dist/cjs/types.js",
+      "bytes": 82159,
+      "sha256": "2995d96aaf118ae001a6c673ff386bb7edb97b2ed7f3214549ba005b4a6c99be"
+    },
+    {
+      "path": "dist/cjs/types.js.map",
+      "bytes": 37973,
+      "sha256": "ce50276560a621afee537d6f027ebc0ca605e1a82e7362086a2dc8a0b9a06ba4"
+    },
+    {
+      "path": "dist/cjs/validation/ajv-provider.d.ts",
+      "bytes": 1884,
+      "sha256": "c14ff5fef3b5b43b181a0386bb0263d82a88242d633ddf46212372fdef8afe03"
+    },
+    {
+      "path": "dist/cjs/validation/ajv-provider.d.ts.map",
+      "bytes": 473,
+      "sha256": "5488243a299cc8ce32c2af808d8f17b5b5a5028f69c44fa3a004c0b0a1733e0a"
+    },
+    {
+      "path": "dist/cjs/validation/ajv-provider.js",
+      "bytes": 3189,
+      "sha256": "697c11d91d249750a3e44d4423c415264f102631b4fe755ff998ccc9b8402bff"
+    },
+    {
+      "path": "dist/cjs/validation/ajv-provider.js.map",
+      "bytes": 1268,
+      "sha256": "fdc2839f2f207697d887e9c572b4eae174a18fd21d4e560253dad5df1c6914a3"
+    },
+    {
+      "path": "dist/cjs/validation/cfworker-provider.d.ts",
+      "bytes": 1712,
+      "sha256": "9b8951f45670044147b9e29f91f9fbf6600d89745a284dbf5cb24a1466114358"
+    },
+    {
+      "path": "dist/cjs/validation/cfworker-provider.d.ts.map",
+      "bytes": 609,
+      "sha256": "20f6043846fcd696b071c31d28bde8392be6cb7522b01b29475647ef27dc9b1d"
+    },
+    {
+      "path": "dist/cjs/validation/cfworker-provider.js",
+      "bytes": 2371,
+      "sha256": "d660038cdd47d71b32eb592327ad58d9a8d5f8aa101c257e52018de4282fc8e0"
+    },
+    {
+      "path": "dist/cjs/validation/cfworker-provider.js.map",
+      "bytes": 1003,
+      "sha256": "98e05dd6cdb37d8d46175e2939fa020c4b81fed569e911ebe2e81615491e4daf"
+    },
+    {
+      "path": "dist/cjs/validation/index.d.ts",
+      "bytes": 1091,
+      "sha256": "09b44568e0d176d287eb949cf97d6ec04db5e197ff9552a963acbc90893c80dd"
+    },
+    {
+      "path": "dist/cjs/validation/index.d.ts.map",
+      "bytes": 232,
+      "sha256": "9798345c9fae61f38aee9a5ba94096e9fef9a9d4ac22e2430628506b634e383c"
+    },
+    {
+      "path": "dist/cjs/validation/index.js",
+      "bytes": 1047,
+      "sha256": "55c377e413d2237738a7fea50b6456676664268f4f65a5b3fee48c4f86be0dbc"
+    },
+    {
+      "path": "dist/cjs/validation/index.js.map",
+      "bytes": 155,
+      "sha256": "2659805f2dc88b37498ef297d27b950b31d1650f728f2343937e049c12f1a0af"
+    },
+    {
+      "path": "dist/cjs/validation/types.d.ts",
+      "bytes": 2170,
+      "sha256": "d58e26bd30e5a3390e09efaecdd81375978e0ca778715687d7728655ed19e337"
+    },
+    {
+      "path": "dist/cjs/validation/types.d.ts.map",
+      "bytes": 705,
+      "sha256": "e4b77f9e3e8e496fd978f649724c93a7b1967cc1418a52be06a5dbcf43b7b2fb"
+    },
+    {
+      "path": "dist/cjs/validation/types.js",
+      "bytes": 110,
+      "sha256": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149"
+    },
+    {
+      "path": "dist/cjs/validation/types.js.map",
+      "bytes": 119,
+      "sha256": "94457656edd55e7ee1140990876d85676838662e970ec802dfaf642417a29c64"
+    },
+    {
+      "path": "dist/esm/client/auth-extensions.d.ts",
+      "bytes": 6229,
+      "sha256": "cd5e2570490ca3cea033753ac71ca9a6cb166aa675454f9ef22c46df305071b7"
+    },
+    {
+      "path": "dist/esm/client/auth-extensions.d.ts.map",
+      "bytes": 2869,
+      "sha256": "26fc7126e5db1ea6506c48f969d01b6d717d8a1b5010e0cf7f0415b24a1f09e5"
+    },
+    {
+      "path": "dist/esm/client/auth-extensions.js",
+      "bytes": 9171,
+      "sha256": "dfbba8290dcd3aa7d69bb23eab6bf7424c2e2d0b4b6e14f11d941c3e61a1d4ef"
+    },
+    {
+      "path": "dist/esm/client/auth-extensions.js.map",
+      "bytes": 6088,
+      "sha256": "14296279c704dd71217cb4cbac37e2b78aa386299f946426e09053e3978eddda"
+    },
+    {
+      "path": "dist/esm/client/auth.d.ts",
+      "bytes": 20856,
+      "sha256": "887ef52663627d631a0410f18ead7a22558c8dc6bd96b3686c75c39d6951c54d"
+    },
+    {
+      "path": "dist/esm/client/auth.d.ts.map",
+      "bytes": 6475,
+      "sha256": "381827ede80166890a2dc8e6633501f9932be5f5178109270efa77f353f8765b"
+    },
+    {
+      "path": "dist/esm/client/auth.js",
+      "bytes": 40372,
+      "sha256": "05dbfcb1da2e99e17034e61d36bdc5c7ac8e546740865d84e218208187de0917"
+    },
+    {
+      "path": "dist/esm/client/auth.js.map",
+      "bytes": 23414,
+      "sha256": "bec014b502159134f068f45ac75306eee4acb235ed0281d7f7ad6afeded1e49e"
+    },
+    {
+      "path": "dist/esm/client/index.d.ts",
+      "bytes": 23066,
+      "sha256": "94c7286929d33877f7f09c1068964028f4e69f7ca9d33c2663474d1a0c33ab2d"
+    },
+    {
+      "path": "dist/esm/client/index.d.ts.map",
+      "bytes": 4389,
+      "sha256": "4e862e50e93f028e2aec6d3e1306e8091e118b48771b31517d4607add585e2b4"
+    },
+    {
+      "path": "dist/esm/client/index.js",
+      "bytes": 29275,
+      "sha256": "db6cc643f5cc095b2fd0b70bf691d1775f07a317e97555e3928559e815f5e32a"
+    },
+    {
+      "path": "dist/esm/client/index.js.map",
+      "bytes": 18827,
+      "sha256": "b45a1aa5a135bc46ead4d255992b4f2741ac58d7cf499bca7f9b4edf0d18af99"
+    },
+    {
+      "path": "dist/esm/client/middleware.d.ts",
+      "bytes": 6215,
+      "sha256": "7c48b52bc59a6473183272734879ac83b22960eaffe5e28d77fefa3f0515101c"
+    },
+    {
+      "path": "dist/esm/client/middleware.d.ts.map",
+      "bytes": 1281,
+      "sha256": "3e15e27aee4ce4cb63a8d717609984ef3bcf5216a1b49ab99ec2502e3f78fc82"
+    },
+    {
+      "path": "dist/esm/client/middleware.js",
+      "bytes": 9918,
+      "sha256": "e6e1b8a0cc3463c49edd472cbd2df75a0728a0ec747d2b420ed5ce5a27493e7a"
+    },
+    {
+      "path": "dist/esm/client/middleware.js.map",
+      "bytes": 4881,
+      "sha256": "c8fb3ed1b43959994027355c7a061aee8fadac0f23fa423888113d19673c552c"
+    },
+    {
+      "path": "dist/esm/client/sse.d.ts",
+      "bytes": 3868,
+      "sha256": "eb006a02538b190582c5a8ca6c1f9be6f33d1fd555a8f728c4485aec2588f351"
+    },
+    {
+      "path": "dist/esm/client/sse.d.ts.map",
+      "bytes": 1592,
+      "sha256": "60f7d511bdfb659e1c66972b3b2ef401225fff36ad9785afb36f7f86a39dbd94"
+    },
+    {
+      "path": "dist/esm/client/sse.js",
+      "bytes": 8434,
+      "sha256": "5e32045c0e220269b52c6a77e25134588d28d5ee3f5113359dfe7e2e40d86d88"
+    },
+    {
+      "path": "dist/esm/client/sse.js.map",
+      "bytes": 6714,
+      "sha256": "3a101b051e8a36ecd3ed7d4043e44c38f356685e5cbe12fa6f21d4936e95dfd0"
+    },
+    {
+      "path": "dist/esm/client/stdio.d.ts",
+      "bytes": 2995,
+      "sha256": "2531c33a908e9cc23229f9112b5df8a0023ca17f5c64a901ba533211398f56db"
+    },
+    {
+      "path": "dist/esm/client/stdio.d.ts.map",
+      "bytes": 1350,
+      "sha256": "2b0cc494035037278d133834351d167a5a9d0bdcc3292dc991601dcf2747a55e"
+    },
+    {
+      "path": "dist/esm/client/stdio.js",
+      "bytes": 6569,
+      "sha256": "298514feae7875117a119a2598b40f2346ef07c30152fa7ad2ffb6cfb51782bc"
+    },
+    {
+      "path": "dist/esm/client/stdio.js.map",
+      "bytes": 5228,
+      "sha256": "e9762acf1ab471cf0f54ecf25dd22aca2b1fb03c0d500860b241018da515dfd0"
+    },
+    {
+      "path": "dist/esm/client/streamableHttp.d.ts",
+      "bytes": 7032,
+      "sha256": "56641c2f34817ea03023da73fe6739706c1251996fbab7002461df98844a0fb8"
+    },
+    {
+      "path": "dist/esm/client/streamableHttp.d.ts.map",
+      "bytes": 2561,
+      "sha256": "2166511721c2fc6b534d34b7450a3b40e84476dd3cbde6a355ab2fbb16fc2deb"
+    },
+    {
+      "path": "dist/esm/client/streamableHttp.js",
+      "bytes": 22564,
+      "sha256": "a181da6a31e8a34acd3e011ce5e574e8f1381b17f4541f64afcfb6b7209bafa3"
+    },
+    {
+      "path": "dist/esm/client/streamableHttp.js.map",
+      "bytes": 14291,
+      "sha256": "16d409b972e0126bdffa43b887d3df02aa5b371b56a6024453a5c99cb26de7b9"
+    },
+    {
+      "path": "dist/esm/client/websocket.d.ts",
+      "bytes": 598,
+      "sha256": "adcaeee717f7e9cf74f764df1f17de1c7106d8cf1b45160d682349814b5d8f7a"
+    },
+    {
+      "path": "dist/esm/client/websocket.d.ts.map",
+      "bytes": 610,
+      "sha256": "f70675e46c59ee61bb2d0510a1d1f603c7ae11689eca879577b9af1f23bac8b0"
+    },
+    {
+      "path": "dist/esm/client/websocket.js",
+      "bytes": 1800,
+      "sha256": "595691c52b9201283af43e63d1d0c094a6e6568d495a8559c6af7dd819d68e6e"
+    },
+    {
+      "path": "dist/esm/client/websocket.js.map",
+      "bytes": 1773,
+      "sha256": "2824076f6476ee1bd3246de9b905e42e41fb665533a55b9059ac1f40d18f4911"
+    },
+    {
+      "path": "dist/esm/examples/client/elicitationUrlExample.d.ts",
+      "bytes": 62,
+      "sha256": "a9685498881eb4fdd6f26e6682d0da54013f531b1a0966f8c050b6c31e1cb6b4"
+    },
+    {
+      "path": "dist/esm/examples/client/elicitationUrlExample.d.ts.map",
+      "bytes": 161,
+      "sha256": "5c6f2dc7ece8e42cbb09fa5f22dea563c7c6ac43845ecd15fda3619de776ea14"
+    },
+    {
+      "path": "dist/esm/examples/client/elicitationUrlExample.js",
+      "bytes": 26379,
+      "sha256": "3ced042125a83f5c8c47f1cfd89180600fa8af4cb75b181953c238a93b92a1f9"
+    },
+    {
+      "path": "dist/esm/examples/client/elicitationUrlExample.js.map",
+      "bytes": 19156,
+      "sha256": "00309bae87321b95b9e4f2a6bf7e6cf3a037878a96634fe1013b0ba07c0abbff"
+    },
+    {
+      "path": "dist/esm/examples/client/multipleClientsParallel.d.ts",
+      "bytes": 64,
+      "sha256": "cf97311f3a6d98934243dd9e26977567563920d19cc3d7122c4f8e4bd033627a"
+    },
+    {
+      "path": "dist/esm/examples/client/multipleClientsParallel.d.ts.map",
+      "bytes": 165,
+      "sha256": "dab3eaad7e00b6d485e9bc77aa239010d2b17c7fc5fdb67b343867469681f722"
+    },
+    {
+      "path": "dist/esm/examples/client/multipleClientsParallel.js",
+      "bytes": 5020,
+      "sha256": "338dec1faf947c3012bcb076b3b5804f47dae1249c7fa56b95679a71a307e944"
+    },
+    {
+      "path": "dist/esm/examples/client/multipleClientsParallel.js.map",
+      "bytes": 4123,
+      "sha256": "6f3e9c744d3914ef2998c4df57f02c3bd8a0db9cf1b399cabcaa2050d671d2d2"
+    },
+    {
+      "path": "dist/esm/examples/client/parallelToolCallsClient.d.ts",
+      "bytes": 64,
+      "sha256": "ddca523f8ecd18edb583078b0ed8403300328e3a45e4ef396acd01ea342686bb"
+    },
+    {
+      "path": "dist/esm/examples/client/parallelToolCallsClient.d.ts.map",
+      "bytes": 165,
+      "sha256": "7b1ea7f32a734ea8c407003e7c9eed9c90c4336ddd39e0f59cf6189f983e5a90"
+    },
+    {
+      "path": "dist/esm/examples/client/parallelToolCallsClient.js",
+      "bytes": 6662,
+      "sha256": "4a516e0bb4b7e8563bec234d7886e0011778fee9e775e8932af72cf3c555a9cb"
+    },
+    {
+      "path": "dist/esm/examples/client/parallelToolCallsClient.js.map",
+      "bytes": 4906,
+      "sha256": "6289aaebadb1e5a27e3ddfc2bdf0b237ad8cc778dac6dc38fd30103290679e3a"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleClientCredentials.d.ts",
+      "bytes": 752,
+      "sha256": "78fc277ec93dfd9863c8a8ba400d41d7fadd741182fd47e4e7dd2b240b713e1a"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleClientCredentials.d.ts.map",
+      "bytes": 191,
+      "sha256": "80690730804347f5e4c7be09bf5e72e734f1df5edd1c061392b77c32ccba3813"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleClientCredentials.js",
+      "bytes": 2737,
+      "sha256": "c19dcadccf3a7a8041b19cfc9b7121aae38350e528a6976bae3018930975f93e"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleClientCredentials.js.map",
+      "bytes": 1960,
+      "sha256": "0953188f9fb70e5185a64bdb91ccb5d8057cc6f70adf9712e86ffa88f9496f6c"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleOAuthClient.d.ts",
+      "bytes": 78,
+      "sha256": "42a781cd65d6fb5c9bdef3b403b291a5a149fca83ae161bb6246c6e25b498dc2"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleOAuthClient.d.ts.map",
+      "bytes": 153,
+      "sha256": "11e88ca38299d3245c65b034b549b43544bce9afda8d86c7a89b5d773e151f84"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleOAuthClient.js",
+      "bytes": 14823,
+      "sha256": "f9aaa18f73618f5a8f8d48b78b02e9958d342c5f7dded6560acd771b5f0faa0f"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleOAuthClient.js.map",
+      "bytes": 11642,
+      "sha256": "2a127f0b51a7846cafb3437c48c8bfec7acf418b96684e6acf8130b3943a467e"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleOAuthClientProvider.d.ts",
+      "bytes": 1263,
+      "sha256": "0bccc138f7519e06da1a820e9d4404f94b871331606f7abfaa2c13cc757aa5d2"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleOAuthClientProvider.d.ts.map",
+      "bytes": 1015,
+      "sha256": "3aad23f409a4dc0336c970d25e87eb845e9ad4bce393ee81fb13914f3f791d86"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleOAuthClientProvider.js",
+      "bytes": 1385,
+      "sha256": "4409f3a413e194faff4c25552efe35ce0cca3d6f9aeb1e0626f30aa811ebe782"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleOAuthClientProvider.js.map",
+      "bytes": 1156,
+      "sha256": "ccae0d80b9b680cc75b13dbd725bbade3bf99858d329ce6a325147fbb616d1d2"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleStreamableHttp.d.ts",
+      "bytes": 61,
+      "sha256": "d493dfa003e8835caa394767377d2e13b454885432109ba5c1f1bc1c88cc482d"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleStreamableHttp.d.ts.map",
+      "bytes": 159,
+      "sha256": "c012683c5adf25b5aaa027eb58b466bca2d30041513c989cc699df6ac2b6d703"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleStreamableHttp.js",
+      "bytes": 35160,
+      "sha256": "10fc864d80f3f0fa0c6dc0f9ed8efc3925f489c6565d5f9787c695f5d92dc40a"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleStreamableHttp.js.map",
+      "bytes": 27448,
+      "sha256": "94cb12f36d4c6a0dafefb3f4fb1ed221557d1bf5cc7fa1346dc8c86c16e9aca0"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleTaskInteractiveClient.d.ts",
+      "bytes": 406,
+      "sha256": "6179019a15a5949731ac4e9449952681e9132081c06398f83c42030a67aa253d"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleTaskInteractiveClient.d.ts.map",
+      "bytes": 188,
+      "sha256": "200f6827c2868647daf1c4fd3783b524db1ed4e741e666098620dd318ba1d5ce"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleTaskInteractiveClient.js",
+      "bytes": 6264,
+      "sha256": "5f723f84ebee5f6c44f8ab99a26bc2de3f3d17bb653c4a0793731623f7387d93"
+    },
+    {
+      "path": "dist/esm/examples/client/simpleTaskInteractiveClient.js.map",
+      "bytes": 5847,
+      "sha256": "cbdc2ddedcfab9df4feb62f7d896e9ba0d6ee2db7e6cb8676c1773635c882ec5"
+    },
+    {
+      "path": "dist/esm/examples/client/ssePollingClient.d.ts",
+      "bytes": 57,
+      "sha256": "afeee8d6fa1e172f9221b8dad88c9e2eb99ea47522bb185284319a8214ace28f"
+    },
+    {
+      "path": "dist/esm/examples/client/ssePollingClient.d.ts.map",
+      "bytes": 151,
+      "sha256": "6ade1abc300b8f4434fd81ffdaf78414ad819fa0d395f414ffb88633deb196ba"
+    },
+    {
+      "path": "dist/esm/examples/client/ssePollingClient.js",
+      "bytes": 3606,
+      "sha256": "bd5d99275cbafa74f07d2e3fa4c7f7e855772e4bc87c664faffbe4de3eb0a4a9"
+    },
+    {
+      "path": "dist/esm/examples/client/ssePollingClient.js.map",
+      "bytes": 2590,
+      "sha256": "7bcce58c016efc2314e7fb7f24b643b30f7b6613d2c7c9e5c40fcd7ecf5ab68b"
+    },
+    {
+      "path": "dist/esm/examples/client/streamableHttpWithSseFallbackClient.d.ts",
+      "bytes": 76,
+      "sha256": "f9cd0c31ff1527240039f5985a61de8dc8c8406c8b18c7a9b440cf97381edc9d"
+    },
+    {
+      "path": "dist/esm/examples/client/streamableHttpWithSseFallbackClient.d.ts.map",
+      "bytes": 189,
+      "sha256": "5f336b66de9f2619e6cf3348f85483813d4586d1aee22c6dba16898ce2f7d93c"
+    },
+    {
+      "path": "dist/esm/examples/client/streamableHttpWithSseFallbackClient.js",
+      "bytes": 6338,
+      "sha256": "10626039c8559a809ec1eae35ee4b0e1473b1d3742e5e8908bf0af690fd9035b"
+    },
+    {
+      "path": "dist/esm/examples/client/streamableHttpWithSseFallbackClient.js.map",
+      "bytes": 4603,
+      "sha256": "ef63b48b9c7ee048de969333430f73dfd8449f5d9b6ee9fb61896359471b355e"
+    },
+    {
+      "path": "dist/esm/examples/server/demoInMemoryOAuthProvider.d.ts",
+      "bytes": 3573,
+      "sha256": "e10c76fe805a919888459f784f6aed02ff1c8df2d749df504617a8e30a7f60f8"
+    },
+    {
+      "path": "dist/esm/examples/server/demoInMemoryOAuthProvider.d.ts.map",
+      "bytes": 1422,
+      "sha256": "18d017f228ad8e8eb84db47fafca30f28b6bd7350e1f0d34eb2eec59d67a9efb"
+    },
+    {
+      "path": "dist/esm/examples/server/demoInMemoryOAuthProvider.js",
+      "bytes": 7419,
+      "sha256": "192752f24d0d4b81b65fe7aa5c2b5ca255592a09b8ac27693615aa5335e369a6"
+    },
+    {
+      "path": "dist/esm/examples/server/demoInMemoryOAuthProvider.js.map",
+      "bytes": 6114,
+      "sha256": "70744d5f74a35ca9e405a172ba24dff633d6366471aec054b40a7d8f3c1e6d85"
+    },
+    {
+      "path": "dist/esm/examples/server/elicitationFormExample.d.ts",
+      "bytes": 63,
+      "sha256": "00b34e1be3545f426d23b121ae4e23f78d8d8c84f59255836b621858d4662da4"
+    },
+    {
+      "path": "dist/esm/examples/server/elicitationFormExample.d.ts.map",
+      "bytes": 163,
+      "sha256": "6c506c599e9356e257f6e7c811092df94222d09fa3b5fe42c66dbf6c0393e8ec"
+    },
+    {
+      "path": "dist/esm/examples/server/elicitationFormExample.js",
+      "bytes": 18405,
+      "sha256": "b860789972d3ff0768e12b6b20c5eaf5c9ae239dcd58bf88892e8ac9a81cb7b8"
+    },
+    {
+      "path": "dist/esm/examples/server/elicitationFormExample.js.map",
+      "bytes": 11329,
+      "sha256": "45e75cbdfd99435d96c18bc6f238e960e935c1504afac38d2841c477dc2696f3"
+    },
+    {
+      "path": "dist/esm/examples/server/elicitationUrlExample.d.ts",
+      "bytes": 62,
+      "sha256": "a9685498881eb4fdd6f26e6682d0da54013f531b1a0966f8c050b6c31e1cb6b4"
+    },
+    {
+      "path": "dist/esm/examples/server/elicitationUrlExample.d.ts.map",
+      "bytes": 161,
+      "sha256": "de4291b518249ff3f46cab158ad060534fd7d7e356460f969b24cd1ec4bd6631"
+    },
+    {
+      "path": "dist/esm/examples/server/elicitationUrlExample.js",
+      "bytes": 28190,
+      "sha256": "a507534311a1219ec60ac6e1801d3febd6a71c81e6e25a6c55779c6904909cdb"
+    },
+    {
+      "path": "dist/esm/examples/server/elicitationUrlExample.js.map",
+      "bytes": 16548,
+      "sha256": "4374d7236393031256a390e7c2cacad1ee68ea4c7e0710a06442d5c4e4ab7eac"
+    },
+    {
+      "path": "dist/esm/examples/server/honoWebStandardStreamableHttp.d.ts",
+      "bytes": 395,
+      "sha256": "b540f3fef1d4fda9b06f42c6c7c52805f3e95b0f0db90a21e8d746dc006c4425"
+    },
+    {
+      "path": "dist/esm/examples/server/honoWebStandardStreamableHttp.d.ts.map",
+      "bytes": 192,
+      "sha256": "98d7770bac0d99ff1619eaef73f0184851d20654484932b134d926009f8cbff7"
+    },
+    {
+      "path": "dist/esm/examples/server/honoWebStandardStreamableHttp.js",
+      "bytes": 2326,
+      "sha256": "ec244f1e0323271839afa3eec030268a1f2499a3921d94fa7be5958721c92e26"
+    },
+    {
+      "path": "dist/esm/examples/server/honoWebStandardStreamableHttp.js.map",
+      "bytes": 2083,
+      "sha256": "f318558e78257f3d82cc35c8577a989da2855f02947194c6738092465c7a916c"
+    },
+    {
+      "path": "dist/esm/examples/server/jsonResponseStreamableHttp.d.ts",
+      "bytes": 67,
+      "sha256": "e62510f014840f113369fa8b5baa88e88f497c9c1388e4fdfe94f41db0cd6849"
+    },
+    {
+      "path": "dist/esm/examples/server/jsonResponseStreamableHttp.d.ts.map",
+      "bytes": 171,
+      "sha256": "80a7315b93713d1a6805785ee885446e1970e7f5e963035e0b46f7f48297f7f5"
+    },
+    {
+      "path": "dist/esm/examples/server/jsonResponseStreamableHttp.js",
+      "bytes": 5376,
+      "sha256": "b140b950fe4f34c64b1ca63c0060dd0e564864b0020fa22592c8ba20c06ef552"
+    },
+    {
+      "path": "dist/esm/examples/server/jsonResponseStreamableHttp.js.map",
+      "bytes": 4274,
+      "sha256": "d3ffcf5e5712b7e744dd8dd210e6e686932c070fd066494b7efde3c8dc7f3d03"
+    },
+    {
+      "path": "dist/esm/examples/server/mcpServerOutputSchema.d.ts",
+      "bytes": 236,
+      "sha256": "ba52ca94c5d34121c7e7d10e5da365140deeb89a2b1874d3ecdfc325a3849b98"
+    },
+    {
+      "path": "dist/esm/examples/server/mcpServerOutputSchema.d.ts.map",
+      "bytes": 173,
+      "sha256": "32a2fc1a782da315e7638862f793d5bb298e43baa9f94b9035ad4697abeb35cb"
+    },
+    {
+      "path": "dist/esm/examples/server/mcpServerOutputSchema.js",
+      "bytes": 2365,
+      "sha256": "403e091ebc97038d1184bea68440775bb23a39ca39ca955987bd05a2a87ec61c"
+    },
+    {
+      "path": "dist/esm/examples/server/mcpServerOutputSchema.js.map",
+      "bytes": 2451,
+      "sha256": "fe09a831f30a21dc1a4ad4c9b75bffe1a0b0aa3317c5195a6493c524a3d3a960"
+    },
+    {
+      "path": "dist/esm/examples/server/progressExample.d.ts",
+      "bytes": 336,
+      "sha256": "403a1ae7d9fdd875751a1b17e80073ed15b95f4112b8b784f888b532357b052a"
+    },
+    {
+      "path": "dist/esm/examples/server/progressExample.d.ts.map",
+      "bytes": 166,
+      "sha256": "b816954a665a075cb197a03316aa930308943df300cb2a0e70b293e9ee12d2a3"
+    },
+    {
+      "path": "dist/esm/examples/server/progressExample.js",
+      "bytes": 1685,
+      "sha256": "ac730c1ba8134ffca252fead980e4ad161407e6324b36325f5a860a1232d6684"
+    },
+    {
+      "path": "dist/esm/examples/server/progressExample.js.map",
+      "bytes": 1719,
+      "sha256": "10b7c14ac23c2e75ad52fc1491f335c04202d35245519cb5303bdb314476502a"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleSseServer.d.ts",
+      "bytes": 56,
+      "sha256": "385659de8a269ca5c05fa730d18ba28cf13818d4661bed2239a7408f22a1e091"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleSseServer.d.ts.map",
+      "bytes": 149,
+      "sha256": "1073e57cc49bc8f7cafd91041dd9eb3797af898cee807609877a0c523ce8f425"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleSseServer.js",
+      "bytes": 5364,
+      "sha256": "e107efcff724cf5887e4828edac2d618c44314fb4941bcbf5ac69313f258f09c"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleSseServer.js.map",
+      "bytes": 4418,
+      "sha256": "6167b01d2fab3b26e5ab33fcd7c19f336686d552ca99210a53c975ee84b3cfa8"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleStatelessStreamableHttp.d.ts",
+      "bytes": 70,
+      "sha256": "d4dca66a9a1d2b828232d7caef5910a64530057b1701188475bb8a3f4a964d4e"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleStatelessStreamableHttp.d.ts.map",
+      "bytes": 177,
+      "sha256": "c4c0961cc115bd507b817ef2e4388b671af6e1699701e4c38b14f2964faf6da8"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleStatelessStreamableHttp.js",
+      "bytes": 4661,
+      "sha256": "a18cca57b851b0aef28a665d74ebbead12a6b6faa97b055981daeac2cf7d2244"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleStatelessStreamableHttp.js.map",
+      "bytes": 4215,
+      "sha256": "a5c3db1439986ce750bf9f0f87144fbc8cd1c8a13d18e3a2e050942ad139f76c"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleStreamableHttp.d.ts",
+      "bytes": 61,
+      "sha256": "d493dfa003e8835caa394767377d2e13b454885432109ba5c1f1bc1c88cc482d"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleStreamableHttp.d.ts.map",
+      "bytes": 159,
+      "sha256": "8da5252aae3ce2f029cee07189402a0f5a1826470536381601066f4448e5130b"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleStreamableHttp.js",
+      "bytes": 29421,
+      "sha256": "128e3d9e673632d22a0d27b0ab8436192b44a6db8323fda26df8c7ebf966ad21"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleStreamableHttp.js.map",
+      "bytes": 20052,
+      "sha256": "5d13b1f2fa0e273bab9d717e48f43a3e809893e222ea1815e66337b1c9ac8b17"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleTaskInteractive.d.ts",
+      "bytes": 524,
+      "sha256": "5cf096d6e721ad1f5e47145d01fedb8dc1b3a5ba4eecf262791e5adaf5c4d5f0"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleTaskInteractive.d.ts.map",
+      "bytes": 178,
+      "sha256": "c347fc21bc8b3bd85082bf5d6d8b014626cd59309a5ade8fdd47f9dbe17b7304"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleTaskInteractive.js",
+      "bytes": 23423,
+      "sha256": "611d68059b95eb5bf8063ffd7ca0e964964ddd214a59e4127f6be717580ccbe2"
+    },
+    {
+      "path": "dist/esm/examples/server/simpleTaskInteractive.js.map",
+      "bytes": 18711,
+      "sha256": "784532284a843f0030d599bc7695bb42b386fa69604b724bc4228ecc3ea63d6a"
+    },
+    {
+      "path": "dist/esm/examples/server/sseAndStreamableHttpCompatibleServer.d.ts",
+      "bytes": 77,
+      "sha256": "32d14e4d9f6e81b1e0a9526244a9df76763ba3ebb09c820c9a0db0b1287c233d"
+    },
+    {
+      "path": "dist/esm/examples/server/sseAndStreamableHttpCompatibleServer.d.ts.map",
+      "bytes": 191,
+      "sha256": "755095fea19aa3d5437fd316bf8f1bd8c311001cba05553a145e292680343162"
+    },
+    {
+      "path": "dist/esm/examples/server/sseAndStreamableHttpCompatibleServer.js",
+      "bytes": 9072,
+      "sha256": "384e1b5a9157b5cc293b7f96bc93e10a439f6df0d5344db11260dab27e26984a"
+    },
+    {
+      "path": "dist/esm/examples/server/sseAndStreamableHttpCompatibleServer.js.map",
+      "bytes": 6164,
+      "sha256": "518da9ffd431d5c4ba91861a20f71929784ac2c1707976149c88cdeadc67fca0"
+    },
+    {
+      "path": "dist/esm/examples/server/ssePollingExample.d.ts",
+      "bytes": 58,
+      "sha256": "c4f0b29b45c6856919b51f6401f9068f493ca000fc2d32b95bd963734129c9db"
+    },
+    {
+      "path": "dist/esm/examples/server/ssePollingExample.d.ts.map",
+      "bytes": 153,
+      "sha256": "925568add6fee126568167b05cb4f34b055175930be4ba911c4f4be71f126d32"
+    },
+    {
+      "path": "dist/esm/examples/server/ssePollingExample.js",
+      "bytes": 4401,
+      "sha256": "e19bed7aa9b921bab26a8586aadcb0685b56d06a9a6045bedd9bd5d7f9274508"
+    },
+    {
+      "path": "dist/esm/examples/server/ssePollingExample.js.map",
+      "bytes": 3325,
+      "sha256": "f4ab66dc1efbd9d50e6a35d3aea69d2075c0546cd9d39cf4bc65b7615fb2972d"
+    },
+    {
+      "path": "dist/esm/examples/server/standaloneSseWithGetStreamableHttp.d.ts",
+      "bytes": 75,
+      "sha256": "88a836da476505d4bfc0d9bbb2aace08be493eb8c01566085e642bcb22757783"
+    },
+    {
+      "path": "dist/esm/examples/server/standaloneSseWithGetStreamableHttp.d.ts.map",
+      "bytes": 187,
+      "sha256": "90c9e0d9c3cd19aa7a6e06cc0ebd102e7c14414d315070cdffd4f0cd2287ad9a"
+    },
+    {
+      "path": "dist/esm/examples/server/standaloneSseWithGetStreamableHttp.js",
+      "bytes": 4794,
+      "sha256": "232405354305754f0e9fda37d10f4a915ab147aa2101fa585182917d22b7550b"
+    },
+    {
+      "path": "dist/esm/examples/server/standaloneSseWithGetStreamableHttp.js.map",
+      "bytes": 4004,
+      "sha256": "bbcc96aabd33f1ea5bf60cceff2a7c0cf213d52c39cddd7fa8a7f000f2ecc2a5"
+    },
+    {
+      "path": "dist/esm/examples/server/toolWithSampleServer.d.ts",
+      "bytes": 61,
+      "sha256": "5356927d0ef16728c22988993225f8602aeeeede5365ad01ac94b9974b18a3fe"
+    },
+    {
+      "path": "dist/esm/examples/server/toolWithSampleServer.d.ts.map",
+      "bytes": 159,
+      "sha256": "21ce03590322878a56ee2447c08552fa2799512af26696d7c6cdd292434fbeeb"
+    },
+    {
+      "path": "dist/esm/examples/server/toolWithSampleServer.js",
+      "bytes": 1554,
+      "sha256": "5385ee36a5adb5a5fa63a56dc6a0c48f07d726a84ec6f925a90dd387f1260d49"
+    },
+    {
+      "path": "dist/esm/examples/server/toolWithSampleServer.js.map",
+      "bytes": 1359,
+      "sha256": "f86d20cdbca359d413b8dcd93242317727a9badcd0b83409470ac7b499403168"
+    },
+    {
+      "path": "dist/esm/examples/shared/inMemoryEventStore.d.ts",
+      "bytes": 1139,
+      "sha256": "e9d256033509f4e69117260c42b68128d5708c8e79cfee0a23a225dc4a77ccef"
+    },
+    {
+      "path": "dist/esm/examples/shared/inMemoryEventStore.d.ts.map",
+      "bytes": 657,
+      "sha256": "ec274fb8889aae1a1995b61adc5916252b2540a3094658771201b3f114d7535a"
+    },
+    {
+      "path": "dist/esm/examples/shared/inMemoryEventStore.js",
+      "bytes": 2258,
+      "sha256": "7ec663b6a4956f5b95b2fc3d6c15d892cb6f062b22c997c12bbc41dc951f0906"
+    },
+    {
+      "path": "dist/esm/examples/shared/inMemoryEventStore.js.map",
+      "bytes": 1773,
+      "sha256": "01639f66bc34bdab193a20d722e703f9d0bdba0765a3216db44348316db0ad77"
+    },
+    {
+      "path": "dist/esm/experimental/index.d.ts",
+      "bytes": 369,
+      "sha256": "db7708c4cc95e0f60efca96ebb29143976dba82dfe0e103f3c15d96bde34ae2a"
+    },
+    {
+      "path": "dist/esm/experimental/index.d.ts.map",
+      "bytes": 163,
+      "sha256": "ba0690f1eba7d6ddf50feab2f1a8f46275fbf219d6a9a6fff102a353d8c46faa"
+    },
+    {
+      "path": "dist/esm/experimental/index.js",
+      "bytes": 367,
+      "sha256": "4d76bf6f056f784621441e1d5fe06310b1621bfcf0fe75e033ee3eabbb792501"
+    },
+    {
+      "path": "dist/esm/experimental/index.js.map",
+      "bytes": 161,
+      "sha256": "7d466ff35c6e7db475d3e4c30097c09d8b242f96dca4a1475689e5796322905a"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/client.d.ts",
+      "bytes": 5194,
+      "sha256": "10f984c959d0f6394545aaf1b1e0ee5120e2ba00351b4dc2d278fdc0cf7f5aad"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/client.d.ts.map",
+      "bytes": 1718,
+      "sha256": "582296c60e6674b775efac53316e0ffd68ccc1d71e771ecf11d9de818ee0bf37"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/client.js",
+      "bytes": 7647,
+      "sha256": "bfa97c01d4394fc53f9c659c7e156f96b1727b6d0052b0db52969251b9afe2cd"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/client.js.map",
+      "bytes": 2902,
+      "sha256": "0d8660cf9feb2990c34a409b04a7b618c88ce3402a986a6928a6f25473db2457"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/helpers.d.ts",
+      "bytes": 1667,
+      "sha256": "9023db8c173c505c66e72e11edfe2920633e4b9756e2a605bf9fa7da781399e1"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/helpers.d.ts.map",
+      "bytes": 645,
+      "sha256": "cff10ad731678a7acf4bacc9df23455af3bf97f6a47dc6df06435e22e6fbbd57"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/helpers.js",
+      "bytes": 2397,
+      "sha256": "a63dc0811075b0bbd03d1f494512e6f516d2c5549dcabc70ef55861fb5e76f92"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/helpers.js.map",
+      "bytes": 1107,
+      "sha256": "18bd233792dab853c4c2bff540ce1ab9411795df4ae7bff1e003af8424311797"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/index.d.ts",
+      "bytes": 635,
+      "sha256": "78d47fe46f72a6d5a4bf817cd6e2ac26deed7e41c677a5869642850e1df678c5"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/index.d.ts.map",
+      "bytes": 452,
+      "sha256": "75fefc42ac932124b3d98e0b5432b9fec2a38268c7b5e075eba76696542f40f6"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/index.js",
+      "bytes": 610,
+      "sha256": "12d47df8d0c60eaaff9dc99e09279c035fe61c4037fec25a6ca5ac19cdcfcbb5"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/index.js.map",
+      "bytes": 413,
+      "sha256": "7aa03b0a5dd4bc0d9cfd4dbc82268fdc15ee7f3c7b04e68146832909ec3c1184"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/interfaces.d.ts",
+      "bytes": 10185,
+      "sha256": "cbf22a2738f4609132875733c7ec4834c96dc541471b77ef132ac993e2c83944"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/interfaces.d.ts.map",
+      "bytes": 4151,
+      "sha256": "a1ff34e30e986ec296f4386da4c5bc77a8b14f0489101ceb06ccdaa7948dee79"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/interfaces.js",
+      "bytes": 568,
+      "sha256": "4775b306f7fa94216783d562bdd33ca7d5a4a0372986a9229dc064c4cf4494c1"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/interfaces.js.map",
+      "bytes": 281,
+      "sha256": "f923b698f32a3ec99832a516d1a7ce74d315a8345d1bd196271d455d38587235"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/mcp-server.d.ts",
+      "bytes": 2973,
+      "sha256": "bed9de03b39d2a2010a13db7173c55104980dea603bea05844c95e71e5acbdaa"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/mcp-server.d.ts.map",
+      "bytes": 1289,
+      "sha256": "a8f011d23a20edd018bc313b30849bda26a5073cd665bf4070f67ad090a32e7a"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/mcp-server.js",
+      "bytes": 1241,
+      "sha256": "32a3737b7e9242c71115f6609b120620b9a4df75f5a0f3b142c525fd71e3625b"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/mcp-server.js.map",
+      "bytes": 763,
+      "sha256": "eaba28ead5423473636f591d2f2b9f1205af21c5ec003e3a494df1b16dc395d5"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/server.d.ts",
+      "bytes": 6981,
+      "sha256": "604c9d1403b2662b731190b0dc00f9abf462aee0bc807375e520868f278fbf0c"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/server.d.ts.map",
+      "bytes": 1774,
+      "sha256": "594dfdf67327b12688c582898466377c47aed4e8defb32b974cd611d46b66a2c"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/server.js",
+      "bytes": 10095,
+      "sha256": "73e535112c56ca76de1e8fea1bb177b60861b08c09adc635697a0d8c18cda1bc"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/server.js.map",
+      "bytes": 4178,
+      "sha256": "f489a2626b146e59c750014df0b4bbb45dd717de75248ecad81b1bfe3a251299"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/stores/in-memory.d.ts",
+      "bytes": 4104,
+      "sha256": "40c611c81a732f8b8509d37c2a28fa68c0360b59af35072d2451787aed46acd3"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/stores/in-memory.d.ts.map",
+      "bytes": 1736,
+      "sha256": "52525afd67113ca73dea1405222ddd203536a0e95419a1a416affb2ef88c100f"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/stores/in-memory.js",
+      "bytes": 9358,
+      "sha256": "807e5c727a0c6c8bfa5a6bc10e1bde1f3575cba5d3c011c0db7b2747ef191140"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/stores/in-memory.js.map",
+      "bytes": 6720,
+      "sha256": "4fb3c5607a469771959b32d43023976f547cd14dac97837652bb7402869962ee"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/types.d.ts",
+      "bytes": 1032,
+      "sha256": "42474121cc99602c81358c7a3d89a362e15be166668f914c48ac737bc991da80"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/types.d.ts.map",
+      "bytes": 560,
+      "sha256": "37503a66051a192c582a07e87c68ebe63da3720a2e2de00b3feb50a55861a149"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/types.js",
+      "bytes": 769,
+      "sha256": "6a8d4fbdbfbfd2769742da068ca56c6de895bb615f3feb5425eb5d6d71c3bd46"
+    },
+    {
+      "path": "dist/esm/experimental/tasks/types.js.map",
+      "bytes": 381,
+      "sha256": "f8473081f282f16ed00ad9052f12c4024d28b9137a8b7f4d3cbce8f917db9b97"
+    },
+    {
+      "path": "dist/esm/inMemory.d.ts",
+      "bytes": 1163,
+      "sha256": "9e8277f2b16d0feb52bf1fa6f433c6cb3d20ee8a9b65d698dbf40f47f6c322d4"
+    },
+    {
+      "path": "dist/esm/inMemory.d.ts.map",
+      "bytes": 882,
+      "sha256": "46c63b849378fdf27c8d3a0ab77da06667a9fc2f12d3e82f2a9619a94fe04bdd"
+    },
+    {
+      "path": "dist/esm/inMemory.js",
+      "bytes": 1717,
+      "sha256": "8eb57dc4b4c0993869273a5e01a35c71e8d84c3d5050e9871a8cf141360f883d"
+    },
+    {
+      "path": "dist/esm/inMemory.js.map",
+      "bytes": 1302,
+      "sha256": "c08554e1f56c789c218ace71975240d780b154513571bfeb4f13bfb970cd1cca"
+    },
+    {
+      "path": "dist/esm/package.json",
+      "bytes": 19,
+      "sha256": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+    },
+    {
+      "path": "dist/esm/server/auth/clients.d.ts",
+      "bytes": 1266,
+      "sha256": "10b45db07bdc125492398a2de9b294299a9314dcd2f7bbdf76cee75456c9b625"
+    },
+    {
+      "path": "dist/esm/server/auth/clients.d.ts.map",
+      "bytes": 453,
+      "sha256": "7db39417cfcd78f088f29e095c93b440ca69d36c6e5934980da6463c82d50ec6"
+    },
+    {
+      "path": "dist/esm/server/auth/clients.js",
+      "bytes": 46,
+      "sha256": "63fea004b50701ea177159926054960af5716c3e8363d4b51108d3d00aae4eab"
+    },
+    {
+      "path": "dist/esm/server/auth/clients.js.map",
+      "bytes": 127,
+      "sha256": "9d585a806d258815fb0281fd336ef98bfa254b18ac3a36e39b27296d4f36d7f4"
+    },
+    {
+      "path": "dist/esm/server/auth/errors.d.ts",
+      "bytes": 4926,
+      "sha256": "5a93fa71c204b212bb8e8a97825b606ea8a9bac41fff5bd7c13ef9917bc04360"
+    },
+    {
+      "path": "dist/esm/server/auth/errors.d.ts.map",
+      "bytes": 1850,
+      "sha256": "9667413d24fb9138d9105aee22218b86df4b2bfa73048eef817d5c2842b32c92"
+    },
+    {
+      "path": "dist/esm/server/auth/errors.js",
+      "bytes": 6442,
+      "sha256": "55e8b8364ec5075f3442f7e7bdf5b98b106693639cd7a697ce096bfa2b9b7176"
+    },
+    {
+      "path": "dist/esm/server/auth/errors.js.map",
+      "bytes": 2927,
+      "sha256": "248f5a5b30139c089bbebd0633c9dbc171d06b08c2cffb025d75272f458d1340"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/authorize.d.ts",
+      "bytes": 1130,
+      "sha256": "be499fd45457a0dc4e471a576a5f718a68835f63eda6b974d7409c74f284a876"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/authorize.d.ts.map",
+      "bytes": 604,
+      "sha256": "b750b1ad580acc7b618a574dd1d410e5dba9487f77e2adf0f32b424837e13eac"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/authorize.js",
+      "bytes": 7532,
+      "sha256": "8e72957497af859b8f9d4ab9ecb0a4c54f153405be8364f7fe7df4b7a3fff028"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/authorize.js.map",
+      "bytes": 5809,
+      "sha256": "2444eaca5e1b52908c608cb7b654999ced0de32a2b51e363fe308459b0619e35"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/metadata.d.ts",
+      "bytes": 284,
+      "sha256": "cda09dad62870e0a0d25c412fd6cfbf846f270901bf552a6a055199079968d1b"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/metadata.d.ts.map",
+      "bytes": 304,
+      "sha256": "ceae99d3c8ac07cf9411cb2522c98e695bf914f40eb567204699ce2f6ec65878"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/metadata.js",
+      "bytes": 584,
+      "sha256": "b1ba9388f749943581c43aba6073cd1235a84c0edbbbc5443fbf485dcd959e06"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/metadata.js.map",
+      "bytes": 655,
+      "sha256": "6ff99501ba0241867d93a4e844a4bf6e2e9b9b32518b27fdf1291d8e59fdad6d"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/register.d.ts",
+      "bytes": 1321,
+      "sha256": "6e69684f82a6067111ba5214a66d1eee04edb37c5256bc150b19d06da7a4c368"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/register.d.ts.map",
+      "bytes": 638,
+      "sha256": "e89b286f4dd8661335b7c91c48a78d680cc8531b00fc0cf2181c26ae3e436931"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/register.js",
+      "bytes": 3585,
+      "sha256": "71e53451340a8d5b99e41bee4bd9c8f13a1128f528191fc4c750c88137c46aec"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/register.js.map",
+      "bytes": 2946,
+      "sha256": "ef049e750e7f6829365d333b62346745d421da8305936dd6c113e787cd67360d"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/revoke.d.ts",
+      "bytes": 605,
+      "sha256": "f2a001eb3629765836d85cf5d99a76a33eee41df8a36461169eeddd518b13dc9"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/revoke.d.ts.map",
+      "bytes": 504,
+      "sha256": "6dc7fd02c84fd1fcd44a6bd7743c72594499776a6968655471849da797540d82"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/revoke.js",
+      "bytes": 2631,
+      "sha256": "a4ffb351b42909b09946a1c8f397d897930362b54e9fa44bf8cc7e9584f9e8b4"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/revoke.js.map",
+      "bytes": 2356,
+      "sha256": "99fbe487aa233c13f48040cdf9847d6ed2965ee5a43cf453381ea64b5eddf301"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/token.d.ts",
+      "bytes": 578,
+      "sha256": "f2d4e42d4e1684d829c458f661dd8a1dbc8339b48fd701977335c37158aa6f93"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/token.d.ts.map",
+      "bytes": 501,
+      "sha256": "36dd525e074fd20dece949a3b8315a0c8846cb75ad7505b2f8ca06da7209b0e1"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/token.js",
+      "bytes": 5290,
+      "sha256": "d202268ca1279e9545fcf14b949f76163a8694b61676a68e405e59c3ec1b0898"
+    },
+    {
+      "path": "dist/esm/server/auth/handlers/token.js.map",
+      "bytes": 4443,
+      "sha256": "abe42d086fc4bc3df507918ed62873b085f1ad934ca3b3cf2b08db295412ee7f"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/allowedMethods.d.ts",
+      "bytes": 451,
+      "sha256": "1193a94a487d5ebe828df124f470835fcfeee9ce3b0b0c33d5027146ccd79564"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/allowedMethods.d.ts.map",
+      "bytes": 269,
+      "sha256": "dcb546c3cb59fb56f2832734a21c2fc4406f07d76044b982c072fb4b07ef69c6"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/allowedMethods.js",
+      "bytes": 777,
+      "sha256": "7dd3a0e8925cc9cce5b84942e42b4de01f0452e3df516a3c602fdff985a1724e"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/allowedMethods.js.map",
+      "bytes": 638,
+      "sha256": "ea5cc78dc5c050f31a5544b09fc48b56e53fb757772d133e82feaed203ae33b6"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/bearerAuth.d.ts",
+      "bytes": 1274,
+      "sha256": "78931125189008806685130b2cf5180506b5ed0cf615dc5f3e110de0962c276e"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/bearerAuth.d.ts.map",
+      "bytes": 645,
+      "sha256": "18d77ac863fcd5852fbb5aa11bb034313f0fb854e07389dcffa7f491d76a3a94"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/bearerAuth.js",
+      "bytes": 3434,
+      "sha256": "c3077f9e945d5878802d2e396f32bae535b777088f82b55684276d9f0274464b"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/bearerAuth.js.map",
+      "bytes": 2711,
+      "sha256": "dede177fed0491e9175efaa17223ef00208a218c2ce2d2034bd8ad5d74537a82"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/clientAuth.d.ts",
+      "bytes": 771,
+      "sha256": "534f1f039f670a5d34b99ec13de00a26764c6af72effca845770342b10e8c607"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/clientAuth.d.ts.map",
+      "bytes": 519,
+      "sha256": "9318048ec2614d72bf83f808a50f230556cfe971c1101860984e9586d577a8b0"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/clientAuth.js",
+      "bytes": 1884,
+      "sha256": "4685d1cd7beb705a7ed25964a57f2eaf46e59adf371684770c8ca6da041bcf6f"
+    },
+    {
+      "path": "dist/esm/server/auth/middleware/clientAuth.js.map",
+      "bytes": 1827,
+      "sha256": "47f4b8fcfc0c2164d7674c3f74f3d4c454b9dc9df7dd9cefa92b91f4493ab8b8"
+    },
+    {
+      "path": "dist/esm/server/auth/provider.d.ts",
+      "bytes": 3092,
+      "sha256": "bfdbbc8d7f2e0c1a4a69b945af04ae93a995b7c134294abcb8532f80446dffad"
+    },
+    {
+      "path": "dist/esm/server/auth/provider.d.ts.map",
+      "bytes": 1477,
+      "sha256": "b334e1b088c35c2c892a95db9d34f5be50dfbb3f9c0974c1db61d21e9478802f"
+    },
+    {
+      "path": "dist/esm/server/auth/provider.js",
+      "bytes": 47,
+      "sha256": "3d25c1828cd404f9d81e3b7223f6198cf7919836d8be57289a7001c2fc6661d0"
+    },
+    {
+      "path": "dist/esm/server/auth/provider.js.map",
+      "bytes": 129,
+      "sha256": "6c9595e18422b9bffbdccab5af28052fa3e108e9316d2f0d5d4d8cc1ff7c9cd7"
+    },
+    {
+      "path": "dist/esm/server/auth/providers/proxyProvider.d.ts",
+      "bytes": 2424,
+      "sha256": "086cf685b8ac888e5ba2d3ff091e1920b5bb9742bea5af00f58ae8ce3bcfceab"
+    },
+    {
+      "path": "dist/esm/server/auth/providers/proxyProvider.d.ts.map",
+      "bytes": 1926,
+      "sha256": "c8534d18ed82159294a5845bfbb2c0473b2e85c16767687b7eba6b7a07006abd"
+    },
+    {
+      "path": "dist/esm/server/auth/providers/proxyProvider.js",
+      "bytes": 6255,
+      "sha256": "7bb904630a2cb32921a28de0bc20778a9f9b5b9487a9844a8558a72e40077215"
+    },
+    {
+      "path": "dist/esm/server/auth/providers/proxyProvider.js.map",
+      "bytes": 5257,
+      "sha256": "cc5fcb550c690931abb0ba494694616e3543f150c0a1d1f68c1e4d03a722bb61"
+    },
+    {
+      "path": "dist/esm/server/auth/router.d.ts",
+      "bytes": 4124,
+      "sha256": "f5eb18f3a4b1a366622b4880191eef9e7b12581a686bd7611c27e59b527364e0"
+    },
+    {
+      "path": "dist/esm/server/auth/router.d.ts.map",
+      "bytes": 1687,
+      "sha256": "9cb607bc8a618329edf16df23043edef9bc0224a1c074f1231bae57f6e03d069"
+    },
+    {
+      "path": "dist/esm/server/auth/router.js",
+      "bytes": 6408,
+      "sha256": "e00bd0c8c1f72de008cba2fa79ef9800b12c605501d77ab7c0f882b068f76b7a"
+    },
+    {
+      "path": "dist/esm/server/auth/router.js.map",
+      "bytes": 4536,
+      "sha256": "8e6277ae889e0413acd8490f9988f4b7def181b77da4e38cd9a21afb89979b92"
+    },
+    {
+      "path": "dist/esm/server/auth/types.d.ts",
+      "bytes": 882,
+      "sha256": "106d2e4be2d1352f266d610a47021dcfb368e28c507a7beeaae3f07394dda2d9"
+    },
+    {
+      "path": "dist/esm/server/auth/types.d.ts.map",
+      "bytes": 428,
+      "sha256": "53b21d6ce7534e18369935476c8a75b5c3e4a47fa593f33f6794199dfa17697f"
+    },
+    {
+      "path": "dist/esm/server/auth/types.js",
+      "bytes": 44,
+      "sha256": "01ae2a5b120382f9a648ced7ee8507493a134f216d100fc61600c6c9738235d2"
+    },
+    {
+      "path": "dist/esm/server/auth/types.js.map",
+      "bytes": 123,
+      "sha256": "5dc45916f23e2c7f3881ef50047fb5896dcb0e251833079951326a00d86df839"
+    },
+    {
+      "path": "dist/esm/server/completable.d.ts",
+      "bytes": 1649,
+      "sha256": "562e0ce2b6beae4ea6cf38e867cccc0806d38f0f38a3e1e40b1d32376f3eae50"
+    },
+    {
+      "path": "dist/esm/server/completable.d.ts.map",
+      "bytes": 1356,
+      "sha256": "beed250c3e27ee8d62d80787e5c91a4755e7d8556d1c23f778fa13769943e411"
+    },
+    {
+      "path": "dist/esm/server/completable.js",
+      "bytes": 1346,
+      "sha256": "879f49844d162cb0f70620241c87041c31f5bc53deabb27566b0dc430fbee665"
+    },
+    {
+      "path": "dist/esm/server/completable.js.map",
+      "bytes": 907,
+      "sha256": "a02f98e42c161fb12d183f6bed1c35d536dc211ab03e750851433a98a7c9fb66"
+    },
+    {
+      "path": "dist/esm/server/express.d.ts",
+      "bytes": 1811,
+      "sha256": "3f662ab6aa827d33cfd225da6fc15edb5b08f4c31a5a99dff9e8bee6e757f68a"
+    },
+    {
+      "path": "dist/esm/server/express.d.ts.map",
+      "bytes": 385,
+      "sha256": "607df7918eaece09089fd8c2025a537193da361a7d8ebe8a3f1b8767b3f9bd01"
+    },
+    {
+      "path": "dist/esm/server/express.js",
+      "bytes": 2186,
+      "sha256": "1c6024a040ae74beafb4fd9883601e50aacaa3b593ec63ddfca6b8e3c7ffe6d8"
+    },
+    {
+      "path": "dist/esm/server/express.js.map",
+      "bytes": 946,
+      "sha256": "7bbd8877be9c1c858d92768171ae0e870e0d07dda24d74cf358724f180e42c6c"
+    },
+    {
+      "path": "dist/esm/server/index.d.ts",
+      "bytes": 9035,
+      "sha256": "ecd9be374cf01ba99c9696e59b50f8baf8fae65ddaa43f0d375471933f989788"
+    },
+    {
+      "path": "dist/esm/server/index.d.ts.map",
+      "bytes": 3313,
+      "sha256": "32db73a5d024a3d3b75f18d5c7227349b5b2bc7b406a88ffb4a12241f65a643e"
+    },
+    {
+      "path": "dist/esm/server/index.js",
+      "bytes": 20763,
+      "sha256": "8b4fbdc0d0bbdc9ad74f385c41c0152d85445187f47cfc3941ff0d2a14a2696e"
+    },
+    {
+      "path": "dist/esm/server/index.js.map",
+      "bytes": 13321,
+      "sha256": "1265264b31648189e367696d8c36ecb2e977d4006ef3d13e5a121e7348175315"
+    },
+    {
+      "path": "dist/esm/server/mcp.d.ts",
+      "bytes": 16927,
+      "sha256": "45b14dbeb3e96def50e3a43febf875d4849fb8f3653f9e03a8bcbbd84692abfe"
+    },
+    {
+      "path": "dist/esm/server/mcp.d.ts.map",
+      "bytes": 9024,
+      "sha256": "e99f6bce972478bd4244f27d4a6eee861100b6ce076945288e792f4cb22f58f0"
+    },
+    {
+      "path": "dist/esm/server/mcp.js",
+      "bytes": 40694,
+      "sha256": "a5caaddfa0f6aadea64604aa57136bab6540298b846bbe861a80bf7392ae5aad"
+    },
+    {
+      "path": "dist/esm/server/mcp.js.map",
+      "bytes": 30370,
+      "sha256": "8ce8ad018ee981752a2766c99782418aea2e7c525a32b84a5f9fd38f30ce9c20"
+    },
+    {
+      "path": "dist/esm/server/middleware/hostHeaderValidation.d.ts",
+      "bytes": 1247,
+      "sha256": "b64109e99f0b635465630e654df4464c713c26a6f3c7aea700600859fd0ac7db"
+    },
+    {
+      "path": "dist/esm/server/middleware/hostHeaderValidation.d.ts.map",
+      "bytes": 345,
+      "sha256": "484dc78a660c2fba0dfa2d1cb9366a0bf0564a48226508dafe429811e7855f5d"
+    },
+    {
+      "path": "dist/esm/server/middleware/hostHeaderValidation.js",
+      "bytes": 2435,
+      "sha256": "d5d0aea03b47fcd8c02b0021f532d66154d6a7a5781851ba9587e729e594e0b6"
+    },
+    {
+      "path": "dist/esm/server/middleware/hostHeaderValidation.js.map",
+      "bytes": 1336,
+      "sha256": "ad8f06c553dd0d179342767f6a9a07556a241c1778ce51995bb0cfc17ae043bf"
+    },
+    {
+      "path": "dist/esm/server/sse.d.ts",
+      "bytes": 3793,
+      "sha256": "5c435aa7cca26998511dcc4019319066f3d9ccf86ddda45d9b824654d1ea8f56"
+    },
+    {
+      "path": "dist/esm/server/sse.d.ts.map",
+      "bytes": 1393,
+      "sha256": "296f48d2c0dc97b51758fc843261282b65a615a0073376ddcd1a9a244346e96e"
+    },
+    {
+      "path": "dist/esm/server/sse.js",
+      "bytes": 6488,
+      "sha256": "12a3eb28790d6f468fbf21ab94031bee18a353a690961e399fd899e14d31c1d7"
+    },
+    {
+      "path": "dist/esm/server/sse.js.map",
+      "bytes": 4890,
+      "sha256": "0c078c800c5ad859f969c21e8ba62001acb2b604b2c3367e67248874bb92ab83"
+    },
+    {
+      "path": "dist/esm/server/sseKeepAlive.d.ts",
+      "bytes": 359,
+      "sha256": "d67c7ea7fee07758b306473de31873606afbae0ba2463d79c99d4a7f4b3ead96"
+    },
+    {
+      "path": "dist/esm/server/sseKeepAlive.d.ts.map",
+      "bytes": 297,
+      "sha256": "de0a1dabd0bd4af5b04c3d18a0ce775b1bcd9602da7c7f9b64b06c7ba955b5dd"
+    },
+    {
+      "path": "dist/esm/server/sseKeepAlive.js",
+      "bytes": 530,
+      "sha256": "266568ecbce89f85d77b92373ee1812d6669ce91c07d5cd4bd4752d0fe6721e9"
+    },
+    {
+      "path": "dist/esm/server/sseKeepAlive.js.map",
+      "bytes": 561,
+      "sha256": "1e8024b4b02088c93fcda3a7b29063633f89f0f04d1e379612317141b17566c5"
+    },
+    {
+      "path": "dist/esm/server/stdio.d.ts",
+      "bytes": 1253,
+      "sha256": "9afd00f33a32d0ea31b8433f3af7a97b9bb371e75650766d56bc30960d6e33e3"
+    },
+    {
+      "path": "dist/esm/server/stdio.d.ts.map",
+      "bytes": 868,
+      "sha256": "038ca501ad46485ce1ce46d17b6d0217b54e3395e70ea65047c96d528cb971a5"
+    },
+    {
+      "path": "dist/esm/server/stdio.js",
+      "bytes": 2825,
+      "sha256": "91ccf96ee65c36dba922bba429f127865a8e4ad03d252126aca2e03c526c005a"
+    },
+    {
+      "path": "dist/esm/server/stdio.js.map",
+      "bytes": 2338,
+      "sha256": "1d43ef9385da900ac0af06c427b327dd4906521f8b8d22f4e0773d9b73fd0685"
+    },
+    {
+      "path": "dist/esm/server/streamableHttp.d.ts",
+      "bytes": 5048,
+      "sha256": "425b22fcc2fd435f20a99a0f8ac9babb39aef8b9b56749f735b13b1410cc0413"
+    },
+    {
+      "path": "dist/esm/server/streamableHttp.d.ts.map",
+      "bytes": 1773,
+      "sha256": "790e132a0147018b11cf0669c578f7edf3ad6e2ec58e445c90a95eb9a147fcd5"
+    },
+    {
+      "path": "dist/esm/server/streamableHttp.js",
+      "bytes": 6534,
+      "sha256": "e811d93af3f5e62497cf208ce162761c64cfd1c79fc4a0d8c77be59e0a77360b"
+    },
+    {
+      "path": "dist/esm/server/streamableHttp.js.map",
+      "bytes": 2362,
+      "sha256": "2ff1609c7eee72911fc6662fb5bf3fa621327e5cefdf1e7e869f3c29597c89ee"
+    },
+    {
+      "path": "dist/esm/server/webStandardStreamableHttp.d.ts",
+      "bytes": 11354,
+      "sha256": "b699d7545ae5fe214037df97b15f13565bad5aa1a021ffbda4402ed4686e0813"
+    },
+    {
+      "path": "dist/esm/server/webStandardStreamableHttp.d.ts.map",
+      "bytes": 3183,
+      "sha256": "6d9946228373f840dd28536e2c3346c11aabd4716b9854fe7834ecfd8432b43a"
+    },
+    {
+      "path": "dist/esm/server/webStandardStreamableHttp.js",
+      "bytes": 45259,
+      "sha256": "7f13981326b31e78ae7c66406e2961176c2619bb1b2f6b6e4b99ac78e90f1d8c"
+    },
+    {
+      "path": "dist/esm/server/webStandardStreamableHttp.js.map",
+      "bytes": 26455,
+      "sha256": "6cad6f0e93c7cb0c886837a1094825e8afff8e7933be28dfadea693cf11b1ebc"
+    },
+    {
+      "path": "dist/esm/server/zod-compat.d.ts",
+      "bytes": 3321,
+      "sha256": "361b4fff69ca3e465ca01f81803f83815c2b19f77fe7870d8449a7d64e337f7a"
+    },
+    {
+      "path": "dist/esm/server/zod-compat.d.ts.map",
+      "bytes": 2713,
+      "sha256": "63628d4ec41a6807a226134ae62674da71f29c6767b18c06f741bc665b073d78"
+    },
+    {
+      "path": "dist/esm/server/zod-compat.js",
+      "bytes": 7423,
+      "sha256": "66b539b003646258b9d82c382f2832836291e4ce2b0a37e253cfdc1222dafde1"
+    },
+    {
+      "path": "dist/esm/server/zod-compat.js.map",
+      "bytes": 6046,
+      "sha256": "2bd67f914e7a717958a7450812550969665d9f7a82f2b1e0ffb76cbcf30577d1"
+    },
+    {
+      "path": "dist/esm/server/zod-json-schema-compat.d.ts",
+      "bytes": 597,
+      "sha256": "8ad0f709b1e79ff8aac79a814d466daa2da7f8e36e78df98f381507fdfd7489e"
+    },
+    {
+      "path": "dist/esm/server/zod-json-schema-compat.d.ts.map",
+      "bytes": 633,
+      "sha256": "9621783d25badeff80e35ea4ef87d4b68ca52f77fa50b6de2456e60f7b25df4b"
+    },
+    {
+      "path": "dist/esm/server/zod-json-schema-compat.js",
+      "bytes": 1833,
+      "sha256": "c639ae841e53d32479cd8e4df2f373400cfe9b44bba072cafdf34a7235990dfa"
+    },
+    {
+      "path": "dist/esm/server/zod-json-schema-compat.js.map",
+      "bytes": 1614,
+      "sha256": "2c68ef7f8c0db74177c71b90907066e87bd9d6643443b30bdb1253427821577e"
+    },
+    {
+      "path": "dist/esm/shared/auth-utils.d.ts",
+      "bytes": 1026,
+      "sha256": "5b9268edcfc32085f43c1f84b81e0003154b251df345067489a94898e5e9bce4"
+    },
+    {
+      "path": "dist/esm/shared/auth-utils.d.ts.map",
+      "bytes": 390,
+      "sha256": "cb215d3aff0ce5bb9797bf3398abc365b84f421af8f2aa6cd25aa667b21ec574"
+    },
+    {
+      "path": "dist/esm/shared/auth-utils.js",
+      "bytes": 2271,
+      "sha256": "bf0e4cff75b49af1f090b48901d2ed51b44280a1ffcd18ad5286aea21951560c"
+    },
+    {
+      "path": "dist/esm/shared/auth-utils.js.map",
+      "bytes": 1383,
+      "sha256": "3c7ddb5d8b0f0d9a62659b966e613d1c4b0ab98e3956c38da75bed7595698dfd"
+    },
+    {
+      "path": "dist/esm/shared/auth.d.ts",
+      "bytes": 12938,
+      "sha256": "e97ead9f1f42bef3f253e0ab8131a37b81c0f2bd908c1f7b5810fdde780a99b5"
+    },
+    {
+      "path": "dist/esm/shared/auth.d.ts.map",
+      "bytes": 1767,
+      "sha256": "bbefefb73e727f277ba9f0d34442b7e4e3a0ad4275b99346a5a969dbb2bd5b13"
+    },
+    {
+      "path": "dist/esm/shared/auth.js",
+      "bytes": 8232,
+      "sha256": "70c91ecdc56d2aaff6181f1a59243e4c692cd65e23d66b390515682c662b282e"
+    },
+    {
+      "path": "dist/esm/shared/auth.js.map",
+      "bytes": 7851,
+      "sha256": "d9003222212bebc2b281a354ab15a9ee098aa09b0c98c4397aa2de02a75466f8"
+    },
+    {
+      "path": "dist/esm/shared/mediaType.d.ts",
+      "bytes": 1754,
+      "sha256": "bfd17ddde15e22f23c7f5a9828027a473ff08ed69d46de9d84b847ffade4dd70"
+    },
+    {
+      "path": "dist/esm/shared/mediaType.d.ts.map",
+      "bytes": 331,
+      "sha256": "cb911233fe55d72cafbfebef26337dfafbf3b3e4a972fcc388dcf987a03c1c3d"
+    },
+    {
+      "path": "dist/esm/shared/mediaType.js",
+      "bytes": 2514,
+      "sha256": "54f5679d57cf07fffcdf8e8d6ccd922021f6daa0b3af578762c12eb691355032"
+    },
+    {
+      "path": "dist/esm/shared/mediaType.js.map",
+      "bytes": 927,
+      "sha256": "b86729e9564ddb406ce60905d685d8beed297e4d53ac25d94c86823fe92e2cfa"
+    },
+    {
+      "path": "dist/esm/shared/metadataUtils.d.ts",
+      "bytes": 575,
+      "sha256": "3238e5ee802337c23db93d38795961e57ec1d857f86309252f2f81fe5d4dadd1"
+    },
+    {
+      "path": "dist/esm/shared/metadataUtils.d.ts.map",
+      "bytes": 341,
+      "sha256": "c74b62b369f20c1e76d276c46c7c0afaeb375f583e3eaed9ffa7dbd91ea41510"
+    },
+    {
+      "path": "dist/esm/shared/metadataUtils.js",
+      "bytes": 843,
+      "sha256": "c7bf596833711a23bbe52132e7a3b86596f5ca033070cc08ccb5a80043bd556d"
+    },
+    {
+      "path": "dist/esm/shared/metadataUtils.js.map",
+      "bytes": 501,
+      "sha256": "a2d503720a3dc132e3410c2cca56857389009fb8329ee833aa8a4bd3d101896e"
+    },
+    {
+      "path": "dist/esm/shared/protocol.d.ts",
+      "bytes": 18746,
+      "sha256": "beb2cdafa1697caece370cedc97cddc7638b2df66310193cd2ab2a76029828e8"
+    },
+    {
+      "path": "dist/esm/shared/protocol.d.ts.map",
+      "bytes": 6657,
+      "sha256": "29f0670b132685560bbaac8b5380c95bb86c5f7dec3be8a2f9ebd42335e844e6"
+    },
+    {
+      "path": "dist/esm/shared/protocol.js",
+      "bytes": 51762,
+      "sha256": "8de524602541771e084f7185e7d0fc418b8142a9cae1bd80a3ee7c70e9a9e132"
+    },
+    {
+      "path": "dist/esm/shared/protocol.js.map",
+      "bytes": 33941,
+      "sha256": "3a77e0495f9370ad1ec319e41682b87acc2e076fa14e12601500939950b3162c"
+    },
+    {
+      "path": "dist/esm/shared/responseMessage.d.ts",
+      "bytes": 1554,
+      "sha256": "dc94ff78ce389635f8320c2814824cc82ac9e048d41ac45b6207030265d0df69"
+    },
+    {
+      "path": "dist/esm/shared/responseMessage.d.ts.map",
+      "bytes": 1169,
+      "sha256": "75a8b5f4feb8c86fff928517661cc67f8c34334e3023abcf3c76672e1843985e"
+    },
+    {
+      "path": "dist/esm/shared/responseMessage.js",
+      "bytes": 455,
+      "sha256": "c465e4ede63fd5169e63f56fada3ff91019fb752695869c61c1446f89bbb1308"
+    },
+    {
+      "path": "dist/esm/shared/responseMessage.js.map",
+      "bytes": 672,
+      "sha256": "1eb09ed24b6d70190bd98a33e41f8356b19f63433a3d4ee493b4f4d3204452ee"
+    },
+    {
+      "path": "dist/esm/shared/stdio.d.ts",
+      "bytes": 616,
+      "sha256": "8a014a87c4bbe9865f96236d3ab5f461becc29b92cbeca4d01cf80c9c03e7a13"
+    },
+    {
+      "path": "dist/esm/shared/stdio.d.ts.map",
+      "bytes": 542,
+      "sha256": "b97f5e8af34ab1e19e9de0c2ee454b2a615b7ac7904dc6f478fedb34c82e1e88"
+    },
+    {
+      "path": "dist/esm/shared/stdio.js",
+      "bytes": 1357,
+      "sha256": "0e5c9d7062e97b9fe501f45f553ac73b3461e21d861e6548ee0903ce2b08114d"
+    },
+    {
+      "path": "dist/esm/shared/stdio.js.map",
+      "bytes": 1496,
+      "sha256": "46a5bc93d47a6350f0598aee6d82ce5b7d1d84fb13907a4ffed98a1205e910ff"
+    },
+    {
+      "path": "dist/esm/shared/toolNameValidation.d.ts",
+      "bytes": 1241,
+      "sha256": "3068163a94d7815e811d5e05bafebe9fd2d18e68e983bd6f162efc44a707b04b"
+    },
+    {
+      "path": "dist/esm/shared/toolNameValidation.d.ts.map",
+      "bytes": 446,
+      "sha256": "622af084b0312c9dc6d4e9b33e5fd9f2386e825a001a9c5b167e53548596c177"
+    },
+    {
+      "path": "dist/esm/shared/toolNameValidation.js",
+      "bytes": 3790,
+      "sha256": "3763306540e3ec9918aafbd77343cc8fb5f5ad7fb69c6f44d25fad4b4c5db382"
+    },
+    {
+      "path": "dist/esm/shared/toolNameValidation.js.map",
+      "bytes": 2273,
+      "sha256": "45bb4f92db7220841e3f43e238f8b20fa112fa3bbd8c8419411632fc9790d6da"
+    },
+    {
+      "path": "dist/esm/shared/transport.d.ts",
+      "bytes": 3744,
+      "sha256": "c69e129aad89bafd97ecda53ce74c0148982dba42f11c9d517db5352809ce899"
+    },
+    {
+      "path": "dist/esm/shared/transport.d.ts.map",
+      "bytes": 1298,
+      "sha256": "6bc0057c7678d4802add6548fdabb40b8b2fe0ccbea05160c48bdfae177895a9"
+    },
+    {
+      "path": "dist/esm/shared/transport.js",
+      "bytes": 1478,
+      "sha256": "0400eb6d5122ed6c82c47b43f5fa7e6b1f369798b591ea8e88b37faee0cce1de"
+    },
+    {
+      "path": "dist/esm/shared/transport.js.map",
+      "bytes": 970,
+      "sha256": "f6f611c8511f8be388a109ed9265102c993762c62cb95274a0b35cc4989ab34a"
+    },
+    {
+      "path": "dist/esm/shared/uriTemplate.d.ts",
+      "bytes": 828,
+      "sha256": "a6cd848cea6d42a5ab781c8594817a678db50a38321c2965d11b6cc03e382cbc"
+    },
+    {
+      "path": "dist/esm/shared/uriTemplate.d.ts.map",
+      "bytes": 716,
+      "sha256": "ad609fe121cd75820d6806cca00a97288e57d66027bdd9f4e27861981ec17187"
+    },
+    {
+      "path": "dist/esm/shared/uriTemplate.js",
+      "bytes": 8724,
+      "sha256": "b776e21fd218355580ca2b700a97be59c195cd21733342a10e19fd9920568070"
+    },
+    {
+      "path": "dist/esm/shared/uriTemplate.js.map",
+      "bytes": 8798,
+      "sha256": "47965bfd40ef74edd8023c268b0895c3e93650e9f8f204ed9b55a00ca5df057f"
+    },
+    {
+      "path": "dist/esm/spec.types.d.ts",
+      "bytes": 68886,
+      "sha256": "f612706dcbe34de49a77f2458ba4e0ef9e767efffc0f38024e3d84a8f1f66414"
+    },
+    {
+      "path": "dist/esm/spec.types.d.ts.map",
+      "bytes": 23243,
+      "sha256": "d68a942295145ae3d9eeb20296bb0cde2342c6f9ce276af2708ea45fbb988c83"
+    },
+    {
+      "path": "dist/esm/spec.types.js",
+      "bytes": 1042,
+      "sha256": "6ef83b1cbb29073dabaa61214e055d956ab56b3dfe34d2e86d5119fd0ad4d6c6"
+    },
+    {
+      "path": "dist/esm/spec.types.js.map",
+      "bytes": 574,
+      "sha256": "75090751b7844f7fc247686c72cbce1c994be63e6f521594c16f011352251874"
+    },
+    {
+      "path": "dist/esm/types.d.ts",
+      "bytes": 381960,
+      "sha256": "992f47b4534fed1f6064c90095c171d60118412a63d4432b5983b08d0148c880"
+    },
+    {
+      "path": "dist/esm/types.d.ts.map",
+      "bytes": 29917,
+      "sha256": "dcb9a3cf1ce524e3252fe326a679106744fabec31614f2fce943e296f491079e"
+    },
+    {
+      "path": "dist/esm/types.js",
+      "bytes": 73271,
+      "sha256": "962836b0f8dad85bcd398ad3ddb5ba81a7c7530c706955aa846dd8dfc02dd6a9"
+    },
+    {
+      "path": "dist/esm/types.js.map",
+      "bytes": 39367,
+      "sha256": "0e8e8b5ad88f54ca35f5e51fd95d95400e932b341485f1de3611a202c42a6d5d"
+    },
+    {
+      "path": "dist/esm/validation/ajv-provider.d.ts",
+      "bytes": 1884,
+      "sha256": "c14ff5fef3b5b43b181a0386bb0263d82a88242d633ddf46212372fdef8afe03"
+    },
+    {
+      "path": "dist/esm/validation/ajv-provider.d.ts.map",
+      "bytes": 473,
+      "sha256": "5488243a299cc8ce32c2af808d8f17b5b5a5028f69c44fa3a004c0b0a1733e0a"
+    },
+    {
+      "path": "dist/esm/validation/ajv-provider.js",
+      "bytes": 2814,
+      "sha256": "1893726b2b43d0688e8c37ce48b3c5f87a55eb93ca370433f882ae81c09c491a"
+    },
+    {
+      "path": "dist/esm/validation/ajv-provider.js.map",
+      "bytes": 1289,
+      "sha256": "5b761293073131c8e358cadc944e56539fa8dce1bc8c2da2be32643d447d0abc"
+    },
+    {
+      "path": "dist/esm/validation/cfworker-provider.d.ts",
+      "bytes": 1712,
+      "sha256": "9b8951f45670044147b9e29f91f9fbf6600d89745a284dbf5cb24a1466114358"
+    },
+    {
+      "path": "dist/esm/validation/cfworker-provider.d.ts.map",
+      "bytes": 609,
+      "sha256": "20f6043846fcd696b071c31d28bde8392be6cb7522b01b29475647ef27dc9b1d"
+    },
+    {
+      "path": "dist/esm/validation/cfworker-provider.js",
+      "bytes": 2169,
+      "sha256": "6f05627d2fc6389442aa6eb382a9069d7609b07ee7bb642854c8f88753cbcffe"
+    },
+    {
+      "path": "dist/esm/validation/cfworker-provider.js.map",
+      "bytes": 1021,
+      "sha256": "69a328b0247f5fbffd4e436768351b57c0bf849cbd94a2c97bbfd61ed695dda7"
+    },
+    {
+      "path": "dist/esm/validation/index.d.ts",
+      "bytes": 1091,
+      "sha256": "09b44568e0d176d287eb949cf97d6ec04db5e197ff9552a963acbc90893c80dd"
+    },
+    {
+      "path": "dist/esm/validation/index.d.ts.map",
+      "bytes": 232,
+      "sha256": "9798345c9fae61f38aee9a5ba94096e9fef9a9d4ac22e2430628506b634e383c"
+    },
+    {
+      "path": "dist/esm/validation/index.js",
+      "bytes": 981,
+      "sha256": "3d6ecbe8cb24e8207754e1f32016b92797cb4c932442395a6ed203f82ab3b3e8"
+    },
+    {
+      "path": "dist/esm/validation/index.js.map",
+      "bytes": 154,
+      "sha256": "68fd0f4a15137236b15d673cae39bccca0fd1a45acd1762ea83ff6b349a45f89"
+    },
+    {
+      "path": "dist/esm/validation/types.d.ts",
+      "bytes": 2170,
+      "sha256": "d58e26bd30e5a3390e09efaecdd81375978e0ca778715687d7728655ed19e337"
+    },
+    {
+      "path": "dist/esm/validation/types.d.ts.map",
+      "bytes": 705,
+      "sha256": "e4b77f9e3e8e496fd978f649724c93a7b1967cc1418a52be06a5dbcf43b7b2fb"
+    },
+    {
+      "path": "dist/esm/validation/types.js",
+      "bytes": 44,
+      "sha256": "01ae2a5b120382f9a648ced7ee8507493a134f216d100fc61600c6c9738235d2"
+    },
+    {
+      "path": "dist/esm/validation/types.js.map",
+      "bytes": 119,
+      "sha256": "94457656edd55e7ee1140990876d85676838662e970ec802dfaf642417a29c64"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1071,
+      "sha256": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d"
+    },
+    {
+      "path": "package.json",
+      "bytes": 6511,
+      "sha256": "0690cbe02511a95d1ff199acf20b5a12ac4dfde1bbe30c82a0de73afa92dffc9"
+    },
+    {
+      "path": "README.md",
+      "bytes": 15001,
+      "sha256": "b09e435fa332a135962bf4e8154f14473d7c3364a3ff5d9c8b6bf273702f764d"
+    }
+  ],
+  "patchedTargets": [
+    {
+      "path": "dist/cjs/server/webStandardStreamableHttp.js",
+      "bytes": 47209,
+      "sha256": "4c4e0897c6dd5096b5a8ba596a32ef25b6ca0547aed1d4fea716f0681c0dec34"
+    },
+    {
+      "path": "dist/esm/server/webStandardStreamableHttp.js",
+      "bytes": 46851,
+      "sha256": "e85cd0d7f1810bf8e4604a15e38a7fb12d20cd850357e6e1889b5e04a49982c7"
+    }
+  ]
+}
