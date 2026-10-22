@@ -21,8 +21,28 @@ type Candidate = {
 type Request = {
   controller: AbortController;
   remainingBytes: number;
+  remainingRequests: number;
+  retryAvailable: boolean;
+  deadlineAt: number;
   owned(): boolean;
   active(): boolean;
+};
+class HTTPError extends Error {
+  constructor(
+    readonly status: number,
+    readonly retryAfter: string | null,
+  ) {
+    super(`LRCLib HTTP ${status}`);
+  }
+}
+const retryDelay = (error: HTTPError): number => {
+  const value = error.retryAfter?.trim();
+  if (!value) return 500;
+  const seconds = Number(value);
+  const delay = Number.isFinite(seconds)
+    ? seconds * 1000
+    : Date.parse(value) - Date.now();
+  return Number.isFinite(delay) ? Math.max(500, delay) : 500;
 };
 const retired = new Error('LRCLib request retired');
 const deadline = new Error('LRCLib request deadline exceeded');
@@ -112,6 +132,43 @@ export class LRCLib implements LyricProvider {
     query: URLSearchParams,
     request: Request,
     interrupt: Promise<never>,
+    allowRetry: boolean,
+  ): Promise<unknown[]> {
+    try {
+      return await this.responseOnce(query, request, interrupt);
+    } catch (error) {
+      if (
+        !allowRetry ||
+        !request.active() ||
+        !request.retryAvailable ||
+        request.remainingRequests === 0 ||
+        !(error instanceof HTTPError) ||
+        ![429, 502, 503, 504].includes(error.status)
+      )
+        throw error;
+      const delay = retryDelay(error);
+      // Do not shorten the service's Retry-After or extend the search lease.
+      if (delay >= request.deadlineAt - Date.now()) throw error;
+      request.retryAvailable = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, delay);
+          }),
+          interrupt,
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+      return this.responseOnce(query, request, interrupt);
+    }
+  }
+
+  private async responseOnce(
+    query: URLSearchParams,
+    request: Request,
+    interrupt: Promise<never>,
   ): Promise<unknown[]> {
     const assertCurrent = () => {
       if (!request.active()) {
@@ -120,6 +177,7 @@ export class LRCLib implements LyricProvider {
       }
     };
     assertCurrent();
+    request.remainingRequests--;
     const response = await Promise.race([
       fetch(`${this.baseUrl}/api/search?${query.toString()}`, {
         signal: request.controller.signal,
@@ -129,7 +187,11 @@ export class LRCLib implements LyricProvider {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       assertCurrent();
-      if (!response.ok) throw new Error(`LRCLib HTTP ${response.status}`);
+      if (!response.ok)
+        throw new HTTPError(
+          response.status,
+          response.headers.get('retry-after'),
+        );
       const declared = response.headers.get('content-length');
       if (declared && Number(declared) > request.remainingBytes)
         throw new Error('LRCLib response budget exceeded');
@@ -181,6 +243,9 @@ export class LRCLib implements LyricProvider {
     const request: Request = {
       controller,
       remainingBytes: LRCLIB_LIMITS.responseBytes,
+      remainingRequests: LRCLIB_LIMITS.queries,
+      retryAvailable: true,
+      deadlineAt: Date.now() + LRCLIB_LIMITS.deadlineMs,
       owned: () =>
         this.request === request &&
         (!managed || config()?.enabled === true) &&
@@ -208,7 +273,8 @@ export class LRCLib implements LyricProvider {
       b.identity.duration - a.identity.duration;
     try {
       for (const query of planned.queries) {
-        const data = await this.response(query, request, interrupt);
+        if (request.remainingRequests === 0) break;
+        const data = await this.response(query, request, interrupt, !best);
         if (data.length > LRCLIB_LIMITS.candidates - examined)
           throw new Error('LRCLib candidate budget exceeded');
         for (const value of data) {
