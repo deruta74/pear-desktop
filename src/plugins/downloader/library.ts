@@ -711,6 +711,7 @@ export async function publishCompleted(
             const candidate = path.join(targetDirectory, name);
             assertCurrent();
             await assertDirectories();
+            assertCurrent();
             try {
               await link(temp, candidate);
               finalPath = candidate;
@@ -761,6 +762,7 @@ export async function publishCompleted(
             indexHandle = undefined;
             assertCurrent();
             await assertDirectories();
+            assertCurrent();
             await rename(indexTemp, path.join(canonical, INDEX));
           } catch (e) {
             throw new Error('Audio saved; library index update failed', {
