@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
-import { join, relative, resolve, isAbsolute, sep } from 'node:path';
+import { join } from 'node:path';
 
 import { Mutex } from 'async-mutex';
 import { BG, type BgConfig } from 'bgutils-js';
@@ -44,6 +44,7 @@ import {
   cropMaxWidth,
   clearErrorFeedback,
   getFolder,
+  getLibraryRoot,
   sendErrorFeedback,
   sendFeedback as sendFeedback_,
   setBadge,
@@ -569,11 +570,13 @@ export const openDownloaderSettings = () => {
 
 const resolvePreset = (selected: string | undefined): Preset => {
   const name = selected ?? 'mp3 (256kbps)';
-  if (name === 'Custom')
-    return config.customPresetSetting ?? DefaultPresetList['Custom'];
-  return Object.hasOwn(DefaultPresetList, name)
-    ? DefaultPresetList[name]
-    : DefaultPresetList['mp3 (256kbps)'];
+  const preset =
+    name === 'Custom'
+      ? (config.customPresetSetting ?? DefaultPresetList['mp3 (256kbps)'])
+      : Object.hasOwn(DefaultPresetList, name)
+        ? DefaultPresetList[name]
+        : DefaultPresetList['mp3 (256kbps)'];
+  return { ...preset, ffmpegArgs: [...preset.ffmpegArgs] };
 };
 
 export async function downloadSong(
@@ -756,13 +759,11 @@ async function downloadSongUnsafe(
       );
   }
 
+  const dir = getFolder(playlistFolder || config.downloadFolder);
+  const libraryRoot = getLibraryRoot(getFolder(config.downloadFolder), dir);
   if (
     config.duplicatePolicy === 'skip-any' &&
-    (await hasVerifiedTrack(
-      getFolder(playlistFolder || config.downloadFolder),
-      id,
-      () => assertCurrentBinding(owner),
-    ))
+    (await hasVerifiedTrack(libraryRoot, id, () => assertCurrentBinding(owner)))
   ) {
     sendFeedback('Already downloaded (verified track)', -1);
     return { status: 'skipped' as const };
@@ -786,7 +787,6 @@ async function downloadSongUnsafe(
 
   metadata.trackId = trackId;
 
-  const dir = getFolder(playlistFolder || config.downloadFolder);
   const name = `${metadata.artist ? `${metadata.artist} - ` : ''}${
     metadata.title
   }`;
@@ -869,13 +869,6 @@ async function downloadSongUnsafe(
     return;
   }
 
-  const root = getFolder(config.downloadFolder);
-  // Explicit alternate folders outside the configured library own their index.
-  const within = relative(resolve(root), resolve(dir));
-  const libraryRoot =
-    within === '..' || within.startsWith(`..${sep}`) || isAbsolute(within)
-      ? dir
-      : root;
   const completed: CompletedInput = {
     videoId: metadata.videoId,
     source: selected,
@@ -1042,44 +1035,44 @@ async function iterableStreamToProcessedUint8Array(
   sendFeedback(t('plugins.downloader.backend.feedback.loading'), 2); // Indefinite progress bar after download
 
   const safeVideoName = randomBytes(32).toString('hex');
+  const safeVideoNameWithExtension = `${safeVideoName}.${extension}`;
 
   return await ffmpegMutex.runExclusive(async () => {
     try {
       assertCurrentBinding(owner);
       const ffmpegInstance = await ffmpeg.get();
-      if (!ffmpegInstance.isLoaded()) {
-        await ffmpegInstance.load();
-      }
-
-      sendFeedback(t('plugins.downloader.backend.feedback.preparing-file'));
-      ffmpegInstance.FS(
-        'writeFile',
-        safeVideoName,
-        Buffer.concat(
-          await downloadChunks(
-            stream,
-            contentLength,
-            sendFeedback,
-            increasePlaylistProgress,
-          ),
-        ),
-      );
-
-      sendFeedback(t('plugins.downloader.backend.feedback.converting'));
-
-      ffmpegInstance.setProgress(({ ratio }) => {
-        sendFeedback(
-          t('plugins.downloader.backend.feedback.conversion-progress', {
-            percent: Math.floor(ratio * 100),
-          }),
-          ratio,
-        );
-        const conversionProgress = ratio * 0.85;
-        increasePlaylistProgress(0.15 + conversionProgress);
-      });
-
-      const safeVideoNameWithExtension = `${safeVideoName}.${extension}`;
       try {
+        if (!ffmpegInstance.isLoaded()) {
+          await ffmpegInstance.load();
+        }
+
+        sendFeedback(t('plugins.downloader.backend.feedback.preparing-file'));
+        ffmpegInstance.FS(
+          'writeFile',
+          safeVideoName,
+          Buffer.concat(
+            await downloadChunks(
+              stream,
+              contentLength,
+              sendFeedback,
+              increasePlaylistProgress,
+            ),
+          ),
+        );
+
+        sendFeedback(t('plugins.downloader.backend.feedback.converting'));
+
+        ffmpegInstance.setProgress(({ ratio }) => {
+          sendFeedback(
+            t('plugins.downloader.backend.feedback.conversion-progress', {
+              percent: Math.floor(ratio * 100),
+            }),
+            ratio,
+          );
+          const conversionProgress = ratio * 0.85;
+          increasePlaylistProgress(0.15 + conversionProgress);
+        });
+
         await ffmpegInstance.run(
           '-i',
           safeVideoName,
@@ -1087,16 +1080,25 @@ async function iterableStreamToProcessedUint8Array(
           ...getFFmpegMetadataArgs(metadata),
           safeVideoNameWithExtension,
         );
-      } finally {
-        ffmpegInstance.FS('unlink', safeVideoName);
-      }
 
-      sendFeedback(t('plugins.downloader.backend.feedback.saving'));
+        sendFeedback(t('plugins.downloader.backend.feedback.saving'));
 
-      try {
         return ffmpegInstance.FS('readFile', safeVideoNameWithExtension);
       } finally {
-        ffmpegInstance.FS('unlink', safeVideoNameWithExtension);
+        for (const ownedFile of [safeVideoName, safeVideoNameWithExtension]) {
+          try {
+            if (
+              ffmpegInstance.isLoaded() &&
+              ffmpegInstance.FS('readdir', '/').includes(ownedFile)
+            )
+              ffmpegInstance.FS('unlink', ownedFile);
+          } catch (cleanupError) {
+            console.warn(
+              'Could not clean downloader processing file',
+              cleanupError,
+            );
+          }
+        }
       }
     } catch (error: unknown) {
       if (isCurrentBinding(owner)) sendError(error as Error, safeVideoName);

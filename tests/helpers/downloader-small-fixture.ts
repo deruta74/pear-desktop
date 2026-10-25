@@ -53,6 +53,14 @@ interface FixtureState {
   pendingDialogs: { reject: (error: Error) => void }[];
   lastFormat?: { type: string };
   mediaBytes?: number;
+  rangedMedia?: boolean;
+  rangeFailureAt?: number;
+  ffmpegPartialFailure?: boolean;
+  ffmpegSeedForeignFile?: boolean;
+  ffmpegUnlinkInputError?: boolean;
+  ffmpegUnlinks?: string[];
+  ffmpegFiles?: string[];
+  ffmpegInputs?: { size: number; sha256: string }[];
   sourceLength?: number | null;
   live?: boolean;
   loginRequired?: boolean;
@@ -66,9 +74,11 @@ interface FixtureSource {
     onMainStop?: (context: BackendContext<DownloaderPluginConfig>) => void;
     downloadSongFromId: (id: string, folder?: string) => Promise<void>;
     downloadPlaylist: (url: string) => Promise<void>;
+    resolvePreset: (selected: string | undefined) => Preset;
   };
   DefaultPresetList: Record<string, Preset>;
   getFolder: (folder?: string) => string;
+  getLibraryRoot: (root: string, destination: string) => string;
   fixtureCallbacks: Set<unknown>;
   aliasFixtureCallbacks: Set<unknown>;
   loadI18n: () => Promise<unknown>;
@@ -123,7 +133,7 @@ export async function downloaderFixture() {
     `
 export * as downloader from ${JSON.stringify(main)};
 export {DefaultPresetList} from ${JSON.stringify(normalizeDownloaderFixtureId(path.join(root, 'src/plugins/downloader/types.ts')))};
-export {getFolder} from ${JSON.stringify(normalizeDownloaderFixtureId(path.join(root, 'src/plugins/downloader/main/utils.ts')))};
+export {getFolder,getLibraryRoot} from ${JSON.stringify(normalizeDownloaderFixtureId(path.join(root, 'src/plugins/downloader/main/utils.ts')))};
 export {fixtureCallbacks,SongInfoEvent} from ${JSON.stringify(songInfo)};
 export {fixtureCallbacks as aliasFixtureCallbacks} from '@/providers/song-info';
 export {loadI18n} from ${JSON.stringify(normalizeDownloaderFixtureId(path.join(root, 'src/i18n/index.ts')))};
@@ -144,7 +154,7 @@ export const app={getPath:()=>${JSON.stringify(downloads)},setBadgeCount(value){
 export const dialog={showMessageBox:async(_window,options)=>{state.dialogs.push(options);if(state.dialogMode==='defer')return new Promise((_resolve,reject)=>state.pendingDialogs.push({reject}));return {response:0};}};
 export class Notification extends EventEmitter {static isSupported(){return false;}show(){}close(){}}
 export const nativeImage={createFromBuffer:()=>({isEmpty:()=>true,getSize:()=>({width:0,height:0})})};
-export const net={fetch:async(input,init)=>{const url=String(input.url??input);state.network.push({url,init});if(state.networkMode==='defer')return new Promise((_resolve,reject)=>{const signal=init?.signal??input.signal;const abort=()=>reject(new DOMException('Owned request aborted','AbortError'));if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});});return new Response(new Uint8Array(url.includes('/media?')?(state.mediaBytes??3):1));}};
+export const net={fetch:async(input,init)=>{const url=String(input.url??input);state.network.push({url,init});if(state.networkMode==='defer')return new Promise((_resolve,reject)=>{const signal=init?.signal??input.signal;const abort=()=>reject(new DOMException('Owned request aborted','AbortError'));if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});});if(url.includes('/media?')&&state.rangedMedia){const count=state.network.filter(row=>row.url.includes('/media?')).length-1;if(count===state.rangeFailureAt)throw Error('Owned intermediate range failure');const [start,end]=new URL(url).searchParams.get('range').split('-').map(Number);const bytes=new Uint8Array(Math.min(end,state.sourceLength-1)-start+1);for(let i=0;i<bytes.length;i++)bytes[i]=(start+i)%251;return new Response(bytes);}return new Response(new Uint8Array(url.includes('/media?')?(state.mediaBytes??3):1));}};
 `;
   const youtube = `
 import {state} from 'electron';
@@ -160,8 +170,9 @@ const client=(options,index)=>({options,session:{context:{client:{visitorData:st
 export const Innertube={create:(options)=>{const index=state.creates.length;state.creates.push(options);const value=client(options,index);state.clients.push(value);if(state.initMode==='reject')return Promise.reject(Error('Owned fixture initialization failure'));if(state.initMode==='defer')return new Promise((resolve,reject)=>state.pending.push({resolve:()=>resolve(value),reject}));return Promise.resolve(value);}};
 `;
   const ffmpeg = `
+import {createHash} from 'node:crypto';
 import {state} from 'electron';
-export const createFFmpeg=()=>{let loaded=false;const files=new Map();return {isLoaded:()=>loaded,load:async()=>{loaded=true;},setProgress(){},run:async(...args)=>{state.runs.push(args);files.set(args.at(-1),new Uint8Array([1,2,3]));},FS:(action,name,value)=>{if(action==='writeFile')files.set(name,value);if(action==='readFile')return files.get(name);if(action==='unlink')files.delete(name);}};};
+export const createFFmpeg=()=>{let loaded=false;const files=new Map(state.ffmpegSeedForeignFile?[['unrelated-wasm-resource',new Uint8Array([9])]]:[]);state.ffmpegFiles=[...files.keys()];state.ffmpegInputs=[];state.ffmpegUnlinks=[];return {isLoaded:()=>loaded,load:async()=>{loaded=true;},setProgress(){},run:async(...args)=>{state.runs.push(args);files.set(args.at(-1),new Uint8Array([1,2,3]));state.ffmpegFiles=[...files.keys()];if(state.ffmpegPartialFailure)throw Error('Owned partial-output converter failure');},FS:(action,name,value)=>{if(action==='writeFile'){files.set(name,value);state.ffmpegInputs.push({size:value.byteLength,sha256:createHash('sha256').update(value).digest('hex')});}if(action==='readFile')return files.get(name);if(action==='readdir')return ['.','..',...files.keys()];if(action==='unlink'){state.ffmpegUnlinks.push(name);if(state.ffmpegUnlinkInputError&&!name.includes('.'))throw Error('Owned input cleanup failure');files.delete(name);}state.ffmpegFiles=[...files.keys()];}};};
 `;
   const bg = `
 import {state} from 'electron';
@@ -246,7 +257,7 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
             };
           if (policy.isMain(id))
             return {
-              code: `import {state as __state} from 'electron';const console={error:(v)=>__state.logs.push(String(v)),warn:(v)=>__state.logs.push(String(v)),trace:(v)=>__state.logs.push(String(v)),info:()=>{},log:()=>{}};\n${code}`,
+              code: `import {state as __state} from 'electron';const console={error:(v)=>__state.logs.push(String(v)),warn:(v,...rest)=>__state.logs.push([v,...rest].map(String).join(' ')),trace:(v)=>__state.logs.push(String(v)),info:()=>{},log:()=>{}};\n${code}\nexport {resolvePreset};`,
               map: null,
             };
         },
