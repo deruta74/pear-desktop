@@ -5,7 +5,8 @@
     "catalog": "aa4f779f9245b5df98046292dd9000fb96eb5308f6976bd0bcdebd9131c5c422",
     "portableIndex": "e5df948807bc41b76a42ebcd0948c9a77f26b78964d12007fe6646237a44c08d",
     "closure": "388775c9161abdbdde8bdd21243dac63f818350513fd11701b7976cd7fac5dbf",
-    "sdk1320Source": "6af1872cc140ce73a4941af07ea89ba39e8a80ea07758a329207612dc8c0d3e2"
+    "sdk1320Source": "6af1872cc140ce73a4941af07ea89ba39e8a80ea07758a329207612dc8c0d3e2",
+    "bodyParser240Source": "7a08e5eeaf4a62fc1bc5e3ff101aea8dd9ab7a167c3b77c0b6e3f99c5d8e678c"
   },
   "sdkSpecifier": "1.32.0",
   "sdkPatchSha256": "bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf",
@@ -18,7 +19,7 @@
       "accepts@2.0.0",
       "ajv-formats@3.0.1",
       "ajv@8.20.0",
-      "body-parser@2.3.0(supports-color@7.2.0)",
+      "body-parser@2.4.0(supports-color@7.2.0)",
       "bytes@3.1.2",
       "call-bind-apply-helpers@1.0.2",
       "call-bound@1.0.4",
@@ -323,8 +324,8 @@
         "from": "express@5.3.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "body-parser",
-        "reference": "2.3.0(supports-color@7.2.0)",
-        "to": "body-parser@2.3.0(supports-color@7.2.0)"
+        "reference": "2.4.0(supports-color@7.2.0)",
+        "to": "body-parser@2.4.0(supports-color@7.2.0)"
       },
       {
         "from": "express@5.3.0(supports-color@7.2.0)",
@@ -593,63 +594,63 @@
         "to": "negotiator@1.1.0"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "bytes",
         "reference": "3.1.2",
         "to": "bytes@3.1.2"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "content-type",
         "reference": "2.1.0",
         "to": "content-type@2.1.0"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "debug",
         "reference": "4.4.3(supports-color@7.2.0)",
         "to": "debug@4.4.3(supports-color@7.2.0)"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "http-errors",
         "reference": "2.0.1",
         "to": "http-errors@2.0.1"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "iconv-lite",
         "reference": "0.7.3",
         "to": "iconv-lite@0.7.3"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "on-finished",
         "reference": "2.4.1",
         "to": "on-finished@2.4.1"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "qs",
         "reference": "6.16.1",
         "to": "qs@6.16.1"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "raw-body",
         "reference": "3.0.2",
         "to": "raw-body@3.0.2"
       },
       {
-        "from": "body-parser@2.3.0(supports-color@7.2.0)",
+        "from": "body-parser@2.4.0(supports-color@7.2.0)",
         "kind": "dependencies",
         "dependency_name": "type-is",
         "reference": "2.1.0",
@@ -1254,7 +1255,7 @@
         "exact_snapshot_target": "zod@4.4.3"
       },
       {
-        "snapshot": "body-parser@2.3.0(supports-color@7.2.0)",
+        "snapshot": "body-parser@2.4.0(supports-color@7.2.0)",
         "context": "supports-color@7.2.0",
         "exact_snapshot_target": "supports-color@7.2.0"
       },
@@ -1463,31 +1464,33 @@
     },
     {
       "name": "body-parser",
-      "version": "2.3.0",
-      "recordId": "added54:03:body-parser@2.3.0",
-      "qualification": "SOURCE_SUMMARY_ONLY_NO_GRAPH_BINDING",
-      "sourceGroup": "added54_static",
-      "noticeFile": "notices/007-body-parser_2.3.0-23d466b1b134.txt",
+      "version": "2.4.0",
+      "recordId": "body-parser-maintenance-2026-10-25:01:body-parser@2.4.0",
+      "qualification": "REGISTRY_ARCHIVE_INTEGRITY_AND_ORIGINAL_NOTICE_BYTES_VERIFIED_SOURCE_ONLY",
+      "sourceGroup": "body_parser_240_official_archive",
+      "noticeFile": "notices/007-body-parser_2.4.0-23d466b1b134.txt",
       "noticeSha256": "23d466b1b134b415b66fa50c6526b4cf3e7b9258554da88d3abb371721e7ce68",
       "noticeBytes": 1172,
       "source": {
-        "archiveSha256": "031d7f6c5142e31be91d36a43f541f02a505943e3b871aa44ef5fb6939be258e",
-        "packageJsonSha256": "ae841913f51a2b463ba86e011564784654dad953352dc972baf59f87da4b2d36",
-        "originalNoticePath": null,
+        "archiveSha256": "3f6e22dc9710a8bd5942fee8dfbd4632b54980cc2f33854f1ec1e314b17b2357",
+        "archiveIntegrity": "sha512-Ifk1KcLrxaGt1occQagQNFNNOqRt1LFuehEnHHzB8Z6cRgIxRU1TBaiIsUiCdA+gy5PL7Y1IX31DNKkRmxtXjQ==",
+        "packageJsonSha256": "9410a56eb52cfe53ec48f013c872d4d336bb1cad66ea166bf3d97d2807bf542a",
+        "originalNoticePath": "package/LICENSE",
         "licenseLabel": {
           "registry_expression": "MIT",
-          "validation": "SUMMARY_ONLY"
+          "package_json_literal": "MIT",
+          "validation": "SOURCE_ONLY_NO_LICENSE_EXPRESSION_AUDIT"
         },
-        "qualification": "SOURCEONLY_UNVALIDATED_M73_GRAPH_NOT_BOUND"
+        "qualification": "REGISTRY_ARCHIVE_INTEGRITY_AND_ORIGINAL_NOTICE_BYTES_VERIFIED_SOURCE_ONLY"
       },
       "package": {
-        "key": "body-parser@2.3.0",
-        "sha256": "af773ee3ee0fa9371f509e6e1aaa7cc30b2563b971d435f2d87dea2187f9f42f"
+        "key": "body-parser@2.4.0",
+        "sha256": "59fa00f557b3784e8828bed102df62f2c5c15d3af88b9929eb95b2111c676667"
       },
       "snapshots": [
         {
-          "key": "body-parser@2.3.0(supports-color@7.2.0)",
-          "sha256": "271c45a82deeae9bfce27e3e049dadecb81b953dce84dbc042adb739dfaceabb"
+          "key": "body-parser@2.4.0(supports-color@7.2.0)",
+          "sha256": "d3640421ba50900b6d4b22b21c14e3baa12815f1f4bfbe9a90dcd1cba9ba90e4"
         }
       ]
     },
@@ -2220,7 +2223,7 @@
       "snapshots": [
         {
           "key": "express@5.3.0(supports-color@7.2.0)",
-          "sha256": "22e12881c7187153361a3c1f87fa1bc83ea85bd60829a8e45529bbe57f047f9a"
+          "sha256": "e994c4a72326e61aa5c2fa8258f1d7db74b0554ff82fbb2bbebb30f83c1eab0f"
         }
       ]
     },
@@ -4173,5 +4176,11 @@
     "replacedRecordId": "added54:01:@modelcontextprotocol/sdk@1.30.0",
     "retainedAcceptedRecordCount": 93,
     "graphMapping": "Only the SDK version and maintained patch qualifier change; the declared dependency and peer edge topology remains identical."
+  },
+  "bodyParserSourceUpdate": {
+    "sourceFile": "sources/body-parser-2.4.0.json",
+    "replacedRecordId": "added54:03:body-parser@2.3.0",
+    "retainedCurrentSourceRecordCount": 93,
+    "graphMapping": "Only body-parser version labels and the Express child snapshot binding change; no other selected dependency version changes."
   }
 }

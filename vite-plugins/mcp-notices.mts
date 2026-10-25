@@ -34,7 +34,10 @@ type NoticeRecord = {
 };
 type Binding = {
   format: number;
-  acceptedSourceHashes: { sdk1320Source: string };
+  acceptedSourceHashes: {
+    sdk1320Source: string;
+    bodyParser240Source: string;
+  };
   sdkSpecifier: string;
   sdkImporterSha256: string;
   sdkPatchSha256: string;
@@ -242,6 +245,15 @@ export async function emitMcpNotices(root: string) {
     binding.acceptedSourceHashes.sdk1320Source
   )
     fail('SDK source provenance hash changed');
+  const bodyParserSource = await readFile(
+    join(base, 'sources/body-parser-2.4.0.json'),
+    'utf8',
+  );
+  if (
+    sha256(bodyParserSource.replace(/\r\n/g, '\n')) !==
+    binding.acceptedSourceHashes.bodyParser240Source
+  )
+    fail('body-parser source provenance hash changed');
   const ids = binding.records.map(
     (record) => `${record.name}@${record.version}`,
   );

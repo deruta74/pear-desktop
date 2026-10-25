@@ -56,11 +56,15 @@ test('wrong notice SHA and a missing original are refused', async (t) => {
   await assert.rejects(emitMcpNotices(dir), /ENOENT/);
 });
 
-test('new exact-version SDK provenance cannot drift from the reviewed source binding', async (t) => {
+test('exact-version dependency provenance cannot drift from the reviewed source binding', async (t) => {
   const { dir } = await fixture(t);
-  const source = join(dir, 'licenses/mcp/sources/sdk-1.32.0.json');
-  await writeFile(source, (await readFile(source, 'utf8')) + ' ');
-  await assert.rejects(emitMcpNotices(dir), /SDK source provenance hash/);
+  for (const file of ['sdk-1.32.0.json', 'body-parser-2.4.0.json']) {
+    const source = join(dir, 'licenses/mcp/sources', file);
+    const original = await readFile(source, 'utf8');
+    await writeFile(source, original + ' ');
+    await assert.rejects(emitMcpNotices(dir), /source provenance hash/);
+    await writeFile(source, original);
+  }
 });
 
 test('Windows CRLF checkout preserves semantic SDK metadata without normalizing original notices', async (t) => {
@@ -68,6 +72,7 @@ test('Windows CRLF checkout preserves semantic SDK metadata without normalizing 
   for (const file of [
     'pnpm-lock.yaml',
     'licenses/mcp/sources/sdk-1.32.0.json',
+    'licenses/mcp/sources/body-parser-2.4.0.json',
   ]) {
     const target = join(dir, file);
     await writeFile(
