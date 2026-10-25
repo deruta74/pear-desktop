@@ -95,7 +95,7 @@ export const dialog={showMessageBox:async()=>({response:1})};
     ],
   });
   const output = path.join(directory, 'actual-source.cjs');
-  await bundle.write({ file: output, format: 'cjs' });
+  await bundle.write({ file: output, format: 'cjs', codeSplitting: false });
   await bundle.close();
   // Only native/config/translation boundaries are supplied. Provider, mutex,
   // backend lifecycle, Hono middleware, route handlers and schemas are real.

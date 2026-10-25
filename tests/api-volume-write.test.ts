@@ -134,7 +134,7 @@ ${await registeredVolumeHandler()};`,
     ],
   });
   const output = path.join(directory, 'actual-source.cjs');
-  await bundle.write({ file: output, format: 'cjs' });
+  await bundle.write({ file: output, format: 'cjs', codeSplitting: false });
   await bundle.close();
   source = requireRoot(output);
   Object.assign(dom, {

@@ -169,3 +169,58 @@ test('native editor independently selects Home and library with empty defaults a
     );
   }
 });
+
+test('MCP native target uses separate transport/resource and offers only the five read scopes', async () => {
+  const m = await musicModuleSource('src/plugins/api-server/music-menu.ts');
+  const issues: unknown[][] = [],
+    dialogs: any[] = [],
+    writes: unknown[] = [];
+  const choices = [6, 2, 0];
+  const target = {
+    transport: 'mcp',
+    resource: 'http://127.0.0.1:26539/mcp',
+    captureNativeOwner: () => ({ current: () => true }),
+    grants: {
+      issue: async (...args: unknown[]) => {
+        issues.push(args);
+        return { token: 'owned-native-mcp', record: { id: 'owned' } };
+      },
+      revoke: async () => {},
+      list: async () => [],
+    },
+  };
+  const menu = await m.createMusicGrantMenu(
+    {
+      getConfig: async () => ({ enabled: true, mcpEnabled: true }),
+      setConfig: async (value: unknown) => {
+        writes.push(value);
+      },
+    },
+    () => target,
+    {
+      prompt: async () => 'Owned MCP',
+      show: async (value: unknown) => {
+        dialogs.push(value);
+        return { response: choices.shift() };
+      },
+      copy: () => {},
+    },
+    'mcp',
+  );
+  await menu
+    .find((entry: any) => entry.type === 'checkbox')
+    .click({ checked: false });
+  expect(writes).toEqual([{ mcpEnabled: false }]);
+  await menu
+    .find((entry: any) => entry.label === 'Create client grant…')
+    .click();
+  expect(issues[0].slice(0, 4)).toEqual([
+    'Owned MCP',
+    'mcp',
+    target.resource,
+    ['comments.read'],
+  ]);
+  expect(JSON.stringify(dialogs)).not.toContain('playback control');
+  expect(JSON.stringify(dialogs)).not.toContain('queue write');
+  expect(JSON.stringify(dialogs)).not.toContain('owned-native-mcp');
+});

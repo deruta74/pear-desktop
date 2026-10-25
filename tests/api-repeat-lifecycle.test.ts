@@ -128,7 +128,7 @@ async function fixture({
     ],
   });
   const output = path.join(directory, 'actual-source.cjs');
-  await build.write({ file: output, format: 'cjs' });
+  await build.write({ file: output, format: 'cjs', codeSplitting: false });
   await build.close();
   source = requireRoot(output);
   let installed = false;

@@ -4,6 +4,7 @@ import { clipboard, dialog } from 'electron';
 import { t } from '@/i18n';
 import promptOptions from '@/providers/prompt-options';
 
+import { getMcpGrantTarget } from './backend/mcp-owner';
 import { getMusicService } from './backend/music-service';
 import {
   type APIServerConfig,
@@ -22,27 +23,37 @@ export const onMenu = async ({
 }: MenuContext<APIServerConfig>): Promise<MenuTemplate> => {
   const config = await getConfig();
 
+  const native = {
+    prompt: async () =>
+      (await prompt(
+        {
+          title: 'Music API client name',
+          label: 'Client name',
+          type: 'input',
+          width: 380,
+          ...promptOptions(),
+        },
+        window,
+      )) ?? null,
+    show: (options: import('electron').MessageBoxOptions) =>
+      dialog.showMessageBox(window, options),
+    copy: (token: string) => clipboard.writeText(token),
+  };
+  const context = { getConfig, setConfig, window, refresh: () => {} };
   const musicMenu = await createMusicGrantMenu(
-    { getConfig, setConfig, window, refresh: () => {} },
+    context,
     () => getMusicService(window),
-    {
-      prompt: async () =>
-        (await prompt(
-          {
-            title: 'Music API client name',
-            label: 'Client name',
-            type: 'input',
-            width: 380,
-            ...promptOptions(),
-          },
-          window,
-        )) ?? null,
-      show: (options) => dialog.showMessageBox(window, options),
-      copy: (token) => clipboard.writeText(token),
-    },
+    native,
+  );
+  const mcpMenu = await createMusicGrantMenu(
+    context,
+    () => getMcpGrantTarget(window),
+    native,
+    'mcp',
   );
   return [
     { label: 'Expanded music API', type: 'submenu', submenu: musicMenu },
+    { label: 'MCP music access', type: 'submenu', submenu: mcpMenu },
     {
       label: t('plugins.api-server.menu.hostname.label'),
       type: 'normal',

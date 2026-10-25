@@ -101,7 +101,7 @@ export const dialog={};export const nativeImage={};export const net={fetch:()=>{
     ],
   });
   const output = path.join(directory, 'actual-source.cjs');
-  await build.write({ file: output, format: 'cjs' });
+  await build.write({ file: output, format: 'cjs', codeSplitting: false });
   await build.close();
   source = requireRoot(output);
   const playerState = { volume: 37, muted: true, reads: 0 };

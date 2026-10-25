@@ -19,6 +19,7 @@ async function fixture() {
     entry,
     `
 export {setupSongInfo,registerCallback,SongInfoEvent} from ${JSON.stringify(path.join(root, 'src/providers/song-info.ts'))};
+export {getMcpGrantTarget} from ${JSON.stringify(path.join(root, 'src/plugins/api-server/backend/mcp-owner.ts'))};
 export {getMusicService} from ${JSON.stringify(path.join(root, 'src/plugins/api-server/backend/music-service.ts'))};
 export {backend} from ${JSON.stringify(path.join(root, 'src/plugins/api-server/backend/main.ts'))};
 export {ipcMain,fixtureWindow,createFixtureWindow,fixtureNetwork,app} from 'electron';
@@ -88,7 +89,7 @@ export const dialog={showMessageBox:async()=>({response:1})};
     ],
   });
   const output = path.join(directory, 'actual-source.cjs');
-  await bundle.write({ file: output, format: 'cjs' });
+  await bundle.write({ file: output, format: 'cjs', codeSplitting: false });
   await bundle.close();
   // Only native/config/translation boundaries are supplied. Provider, mutex,
   // backend lifecycle, Hono middleware, route handlers and schemas are real.
@@ -391,5 +392,93 @@ test('actual owned EADDRINUSE failure never publishes and old physical server ca
   } finally {
     await f.close();
     await new Promise<void>((r) => occupied.close(() => r()));
+  }
+});
+
+test('actual main keeps MCP off by default and shares one service while native target retires before reconfiguration', async () => {
+  const f = await fixture();
+  const reservation = createServer();
+  reservation.listen(0, '127.0.0.1');
+  await once(reservation, 'listening');
+  const address = reservation.address();
+  if (!address || typeof address === 'string')
+    throw Error('Missing owned port');
+  const mcpPort = address.port;
+  await new Promise<void>((resolve) => reservation.close(() => resolve()));
+  try {
+    await f.backend.start(f.ctx);
+    await f.waitListening();
+    expect(f.backend.mcpListener).toBeUndefined();
+    expect(f.source.getMcpGrantTarget(f.ctx.window)).toBeUndefined();
+    const config = {
+      ...f.config,
+      port: f.backend.server.address().port,
+      musicApiEnabled: false,
+      mcpEnabled: true,
+      mcpPort,
+    };
+    f.backend.oldConfig = config;
+    f.backend.onConfigChange(config);
+    await expect
+      .poll(() => Boolean(f.backend.mcpListener?.owner.current()))
+      .toBe(true);
+    const service = f.backend.musicService;
+    expect(service).toBeDefined();
+    expect(f.source.getMusicService(f.ctx.window)).toBeUndefined();
+    const target = f.source.getMcpGrantTarget(f.ctx.window);
+    expect(target.resource).toBe(`http://127.0.0.1:${mcpPort}/mcp`);
+    const native = target.captureNativeOwner();
+    expect(native.current()).toBe(true);
+    const grant = await target.grants.issue(
+      'Owned main fixture',
+      'mcp',
+      target.resource,
+      [],
+      () => native.current(),
+    );
+    const initialized = await fetch(target.resource, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${grant.token}`,
+        Accept: 'application/json, text/event-stream',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'main-init',
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          clientInfo: { name: 'owned-main', version: '1' },
+        },
+      }),
+    });
+    expect(initialized.status).toBe(200);
+    await initialized.arrayBuffer();
+    f.backend.onConfigChange({ ...config, musicApiEnabled: true });
+    expect(f.backend.musicService).toBe(service);
+    expect(native.current()).toBe(false);
+    expect(f.source.getMcpGrantTarget(f.ctx.window)).toBeUndefined();
+    await expect
+      .poll(() =>
+        Boolean(
+          f.source
+            .getMcpGrantTarget(f.ctx.window)
+            ?.captureNativeOwner()
+            .current(),
+        ),
+      )
+      .toBe(true);
+    f.backend.onConfigChange({
+      ...config,
+      mcpEnabled: false,
+      musicApiEnabled: true,
+    });
+    expect(f.backend.musicService).toBe(service);
+    expect(f.backend.mcpListener).toBeUndefined();
+    expect(f.source.getMcpGrantTarget(f.ctx.window)).toBeUndefined();
+  } finally {
+    await f.close();
   }
 });
