@@ -6,6 +6,33 @@ import {EqualizerController} from '@/plugins/equalizer/controller';
 import {initializeAudioGraph} from '@/providers/renderer-audio';
 import {outputPeakDelayFrames} from '@/providers/output-peak-worklet';
 import {DATTORRO_WORKLET_SOURCE} from '@/plugins/player-actions/slowed-reverb/worklet';
+let nextFixtureReceipt=0;
+export function acknowledgeReverbFixtureParams(wet,timeoutMs=10000) {
+  const port=wet.reverbNode.port,token=++nextFixtureReceipt,originalPost=port.postMessage;
+  return new Promise((resolve,reject)=>{
+    let expected=null,timer;
+    const cleanup=()=>{clearTimeout(timer);port.removeEventListener('message',receive);if(port.postMessage===send)port.postMessage=originalPost;};
+    const finish=(error,receipt)=>{cleanup();if(error)reject(error);else resolve(receipt);};
+    const receive=event=>{
+      const data=event.data;
+      if(data?.type!=='fixture-params-ready'||data.token!==token)return;
+      if(!expected||!data.params||Object.entries(expected).some(([key,value])=>data.params[key]!==value)){
+        finish(new Error('Fixture reverb parameter receipt does not match applied DSP state'));return;
+      }
+      finish(null,{token,expected,applied:data.params,appliedAt:data.appliedAt});
+    };
+    const send=function(message,...rest){
+      if(message.type==='setParams'){expected={...message.params};return originalPost.call(port,{...message,fixtureToken:token},...rest);}
+      return originalPost.call(port,message,...rest);
+    };
+    port.addEventListener('message',receive);port.start();
+    timer=setTimeout(()=>finish(new Error('Timed out waiting for matching fixture reverb parameters')),timeoutMs);
+    port.postMessage=send;
+    try{wet.applyReverb();if(!expected)finish(new Error('Fixture reverb did not send parameters'));}
+    catch(error){finish(error);}
+    finally{if(port.postMessage===send)port.postMessage=originalPost;}
+  });
+}
 export async function renderReverbStress(options={}) {
   const {intensity=1,volume=1,frequency=1000,kind='sine',eq='off',highpass=180,lowpass=6500,changes=false,transitionIntensity=null,changeVolume=null,changeHighpass=null,changeLowpass=null,changeAt=1,interruptedIntensity=null,captureTransition=false,auditRamp=false,referenceUnprotected=false,eqGain=18,slow=1,failOutputAt=null,muteMode=null,unmuteVolume=.02}=options;
   const rate=48000, seconds=8, context=new OfflineAudioContext(2,rate*seconds,rate);
@@ -43,14 +70,15 @@ export async function renderReverbStress(options={}) {
       }
       return addModule(moduleUrl);
     }
-    const body=DATTORRO_WORKLET_SOURCE.replace("registerProcessor('dattorro-reverb', DattorroReverbProcessor);", "class Ready extends DattorroReverbProcessor {handleMessage(data){super.handleMessage(data);if(data.type==='setParams')this.port.postMessage('ready')}};registerProcessor('dattorro-reverb',Ready);");
+    const body=DATTORRO_WORKLET_SOURCE.replace("registerProcessor('dattorro-reverb', DattorroReverbProcessor);", "class Ready extends DattorroReverbProcessor {handleMessage(data){super.handleMessage(data);if(data.type==='setParams'&&data.fixtureToken!==undefined)this.port.postMessage({type:'fixture-params-ready',token:data.fixtureToken,appliedAt:this.t,params:{preDelay:this.predelay,preFilter:this.preFilterAmt,inputDiff1:this.inputDiff1Amt,inputDiff2:this.inputDiff2Amt,decayDiff1:this.decayDiff1Amt,decay:this.decayAmt,damping:this.dampingAmt,wetGain:this.wetGain}})}};registerProcessor('dattorro-reverb',Ready);");
     const url=URL.createObjectURL(new Blob([body],{type:'application/javascript'}));try{await addModule(url);}finally{URL.revokeObjectURL(url);}
   };
   const wet=createSlowedReverbController();
   wet.ctx={getConfig:()=>wet.config,setConfig:()=>{}};
   wet.config={active:true,slow,reverbIntensity:intensity,wetHighpass:highpass,wetLowpass:lowpass};
   wet.wireAudio(context,mediaVolume);await wet.ensureWorklet();
-  const acknowledge=()=>new Promise(resolve=>{const previous=wet.reverbNode.port.onmessage;wet.reverbNode.port.onmessage=e=>{previous?.(e);if(e.data==='ready')resolve();};wet.applyReverb();});
+  const parameterReceipts=[];
+  const acknowledge=async()=>{const receipt=await acknowledgeReverbFixtureParams(wet);parameterReceipts.push(receipt);return receipt;};
   await acknowledge();const initialNode=wet.reverbNode;
   let equalizer;
   if(eq!=='off') {equalizer=new EqualizerController(graph);equalizer.apply({mode:'custom',preamp:0,bands:eq==='boost'?[{id:'peak',type:'peaking',frequency:frequency,gain:eqGain,Q:1}]:[]},false,true);}
@@ -89,6 +117,6 @@ export async function renderReverbStress(options={}) {
   const gain=graph.masterInput.gain.value,masterPeak=graph.masterSourcePeak,preamp=equalizer?.getResponse().effectivePreampDb;
   const sameNode=initialNode===wet.reverbNode, liveEdges=sourceEdges.size;
   wet.stop();equalizer?.stop();
-  return {faultAudit,muteAudit,mutedWindowPeak,muteWindowPeak,rampAudit,transitionSamples:captureTransition?[0,1].map(c=>Array.from(audio.getChannelData(c).subarray(Math.floor((changeAt-.02)*rate),Math.floor((changeAt+.12)*rate)))):null,peak,peakTime,transitionPeak,rms:Math.sqrt(energy/(rate*6)),tail,late,finite,gain,masterPeak,preamp,sameNode,wetConnections,liveEdges,retiredEdges:sourceEdges.size,afterStopGain:graph.masterInput.gain.value};
+  return {faultAudit,parameterReceipts,muteAudit,mutedWindowPeak,muteWindowPeak,rampAudit,transitionSamples:captureTransition?[0,1].map(c=>Array.from(audio.getChannelData(c).subarray(Math.floor((changeAt-.02)*rate),Math.floor((changeAt+.12)*rate)))):null,peak,peakTime,transitionPeak,rms:Math.sqrt(energy/(rate*6)),tail,late,finite,gain,masterPeak,preamp,sameNode,wetConnections,liveEdges,retiredEdges:sourceEdges.size,afterStopGain:graph.masterInput.gain.value};
 }
 `;
