@@ -309,8 +309,7 @@ pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4
 @media print { body { max-width: none; padding: 0; } }
 </style></head><body><main>
 <h1>MCP dependency notices</h1>
-<p>Original notices for 94 package/version records in the MCP SDK 1.30.0 production dependency subtree. This document covers MCP dependencies only and is not a complete list of licenses for the application.</p>
-<p>The binding includes declared dependencies, one optional dependency and exact peer contexts. It does not establish every platform's installed selection, peer-range satisfaction or application-wide license compliance. Source qualification details and original-byte hashes are retained in the accompanying source binding.</p>
+<p>Original license and copyright notices for the MCP integration (SDK 1.30.0).</p>
 ${articles.join('\n')}
 </main></body></html>\n`;
   return { fileName: 'assets/mcp-dependency-notices.html', source };

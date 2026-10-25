@@ -34,6 +34,13 @@ test('accepted SDK94 emits deterministic escaped offline HTML within packaged as
   assert.match(first.source, /Content-Security-Policy/);
   assert.match(first.source, /script-src 'none'/);
   assert.match(first.source, /MCP dependency notices/);
+  const introduction = first.source
+    .split('<h1>MCP dependency notices</h1>')[1]
+    .split('<article ')[0];
+  assert.equal(
+    introduction.trim(),
+    '<p>Original license and copyright notices for the MCP integration (SDK 1.30.0).</p>',
+  );
   assert.doesNotMatch(first.source, /<script|\s(?:src|href)=/);
   const packaging = await readFile(join(root, 'electron-builder.yml'), 'utf8');
   assert.match(packaging, /- dist/);
