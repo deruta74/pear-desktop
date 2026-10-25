@@ -76,6 +76,7 @@ export async function actionsNative<T>(task: () => Promise<T>): Promise<T> {
   const factsPath = path.join(owned, 'startup-facts.json');
   let keepFixture = false;
   let child: ReturnType<typeof spawn> | undefined;
+  let closeObserved = false;
   try {
     if (!prepared) {
       const mainEntry = path.join(owned, 'main-source.ts'),
@@ -335,6 +336,7 @@ let stage='ready';const mark=label=>{stage=label;console.log('MUSIC_NATIVE_STAGE
         reject(e);
       });
       child!.on('close', (code) => {
+        closeObserved = true;
         clearTimeout(timer);
         code === 0
           ? resolve()
@@ -379,7 +381,13 @@ let stage='ready';const mark=label=>{stage=label;console.log('MUSIC_NATIVE_STAGE
           : process.kill(-child.pid, 'SIGKILL');
       } catch {}
     }
-    if (!keepFixture) await rm(owned, { recursive: true, force: true });
+    if (!keepFixture)
+      await rm(owned, {
+        recursive: true,
+        force: true,
+        maxRetries: closeObserved ? 5 : 0,
+        retryDelay: 100,
+      });
   }
 }
 

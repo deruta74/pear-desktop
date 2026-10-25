@@ -968,3 +968,71 @@ test('current provider export works through the actual keyboard-accessible picke
     });
   await page.evaluate(() => (window as any).lyricsFixture.renderer.stop());
 });
+
+test('lyrics service errors show a readable retry state without exception details and recover through the selected provider', async () => {
+  const f = fixture();
+  try {
+    f.mountDom(true);
+    await f.state.renderer.start(f.context);
+    const api = f.api();
+    await f.state.renderer.onPlayerApiReady(api);
+    await f.track('A');
+    f.window.localStorage.setItem(
+      'ytmd-sl-starred-A',
+      JSON.stringify({ provider: 'LRCLib' }),
+    );
+    api.emit('dataupdated', { videoId: 'A' });
+    for (const pending of f.state.pending)
+      pending.provider === 'LRCLib'
+        ? pending.reject(
+            new Error(
+              'LRCLib HTTP 503 at file:///Users/private/renderer.js:42',
+            ),
+          )
+        : pending.resolve(null);
+    await settle();
+    expect(f.state.lyricsStore.provider).toBe('LRCLib');
+    const panel = f.window.document.querySelector('#synced-lyrics-container')!;
+    expect(panel.textContent).toContain('plugins.synced-lyrics.errors.fetch');
+    expect(panel.textContent).not.toMatch(/file:|Users|HTTP 503|renderer.js/);
+    expect(panel.querySelector('pre')).toBeNull();
+    const retry = panel.querySelector('button.lyrics-retry') as any;
+    expect(retry).not.toBeNull();
+    expect(retry.textContent).toBe('plugins.synced-lyrics.refetch-btn.normal');
+    retry.click();
+    await settle();
+    expect(f.request().provider).toBe('LRCLib');
+    f.request().resolve(result('Recovered lyrics'));
+    await settle();
+    expect(f.state.lyricsStore.provider).toBe('LRCLib');
+    expect(f.state.currentLyrics().data?.lyrics).toBe('Recovered lyrics');
+    expect(panel.querySelector('.lyrics-status')).toBeNull();
+    expect(
+      (panel.querySelector('.description yt-formatted-string') as any).text
+        .runs,
+    ).toEqual([{ text: 'Recovered lyrics' }]);
+  } finally {
+    await f.close();
+  }
+});
+
+test('an empty lyrics result explains that no lyrics were found instead of rendering only a shrug', async () => {
+  const f = fixture();
+  try {
+    f.mountDom(true);
+    await f.state.renderer.start(f.context);
+    await f.state.renderer.onPlayerApiReady(f.api());
+    await f.track('A');
+    for (const pending of f.state.pending) pending.resolve(null);
+    await settle();
+    const panel = f.window.document.querySelector('#synced-lyrics-container')!;
+    expect(panel.textContent).toContain(
+      'plugins.synced-lyrics.errors.not-found',
+    );
+    expect(panel.textContent).not.toContain(
+      'plugins.synced-lyrics.errors.fetch',
+    );
+  } finally {
+    await f.close();
+  }
+});
