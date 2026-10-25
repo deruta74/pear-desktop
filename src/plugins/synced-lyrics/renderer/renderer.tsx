@@ -84,6 +84,7 @@ type LyricsRendererChild =
 const lyricsPicker: LyricsRendererChild = { kind: 'LyricsPicker' };
 
 export const [currentTime, setCurrentTime] = createSignal<number>(-1);
+export const [isPlaying, setIsPlaying] = createSignal(false);
 export const LyricsRenderer = () => {
   const [scroller, setScroller] = createSignal<VirtualizerHandle>();
   const [stickyRef, setStickRef] = createSignal<HTMLElement | null>(null);

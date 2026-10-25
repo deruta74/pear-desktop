@@ -13,7 +13,7 @@ import { type LineLyrics } from '@/plugins/synced-lyrics/types';
 
 import { _ytAPI } from '..';
 import { lyricsDisplayTime, lyricsSeekTime } from '../../tools';
-import { config, currentTime } from '../renderer';
+import { config, currentTime, isPlaying } from '../renderer';
 import {
   canonicalize,
   convertChineseCharacter,
@@ -76,10 +76,14 @@ const EmptyLine = (props: SyncedLineProps) => {
           <Show when={config()?.showTimeCodes}>
             <span class="lyrics-time">[{props.line.time}] </span>
           </Show>
-          <Show when={knownGap()}>
+          <Show
+            fallback={<span class="lyrics-placeholder">{text()}</span>}
+            when={knownGap()}
+          >
             <span
               aria-label={t('plugins.synced-lyrics.instrumental-break')}
               class="instrumental-indicator"
+              data-playing={isPlaying()}
               role="img"
             >
               <span aria-hidden="true">
@@ -89,7 +93,6 @@ const EmptyLine = (props: SyncedLineProps) => {
               </span>
             </span>
           </Show>
-          <span class="lyrics-placeholder">{text()}</span>
         </div>
       </div>
     </div>
