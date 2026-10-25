@@ -1,3 +1,4 @@
+import { rendererAudioFixtureSource } from './helpers/renderer-audio-source';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { test, expect } from '@playwright/test';
@@ -49,12 +50,7 @@ async function fixture(plugins: Record<string, any>) {
       },
     },
   };
-  const graphSource = stripTypeScriptTypes(
-    await readFile(
-      new URL('../src/providers/renderer-audio.ts', import.meta.url),
-      'utf8',
-    ),
-  ).replace(/^import[\s\S]*?;\n/gm, '');
+  const graphSource = await rendererAudioFixtureSource(true);
   const graph = await import(
     `data:text/javascript;base64,${Buffer.from(graphSource).toString('base64')}`
   );
@@ -86,8 +82,22 @@ async function fixture(plugins: Record<string, any>) {
   )
     .replace(/^import[\s\S]*?;\n/gm, '')
     .replace(/^export /gm, '');
-  const shareProvider = (await readFile(new URL('../src/utils/share-url.ts', import.meta.url), 'utf8')) + '\n' + (await readFile(new URL('../src/providers/share-links.ts', import.meta.url), 'utf8')).replace(/^import[^;]+;\n/gm, '');
-  const shareSource = stripTypeScriptTypes(shareProvider).replace(/^export /gm, '');
+  const shareProvider =
+    (await readFile(
+      new URL('../src/utils/share-url.ts', import.meta.url),
+      'utf8',
+    )) +
+    '\n' +
+    (
+      await readFile(
+        new URL('../src/providers/share-links.ts', import.meta.url),
+        'utf8',
+      )
+    ).replace(/^import[^;]+;\n/gm, '');
+  const shareSource = stripTypeScriptTypes(shareProvider).replace(
+    /^export /gm,
+    '',
+  );
   const boundaries = `
 const fixture=globalThis[${JSON.stringify(key)}];
 const {window}=fixture; const document=fixture.dom.document;
@@ -197,7 +207,10 @@ test('actual renderer share option changes Copy input and retires IPC updates on
   const f = await fixture({});
   const music = 'https://music.youtube.com/watch?v=OtherVideo1';
   try {
-    f.dom.document.body.insertAdjacentHTML('beforeend', '<yt-copy-link-renderer><input id="share-url"></yt-copy-link-renderer>');
+    f.dom.document.body.insertAdjacentHTML(
+      'beforeend',
+      '<yt-copy-link-renderer><input id="share-url"></yt-copy-link-renderer>',
+    );
     const input = f.dom.document.querySelector<HTMLInputElement>('#share-url')!;
     input.value = music;
     await f.source.main();

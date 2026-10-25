@@ -61,8 +61,6 @@ class DattorroReverbProcessor extends AudioWorkletProcessor {
       }
       if (p.damping !== undefined) this.dampingAmt = p.damping;
       if (p.wetGain !== undefined) this.wetGain = p.wetGain;
-      this.pendingRamp = Number.isFinite(data.completeAt) ? { revision: data.revision, end: data.completeAt } : null;
-      if (data.revision !== undefined) this.port.postMessage?.({type: 'params-applied', revision: data.revision});
     }
   }
 
@@ -74,7 +72,6 @@ class DattorroReverbProcessor extends AudioWorkletProcessor {
 
   init() {
     this.t = 0;
-    this.pendingRamp = null;
     this.sr = sampleRate;
     this.predelay = 0.1;
     this.preFilterAmt = 0.85;
@@ -144,14 +141,6 @@ class DattorroReverbProcessor extends AudioWorkletProcessor {
 
   process(inputs, outputs) {
     if (this.disposed) return false;
-    // The post-filter native gain is scheduled on the same AudioContext clock.
-    // Report only after its final ramp sample; a suspended context cannot
-    // complete this handshake just because wall time has elapsed.
-    const audioTime = typeof currentTime === 'number' ? currentTime : this.t / this.sr;
-    if (this.pendingRamp && audioTime >= this.pendingRamp.end) {
-      this.port.postMessage?.({type:'wet-ramp-complete',revision:this.pendingRamp.revision});
-      this.pendingRamp = null;
-    }
     const inp = inputs[0];
     const out = outputs[0];
     if (!inp || !inp.length || !out || !out.length) return true;

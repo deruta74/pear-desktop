@@ -158,8 +158,11 @@ export async function playerActionsFixture({ nativeTimers = false } = {}) {
     }
   }
   class Worklet extends Node {
-    constructor(context: any) {
-      super(context, 'worklet');
+    constructor(context: any, name = 'dattorro-reverb') {
+      super(
+        context,
+        name === 'renderer-output-peak' ? 'output-worklet' : 'worklet',
+      );
     }
   }
   Object.assign(globals, {
@@ -307,6 +310,7 @@ export async function playerActionsFixture({ nativeTimers = false } = {}) {
   }
   const media = video();
   const graph = (id: string) => {
+    let firstOutputModule = true;
     const context: any = {
       id,
       destination: { id: 'destination-' + id },
@@ -317,8 +321,15 @@ export async function playerActionsFixture({ nativeTimers = false } = {}) {
       removeEventListener() {},
       createGain: () => new Node(context, 'gain'),
       createBiquadFilter: () => new Node(context, 'biquad'),
+      createWaveShaper: () => new Node(context, 'fault-guard'),
       audioWorklet: {
         addModule: (url: string) => {
+          // The renderer output module has separate native/failure coverage.
+          // Keep the existing deferred seam specific to Dattorro registration.
+          if (firstOutputModule) {
+            firstOutputModule = false;
+            return Promise.resolve();
+          }
           const d = deferred();
           loads.push({ url, resolve: () => d.resolve(), reject: d.reject });
           return d.promise;

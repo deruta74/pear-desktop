@@ -104,18 +104,6 @@ export interface DattorroParams {
   decayDiff1?: number;
 }
 
-/** Coherent frequency-gain reserve after the tank's (1-decay²) input trim.
- * Three pre-damping taps, two post-damping taps, two internal allpass taps.
- * Retained delay samples can predate a decay change: use the maximum tank
- * coefficients, then scale by the acknowledged current output wet gain.
- * This is an audio headroom reserve, not a hard limiter for arbitrary PCM.
- */
-export function computeWetPeakReserve(params: DattorroParams): number {
-  const d = computeDattorroParams(1).decay;
-  const g = Math.min(Math.max(d + 0.15, 0.25), 0.5);
-  return (params.wetGain * (3 + 2 * d + (2 * d) / (1 - g))) / Math.sqrt(7);
-}
-
 export function computeDattorroParams(intensity: number): DattorroParams {
   const i = clamp(intensity, INTENSITY_MIN, INTENSITY_MAX);
   if (i <= 0) {

@@ -1,3 +1,5 @@
+import { RendererOutput, type WetOutputLease } from './renderer-output';
+
 /** Renderer-owned music buses. Raw analyser taps retain the original media source. */
 export interface RendererAudioGraph {
   audioContext: AudioContext;
@@ -16,14 +18,8 @@ export interface RendererAudioGraph {
     listener: () => void,
   ): () => void;
   prepareVolumeChange(): boolean;
-  /** Peak reserve at the EQ input, including the current dry/wet mix trim. */
-  readonly masterSourcePeak?: number;
-  observeMasterPeak?(listener: () => void): () => void;
-  registerWetMixPeak?(): {
-    /** A smooth increase holds the old wet level until this audio-time deadline. */
-    update(peak: number, smoothTightening?: boolean): number;
-    release(): void;
-  };
+  outputInput: GainNode;
+  registerWetOutput(output: GainNode, failed: () => void): WetOutputLease;
 }
 
 let current: RendererAudioGraph | null = null;
@@ -42,63 +38,8 @@ export function initializeAudioGraph(
   const dryInput = audioContext.createGain();
   const masterInput = audioContext.createGain();
   const musicGate = audioContext.createGain();
-  let wetPeak = 0;
+  const outputInput = audioContext.createGain();
   let auxiliaryMediaCount = 0;
-  let wetOwner: object | null = null;
-  let masterEnvelope = { from: 1, to: 1, start: 0, end: 0 };
-  const masterObservers = new Set<() => void>();
-  const mainVolume = () => {
-    const media = audioSource.mediaElement;
-    if (media?.muted) return 0;
-    return media &&
-      Number.isFinite(media.volume) &&
-      media.volume >= 0 &&
-      media.volume <= 1
-      ? media.volume
-      : 1;
-  };
-  const mixSourcePeak = () =>
-    (auxiliaryMediaCount > 0 ? 1 : mainVolume()) * (1 + wetPeak);
-  const mixTrim = () => 1 / Math.max(1, mixSourcePeak());
-  let headroomVolume = mainVolume();
-  let headroomAuxiliaryCount = auxiliaryMediaCount;
-  function syncMasterHeadroom(smoothTightening = false) {
-    const now = audioContext.currentTime;
-    // A queued media-volume event must not turn its required immediate
-    // protection into a fade just because an intensity edit ran first.
-    const sourceVolume = mainVolume();
-    const sourceChanged =
-      sourceVolume !== headroomVolume ||
-      auxiliaryMediaCount !== headroomAuxiliaryCount;
-    headroomVolume = sourceVolume;
-    headroomAuxiliaryCount = auxiliaryMediaCount;
-    const e = masterEnvelope;
-    const fraction =
-      e.end > e.start
-        ? Math.max(0, Math.min(1, (now - e.start) / (e.end - e.start)))
-        : 1;
-    const change = (e.to - e.from) * fraction;
-    const currentGain = e.from + change;
-    const target = mixTrim();
-    if (target === e.to) return e.to < e.from ? Math.max(now, e.end) : now;
-    masterInput.gain.cancelAndHoldAtTime(now);
-    // Volume protection remains immediate. Intensity increases may ramp only
-    // when the wet owner holds its current level until our returned deadline.
-    const from =
-      smoothTightening && !sourceChanged && now > 0
-        ? currentGain
-        : Math.min(currentGain, target);
-    masterInput.gain.setValueAtTime(from, now);
-    if (target !== from)
-      masterInput.gain.linearRampToValueAtTime(target, now + 0.02);
-    masterEnvelope = {
-      from,
-      to: target,
-      start: now,
-      end: now + 0.02,
-    };
-    return target < from ? masterEnvelope.end : now;
-  }
   // Only the renderer's original dry edge is ours to replace. Never detach raw taps.
   try {
     audioSource.disconnect(audioContext.destination);
@@ -107,8 +48,15 @@ export function initializeAudioGraph(
   }
   audioSource.connect(dryInput);
   dryInput.connect(masterInput);
-  masterInput.connect(musicGate);
+  masterInput.connect(outputInput);
+  outputInput.connect(musicGate);
   musicGate.connect(audioContext.destination);
+  const output = new RendererOutput(
+    audioContext,
+    outputInput,
+    masterInput,
+    musicGate,
+  );
   const volumePreparations = {
     attenuate: new Set<() => void>(),
     scale: new Set<() => void>(),
@@ -132,16 +80,16 @@ export function initializeAudioGraph(
   };
   const main = audioSource.mediaElement;
   const syncMute = () => {
-    syncMasterHeadroom();
-    if (main?.muted || main?.volume === 0) musicGate.gain.value = 0;
+    if (main?.muted || main?.volume === 0) output.mute();
     // Opening the renderer gate must never expose stale zero/muted EQ gains
     // before the plugins' later volume listeners get their turn.
-    else if (prepareVolumeChange()) musicGate.gain.value = 1;
+    else if (prepareVolumeChange()) output.unmute();
   };
   syncMute();
   main?.addEventListener('volumechange', syncMute);
   const contextChanged = () => {
     if (audioContext.state !== 'closed') return;
+    output.close();
     main?.removeEventListener('volumechange', syncMute);
     audioContext.removeEventListener('statechange', contextChanged);
     if (current?.audioContext === audioContext) current = null;
@@ -161,7 +109,6 @@ export function initializeAudioGraph(
     }
   };
   const notifyAuxiliaryMedia = () => {
-    syncMasterHeadroom();
     for (const listener of [...auxiliaryObservers])
       if (auxiliaryObservers.has(listener)) notifyObserver(listener);
   };
@@ -206,7 +153,11 @@ export function initializeAudioGraph(
     musicGate,
     insertMain: insert(audioSource, dryInput),
     insertDry: insert(dryInput, masterInput),
-    insertMaster: insert(masterInput, musicGate),
+    insertMaster: insert(masterInput, outputInput),
+    outputInput,
+    registerWetOutput(wet, failed) {
+      return output.registerWet(wet, failed);
+    },
     get auxiliaryMediaCount() {
       return auxiliaryMediaCount;
     },
@@ -224,38 +175,6 @@ export function initializeAudioGraph(
       return () => callbacks.delete(owned);
     },
     prepareVolumeChange,
-    get masterSourcePeak() {
-      return mixSourcePeak() * mixTrim();
-    },
-    observeMasterPeak(listener) {
-      const owned = () => listener();
-      masterObservers.add(owned);
-      return () => masterObservers.delete(owned);
-    },
-    registerWetMixPeak() {
-      if (wetOwner) throw new Error('The wet mix headroom is already owned');
-      const token = {};
-      wetOwner = token;
-      const update = (peak: number, smoothTightening = false) => {
-        if (wetOwner !== token) return audioContext.currentTime;
-        if (!Number.isFinite(peak) || peak < 0)
-          throw new Error('Invalid wet mix peak');
-        if (peak === wetPeak) return syncMasterHeadroom(smoothTightening);
-        wetPeak = peak;
-        const readyAt = syncMasterHeadroom(smoothTightening);
-        for (const listener of [...masterObservers])
-          if (masterObservers.has(listener)) listener();
-        return readyAt;
-      };
-      return {
-        update,
-        release() {
-          if (wetOwner !== token) return;
-          update(0);
-          wetOwner = null;
-        },
-      };
-    },
     registerMedia(element, suppliedGain) {
       if (element === audioSource.mediaElement)
         throw new Error('Main media is already registered');

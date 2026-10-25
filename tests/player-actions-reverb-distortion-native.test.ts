@@ -8,7 +8,7 @@ let bundle: string;
 test.beforeAll(async () => {
   bundle = await equalizerBundle(`
     export {DATTORRO_WORKLET_SOURCE} from '@/plugins/player-actions/slowed-reverb/worklet';
-    export {computeWetPeakReserve, computeDattorroParams} from '@/plugins/player-actions/slowed-reverb/engine';
+    export {computeDattorroParams} from '@/plugins/player-actions/slowed-reverb/engine';
   `);
 });
 
@@ -138,7 +138,6 @@ test('native reverb remains linear and controls tank resonance at 35/40/100 perc
     return {
       rows,
       scan,
-      reserve: f.computeWetPeakReserve(f.computeDattorroParams(1)),
     };
   });
   console.log(JSON.stringify(result));
@@ -146,9 +145,7 @@ test('native reverb remains linear and controls tank resonance at 35/40/100 perc
     expect(row.nonlinearity).toBeLessThan(0.001);
     expect(row.high.thd).toBeLessThan(0.001);
   }
-  expect(Math.max(...result.scan.map((x) => x.peak))).toBeLessThan(
-    result.reserve,
-  );
+  expect(Math.max(...result.scan.map((x) => x.peak))).toBeLessThan(2);
 });
 
 test('native full-scale dry+wet mix has output headroom without a limiter', async ({
