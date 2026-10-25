@@ -170,12 +170,12 @@ test('native editor independently selects Home and library with empty defaults a
   }
 });
 
-test('MCP native target uses separate transport/resource and offers only the five read scopes', async () => {
+test('MCP native target uses separate transport/resource and explicitly offers all seven scopes', async () => {
   const m = await musicModuleSource('src/plugins/api-server/music-menu.ts');
   const issues: unknown[][] = [],
     dialogs: any[] = [],
     writes: unknown[] = [];
-  const choices = [6, 2, 0];
+  const choices = [6, 7, 8, 2, 0];
   const target = {
     transport: 'mcp',
     resource: 'http://127.0.0.1:26539/mcp',
@@ -218,9 +218,10 @@ test('MCP native target uses separate transport/resource and offers only the fiv
     'Owned MCP',
     'mcp',
     target.resource,
-    ['comments.read'],
+    ['comments.read', 'playback.control', 'queue.write'],
   ]);
-  expect(JSON.stringify(dialogs)).not.toContain('playback control');
-  expect(JSON.stringify(dialogs)).not.toContain('queue write');
+  expect(dialogs[0].detail).toContain('Selected: none');
+  expect(JSON.stringify(dialogs)).toContain('playback control');
+  expect(JSON.stringify(dialogs)).toContain('queue write');
   expect(JSON.stringify(dialogs)).not.toContain('owned-native-mcp');
 });

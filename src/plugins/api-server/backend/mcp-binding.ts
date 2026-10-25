@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { mcpPublicSchema, mcpRegistrationSchema } from './mcp-tool-schemas';
-import { createMcpReadToolRegistry } from './mcp-tools';
+import { createMcpToolRegistry } from './mcp-tools';
 
 import type { McpSession } from './mcp-sessions';
 import type { MusicService } from './music-service';
@@ -16,7 +16,7 @@ export function createMcpBinding(service: MusicService, session: McpSession) {
     { name: 'pear-desktop-music', version: '1' },
     { capabilities: { tools: {} } },
   );
-  const registry = createMcpReadToolRegistry(service);
+  const registry = createMcpToolRegistry(service);
   const descriptors = registry.list(session.principal.scopes);
   for (const tool of descriptors) {
     server.registerTool(

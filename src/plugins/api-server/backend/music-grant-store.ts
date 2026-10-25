@@ -27,10 +27,10 @@ const leaseLifetimes = new WeakMap<
   MusicGrantRecord,
   { store: MusicGrantStore; signal: AbortSignal }
 >();
-const nativeAborted = Object.getOwnPropertyDescriptor(
-  AbortSignal.prototype,
-  'aborted',
-)!.get!;
+// Deliberately captured once; every use supplies the exact native signal receiver.
+const nativeAborted: (this: AbortSignal) => boolean =
+  // oxlint-disable-next-line typescript/unbound-method -- Captured native getter; every use calls it with the exact signal receiver.
+  Object.getOwnPropertyDescriptor(AbortSignal.prototype, 'aborted')!.get!;
 /** Main-only negative fence; exact object provenance, with no authority callouts. */
 export function musicGrantLifetimeSignal(
   store: MusicGrantStore,

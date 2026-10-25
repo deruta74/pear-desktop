@@ -1,4 +1,8 @@
 import {
+  createMcpWriteTools,
+  type McpWriteDescriptor,
+} from './mcp-write-tools';
+import {
   encodeMusicReadSuccess,
   decodeMusicReadResult,
   musicReadFailure,
@@ -46,8 +50,14 @@ export interface McpReadDescriptor {
 }
 /** Internal source adapter only: no SDK registration, listener or request authority. */
 export function createMcpReadToolRegistry(service: MusicService) {
+  return createRegistry(service, false);
+}
+export function createMcpToolRegistry(service: MusicService) {
+  return createRegistry(service, true);
+}
+function createRegistry(service: MusicService, writes: boolean) {
   const entries: {
-    descriptor: McpReadDescriptor;
+    descriptor: McpReadDescriptor | McpWriteDescriptor;
     invoke(args: unknown, invocation: MusicInvocation): Promise<string>;
   }[] = [];
   const add = (
@@ -147,11 +157,16 @@ export function createMcpReadToolRegistry(service: MusicService) {
     (args, invocation) =>
       service.commentsFor(invocation, args, undefined, encodeMusicReadSuccess),
   );
+  if (writes) entries.push(...createMcpWriteTools(service));
   return {
-    /** Scopes must come from future main-owned authenticated admission, not arguments. */
-    list(scopes: readonly MusicScope[]): readonly McpReadDescriptor[] {
+    /** Scopes come from main-owned authenticated admission, never arguments. */
+    list(scopes: readonly MusicScope[]) {
       return entries
-        .filter(({ descriptor }) => scopes.includes(descriptor.scope))
+        .filter(({ descriptor }) =>
+          typeof descriptor.scope === 'string'
+            ? scopes.includes(descriptor.scope)
+            : descriptor.scope.some((scope) => scopes.includes(scope)),
+        )
         .map(({ descriptor }) => ({
           ...descriptor,
           annotations: { ...descriptor.annotations },

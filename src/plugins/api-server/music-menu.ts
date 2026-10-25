@@ -101,6 +101,12 @@ export async function createMusicGrantMenu(
                   ]
                 : []),
               `${scopes.includes('comments.read') ? 'Remove' : 'Add'} public comments read`,
+              ...(transport === 'mcp'
+                ? [
+                    `${scopes.includes('playback.control') ? 'Remove' : 'Add'} playback control`,
+                    `${scopes.includes('queue.write') ? 'Remove' : 'Add'} queue write`,
+                  ]
+                : []),
             ],
             defaultId: 3,
             cancelId: 3,
@@ -108,13 +114,19 @@ export async function createMusicGrantMenu(
           if (!current() || !choice || choice.response === 3) return;
           if (
             transport === 'mcp' &&
-            ![0, 1, 2, 3, 4, 5, 6].includes(choice.response)
+            ![0, 1, 2, 3, 4, 5, 6, 7, 8].includes(choice.response)
           )
             return;
           if (choice.response === 2) break;
           const scope =
-            transport === 'mcp' && choice.response === 6
-              ? 'comments.read'
+            transport === 'mcp' && choice.response >= 6
+              ? (
+                  {
+                    6: 'comments.read',
+                    7: 'playback.control',
+                    8: 'queue.write',
+                  } as const
+                )[choice.response as 6 | 7 | 8]
               : (
                   {
                     0: 'playback.read',

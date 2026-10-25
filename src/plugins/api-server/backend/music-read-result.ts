@@ -6,6 +6,7 @@ import {
   type LyricsResult,
   type CommentPage,
   type MusicFailure,
+  type MusicOperationReceipt,
 } from '../music-types';
 
 import type { MusicPage } from './music-service';
@@ -15,7 +16,8 @@ export type MusicReadDTO =
   | QueuePage
   | MusicPage
   | LyricsResult
-  | CommentPage;
+  | CommentPage
+  | MusicOperationReceipt;
 export type MusicReadEncoder<T> = (value: T) => string;
 export const MUSIC_READ_RESULT_MAX_BYTES = 256 * 1024;
 const summary = 'Music result.';
@@ -140,9 +142,9 @@ export function decodeMusicReadResult(encoded: string): McpReadLogicalResult {
     const safe = new MusicServiceError(data.error.code);
     if (data.error.message !== safe.message || text.text !== safe.message)
       throw new Error();
-    const result = musicReadFailure(safe);
-    if (JSON.stringify(result) !== encoded) throw new Error();
-    return result;
+    // The public SDK projects errors as content/structuredContent/isError.
+    // Only this fixed dictionary may normalize key order; success remains byte-bound.
+    return musicReadFailure(safe);
   } catch {
     return musicReadFailure(new MusicServiceError('source'));
   }

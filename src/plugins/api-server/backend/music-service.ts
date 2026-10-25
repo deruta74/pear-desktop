@@ -1,5 +1,4 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { captureMusicPublication } from './music-publication';
 
 import { sliceMusicSource } from '@/providers/music-catalog';
 import { loadComments } from '@/providers/music-comments';
@@ -40,6 +39,7 @@ import {
   type MusicOperationRow,
   type MusicOperationBinding,
 } from './music-operations';
+import { captureMusicPublication } from './music-publication';
 import {
   MUSIC_READ_RESULT_MAX_BYTES,
   musicReadPayloadLimit,
@@ -100,6 +100,7 @@ type SourceOwner = MusicResultOwner;
 // Capture native brand-checked reads; own/custom aborted accessors never run.
 const sourceSignalAborted: (signal: AbortSignal) => boolean =
   Function.prototype.call.bind(
+    // oxlint-disable-next-line typescript/unbound-method -- The intrinsic getter is explicitly bound to call.
     Object.getOwnPropertyDescriptor(AbortSignal.prototype, 'aborted')!.get!,
   );
 type PageContext =
@@ -510,6 +511,15 @@ export class MusicService {
     deadlineAt: number | undefined,
     encode: MusicReadEncoder<T>,
   ): Promise<string>;
+  private admittedFor<T>(
+    invocation: MusicInvocation,
+    requiredScope: MusicScope | ((access: MusicAccessBinding) => MusicScope),
+    extra: MusicScope[],
+    currentRead: boolean,
+    action: (lease: Lease) => Promise<T>,
+    deadlineAt: number | undefined,
+    encode: MusicReadEncoder<T> | undefined,
+  ): Promise<T | string>;
   private async admittedFor<T>(
     invocation: MusicInvocation,
     requiredScope: MusicScope | ((access: MusicAccessBinding) => MusicScope),
@@ -867,7 +877,23 @@ export class MusicService {
       return Promise.reject(error as Error);
     }
   }
-  prepareFor(invocation: MusicInvocation, input: unknown, deadlineAt?: number) {
+  prepareFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt?: number,
+  ): Promise<MusicOperationReceipt>;
+  prepareFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt: number | undefined,
+    encode: MusicReadEncoder<MusicOperationReceipt>,
+  ): Promise<string>;
+  prepareFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt?: number,
+    encode?: MusicReadEncoder<MusicOperationReceipt>,
+  ) {
     const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
     const command = parseMusicOperationPrepareInput(input),
       scope = musicOperationScope(command);
@@ -888,6 +914,7 @@ export class MusicService {
         return Promise.resolve(this.operations.prepare(command, binding));
       },
       deadline,
+      encode,
     );
   }
   /** Separate factory: durable ownership never closes over a request lease or signal. */
@@ -956,14 +983,35 @@ export class MusicService {
       deadlineAt,
     );
   }
+  operationFor(
+    invocation: MusicInvocation,
+    operationId: unknown,
+    deadlineAt?: number,
+  ): Promise<MusicOperationReceipt>;
+  operationFor(
+    invocation: MusicInvocation,
+    operationId: unknown,
+    deadlineAt: number | undefined,
+    encode: MusicReadEncoder<MusicOperationReceipt>,
+  ): Promise<string>;
   async operationFor(
     invocation: MusicInvocation,
     operationId: unknown,
     deadlineAt?: number,
+    encode?: MusicReadEncoder<MusicOperationReceipt>,
   ) {
     const id = parseMusicOperationId(operationId);
     const { token, transport, resource, signal, session } = invocation;
-    const snapshot = { token, transport, resource, signal, session };
+    const snapshot: MusicInvocation = {
+      token,
+      transport,
+      resource,
+      signal,
+      session,
+      ...(encode && invocation.delivery
+        ? { delivery: invocation.delivery }
+        : {}),
+    };
     return this.admittedFor(
       snapshot,
       (access) =>
@@ -980,6 +1028,7 @@ export class MusicService {
         return Promise.resolve(this.operations.receipt(row));
       },
       deadlineAt,
+      encode,
     );
   }
   navigate(
@@ -1003,6 +1052,18 @@ export class MusicService {
     invocation: MusicInvocation,
     input: unknown,
     deadlineAt?: number,
+  ): Promise<MusicOperationReceipt>;
+  navigateFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt: number | undefined,
+    encode: MusicReadEncoder<MusicOperationReceipt>,
+  ): Promise<string>;
+  navigateFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt?: number,
+    encode?: MusicReadEncoder<MusicOperationReceipt>,
   ) {
     const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
     return this.admittedFor(
@@ -1096,6 +1157,7 @@ export class MusicService {
         return row.promise;
       },
       deadline,
+      encode,
     );
   }
   control(
@@ -1115,7 +1177,23 @@ export class MusicService {
       return Promise.reject(error as Error);
     }
   }
-  controlFor(invocation: MusicInvocation, input: unknown, deadlineAt?: number) {
+  controlFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt?: number,
+  ): Promise<MusicOperationReceipt>;
+  controlFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt: number | undefined,
+    encode: MusicReadEncoder<MusicOperationReceipt>,
+  ): Promise<string>;
+  controlFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt?: number,
+    encode?: MusicReadEncoder<MusicOperationReceipt>,
+  ) {
     const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
     return this.admittedFor(
       invocation,
@@ -1219,6 +1297,7 @@ export class MusicService {
         return row.promise;
       },
       deadline,
+      encode,
     );
   }
   mutateQueue(
@@ -1242,6 +1321,18 @@ export class MusicService {
     invocation: MusicInvocation,
     input: unknown,
     deadlineAt?: number,
+  ): Promise<MusicOperationReceipt>;
+  mutateQueueFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt: number | undefined,
+    encode: MusicReadEncoder<MusicOperationReceipt>,
+  ): Promise<string>;
+  mutateQueueFor(
+    invocation: MusicInvocation,
+    input: unknown,
+    deadlineAt?: number,
+    encode?: MusicReadEncoder<MusicOperationReceipt>,
   ) {
     const deadline = Math.min(this.now() + 10000, deadlineAt ?? Infinity);
     return this.admittedFor(
@@ -1364,6 +1455,7 @@ export class MusicService {
         return row.promise;
       },
       deadline,
+      encode,
     );
   }
   private metadataBinding(
