@@ -20,6 +20,7 @@ export const MCP_LIMITS = Object.freeze({
   http: 64,
   headers: 16 * 1024,
   body: 64 * 1024,
+  toolInputElements: 64,
   response: 4 * 1024 * 1024,
   output: 4 * 1024 * 1024,
   idle: 15 * 60_000,

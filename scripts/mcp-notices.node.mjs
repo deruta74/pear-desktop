@@ -39,7 +39,7 @@ test('accepted SDK94 emits deterministic escaped offline HTML within packaged as
     .split('<article ')[0];
   assert.equal(
     introduction.trim(),
-    '<p>Original license and copyright notices for the MCP integration (SDK 1.30.0).</p>',
+    '<p>Original license and copyright notices for the MCP integration (SDK 1.32.0).</p>',
   );
   assert.doesNotMatch(first.source, /<script|\s(?:src|href)=/);
   const packaging = await readFile(join(root, 'electron-builder.yml'), 'utf8');
@@ -54,6 +54,28 @@ test('wrong notice SHA and a missing original are refused', async (t) => {
   await assert.rejects(emitMcpNotices(dir), /notice hash/);
   await rm(join(dir, 'licenses/mcp', record.noticeFile));
   await assert.rejects(emitMcpNotices(dir), /ENOENT/);
+});
+
+test('new exact-version SDK provenance cannot drift from the reviewed source binding', async (t) => {
+  const { dir } = await fixture(t);
+  const source = join(dir, 'licenses/mcp/sources/sdk-1.32.0.json');
+  await writeFile(source, (await readFile(source, 'utf8')) + ' ');
+  await assert.rejects(emitMcpNotices(dir), /SDK source provenance hash/);
+});
+
+test('Windows CRLF checkout preserves semantic SDK metadata without normalizing original notices', async (t) => {
+  const { dir } = await fixture(t);
+  for (const file of [
+    'pnpm-lock.yaml',
+    'licenses/mcp/sources/sdk-1.32.0.json',
+  ]) {
+    const target = join(dir, file);
+    await writeFile(
+      target,
+      (await readFile(target, 'utf8')).replace(/\r?\n/g, '\r\n'),
+    );
+  }
+  assert.deepEqual(await emitMcpNotices(dir), await emitMcpNotices(root));
 });
 
 test('missing or ambiguous graph records and changed SDK snapshot blocks are refused', async (t) => {
@@ -154,7 +176,7 @@ test('missing current peer snapshot and changed SDK patch fail closed', async (t
   await assert.rejects(emitMcpNotices(dir), /missing snapshot graph node/);
   await writeFile(lock, text);
   await writeFile(
-    join(dir, 'patches/@modelcontextprotocol__sdk@1.30.0.patch'),
+    join(dir, 'patches/@modelcontextprotocol__sdk@1.32.0.patch'),
     'changed source',
   );
   await assert.rejects(emitMcpNotices(dir), /SDK patch source hash/);

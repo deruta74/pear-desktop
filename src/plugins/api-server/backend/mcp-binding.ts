@@ -5,16 +5,20 @@ import {
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
 
+import { MCP_LIMITS, type McpSession } from './mcp-sessions';
 import { mcpPublicSchema, mcpRegistrationSchema } from './mcp-tool-schemas';
 import { createMcpToolRegistry } from './mcp-tools';
 
-import type { McpSession } from './mcp-sessions';
 import type { MusicService } from './music-service';
 
 export function createMcpBinding(service: MusicService, session: McpSession) {
   const server = new McpServer(
     { name: 'pear-desktop-music', version: '1' },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: { tools: {} },
+      // GHSA-46jr-4wx8-v453: the vendor guard is opt-in, even after upgrading.
+      maxToolInputElements: MCP_LIMITS.toolInputElements,
+    },
   );
   const registry = createMcpToolRegistry(service);
   const descriptors = registry.list(session.principal.scopes);

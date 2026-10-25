@@ -1,6 +1,7 @@
 --- a/dist/esm/server/webStandardStreamableHttp.js
 +++ b/dist/esm/server/webStandardStreamableHttp.js
-@@ -925,11 +925,37 @@
+@@ -936,13 +936,39 @@
+                     if (this.sessionId !== undefined) {
                          headers['mcp-session-id'] = this.sessionId;
                      }
 -                    const responses = relatedIds.map(id => this._requestResponseMap.get(id));
@@ -45,9 +46,11 @@
 +                    return;
                  }
                  else {
+                     // End the SSE stream
 --- a/dist/cjs/server/webStandardStreamableHttp.js
 +++ b/dist/cjs/server/webStandardStreamableHttp.js
-@@ -928,11 +928,37 @@
+@@ -939,13 +939,39 @@
+                     if (this.sessionId !== undefined) {
                          headers['mcp-session-id'] = this.sessionId;
                      }
 -                    const responses = relatedIds.map(id => this._requestResponseMap.get(id));
@@ -92,3 +95,4 @@
 +                    return;
                  }
                  else {
+                     // End the SSE stream

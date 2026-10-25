@@ -1,6 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 
-import type { McpSession } from './mcp-sessions';
+import { MCP_LIMITS, type McpSession } from './mcp-sessions';
+
 import type {
   Transport,
   TransportSendOptions,
@@ -15,6 +16,7 @@ export function createMcpTransport(session: McpSession) {
   const http = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => session.id,
     enableJsonResponse: true,
+    maxRequestBodySize: MCP_LIMITS.body,
   });
   const facade: Transport = {
     sessionId: session.id,

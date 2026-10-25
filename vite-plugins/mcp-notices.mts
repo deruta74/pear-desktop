@@ -34,6 +34,7 @@ type NoticeRecord = {
 };
 type Binding = {
   format: number;
+  acceptedSourceHashes: { sdk1320Source: string };
   sdkSpecifier: string;
   sdkImporterSha256: string;
   sdkPatchSha256: string;
@@ -232,6 +233,15 @@ export async function emitMcpNotices(root: string) {
   ) as Binding;
   if (binding.format !== 1 || binding.records.length !== 94)
     fail('expected binding format 1 and 94 SDK records');
+  const sdkSource = await readFile(
+    join(base, 'sources/sdk-1.32.0.json'),
+    'utf8',
+  );
+  if (
+    sha256(sdkSource.replace(/\r\n/g, '\n')) !==
+    binding.acceptedSourceHashes.sdk1320Source
+  )
+    fail('SDK source provenance hash changed');
   const ids = binding.records.map(
     (record) => `${record.name}@${record.version}`,
   );
@@ -251,7 +261,7 @@ export async function emitMcpNotices(root: string) {
   )
     fail('SDK manifest specifier changed');
   const patch = await readFile(
-    join(root, 'patches/@modelcontextprotocol__sdk@1.30.0.patch'),
+    join(root, 'patches/@modelcontextprotocol__sdk@1.32.0.patch'),
   );
   if (sha256(patch) !== binding.sdkPatchSha256)
     fail('SDK patch source hash changed');
@@ -309,7 +319,7 @@ pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4
 @media print { body { max-width: none; padding: 0; } }
 </style></head><body><main>
 <h1>MCP dependency notices</h1>
-<p>Original license and copyright notices for the MCP integration (SDK 1.30.0).</p>
+<p>Original license and copyright notices for the MCP integration (SDK 1.32.0).</p>
 ${articles.join('\n')}
 </main></body></html>\n`;
   return { fileName: 'assets/mcp-dependency-notices.html', source };

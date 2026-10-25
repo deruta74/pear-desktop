@@ -4,16 +4,17 @@
   "acceptedSourceHashes": {
     "catalog": "aa4f779f9245b5df98046292dd9000fb96eb5308f6976bd0bcdebd9131c5c422",
     "portableIndex": "e5df948807bc41b76a42ebcd0948c9a77f26b78964d12007fe6646237a44c08d",
-    "closure": "388775c9161abdbdde8bdd21243dac63f818350513fd11701b7976cd7fac5dbf"
+    "closure": "388775c9161abdbdde8bdd21243dac63f818350513fd11701b7976cd7fac5dbf",
+    "sdk1320Source": "6af1872cc140ce73a4941af07ea89ba39e8a80ea07758a329207612dc8c0d3e2"
   },
-  "sdkSpecifier": "1.30.0",
-  "sdkPatchSha256": "29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9",
-  "sdkImporterSha256": "699b2174808c103cc364b69fdf40dc2491608fad1202d3efb2a4ce4c46e9ce78",
+  "sdkSpecifier": "1.32.0",
+  "sdkPatchSha256": "bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf",
+  "sdkImporterSha256": "c5d0568a2d4598360c36c7e3c7a4a2e681a0eaeaf23d4d3e7b88e2fdc472f32a",
   "graph": {
-    "rootSnapshot": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+    "rootSnapshot": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
     "snapshots": [
       "@hono/node-server@2.0.10(hono@4.13.13)",
-      "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+      "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
       "accepts@2.0.0",
       "ajv-formats@3.0.1",
       "ajv@8.20.0",
@@ -109,119 +110,119 @@
     ],
     "edges": [
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "@hono/node-server",
         "reference": "2.0.10(hono@4.13.13)",
         "to": "@hono/node-server@2.0.10(hono@4.13.13)"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "ajv",
         "reference": "8.20.0",
         "to": "ajv@8.20.0"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "ajv-formats",
         "reference": "3.0.1",
         "to": "ajv-formats@3.0.1"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "content-type",
         "reference": "1.0.5",
         "to": "content-type@1.0.5"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "cors",
         "reference": "2.8.6",
         "to": "cors@2.8.6"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "cross-spawn",
         "reference": "7.0.6",
         "to": "cross-spawn@7.0.6"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "eventsource",
         "reference": "3.0.7",
         "to": "eventsource@3.0.7"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "eventsource-parser",
         "reference": "3.1.1",
         "to": "eventsource-parser@3.1.1"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "express",
         "reference": "5.3.0(supports-color@7.2.0)",
         "to": "express@5.3.0(supports-color@7.2.0)"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "express-rate-limit",
         "reference": "8.7.1(express@5.3.0(supports-color@7.2.0))(supports-color@7.2.0)",
         "to": "express-rate-limit@8.7.1(express@5.3.0(supports-color@7.2.0))(supports-color@7.2.0)"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "hono",
         "reference": "4.13.13",
         "to": "hono@4.13.13"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "jose",
         "reference": "6.2.12",
         "to": "jose@6.2.12"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "json-schema-typed",
         "reference": "8.0.2",
         "to": "json-schema-typed@8.0.2"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "pkce-challenge",
         "reference": "5.0.1",
         "to": "pkce-challenge@5.0.1"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "raw-body",
         "reference": "3.0.2",
         "to": "raw-body@3.0.2"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "zod",
         "reference": "4.4.3",
         "to": "zod@4.4.3"
       },
       {
-        "from": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "from": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "kind": "dependencies",
         "dependency_name": "zod-to-json-schema",
         "reference": "3.25.2(zod@4.4.3)",
@@ -1243,12 +1244,12 @@
         "exact_snapshot_target": "hono@4.13.13"
       },
       {
-        "snapshot": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "snapshot": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "context": "supports-color@7.2.0",
         "exact_snapshot_target": "supports-color@7.2.0"
       },
       {
-        "snapshot": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
+        "snapshot": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
         "context": "zod@4.4.3",
         "exact_snapshot_target": "zod@4.4.3"
       },
@@ -1338,31 +1339,33 @@
     },
     {
       "name": "@modelcontextprotocol/sdk",
-      "version": "1.30.0",
-      "recordId": "added54:01:@modelcontextprotocol/sdk@1.30.0",
-      "qualification": "SOURCE_SUMMARY_ONLY_NO_GRAPH_BINDING",
-      "sourceGroup": "added54_static",
-      "noticeFile": "notices/002-modelcontextprotocol_sdk_1.30.0-5e13dbbc1d12.txt",
+      "version": "1.32.0",
+      "recordId": "sdk-security-2026-10-25:01:@modelcontextprotocol/sdk@1.32.0",
+      "qualification": "REGISTRY_ARCHIVE_INTEGRITY_AND_ORIGINAL_NOTICE_BYTES_VERIFIED_SOURCE_ONLY",
+      "sourceGroup": "sdk_security_1320_official_archive",
+      "noticeFile": "notices/002-modelcontextprotocol_sdk_1.32.0-5e13dbbc1d12.txt",
       "noticeSha256": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
       "noticeBytes": 1071,
       "source": {
-        "archiveSha256": "2cac3f3e38fec2815ed9efafa2947faf8c6957310684f99703f3d180f3e9af1a",
-        "packageJsonSha256": "0690cbe02511a95d1ff199acf20b5a12ac4dfde1bbe30c82a0de73afa92dffc9",
-        "originalNoticePath": null,
+        "archiveSha256": "41dd4776a00ed50eaaa43ee335e27363ad1f53c3b7fa27fd0f75c0520f5342ec",
+        "archiveIntegrity": "sha512-8BviX/hK4Gd2eL1KdTwm0gfl4d3wdoErW0Jd00h6nomUAtk6IJk5vwQJc6kfWtJTzN5OEV/lgIiJKI8fiDGAlA==",
+        "packageJsonSha256": "e2978955f1e20cce7a22ed5daea0bed7e7d8e0a0e1b8fe170773dd15787a51b3",
+        "originalNoticePath": "package/LICENSE",
         "licenseLabel": {
           "registry_expression": "MIT",
-          "validation": "SUMMARY_ONLY"
+          "package_json_literal": "MIT",
+          "validation": "SOURCE_ONLY_NO_LICENSE_EXPRESSION_AUDIT"
         },
-        "qualification": "SOURCEONLY_UNVALIDATED_M73_GRAPH_NOT_BOUND"
+        "qualification": "REGISTRY_ARCHIVE_INTEGRITY_AND_ORIGINAL_NOTICE_BYTES_VERIFIED_SOURCE_ONLY"
       },
       "package": {
-        "key": "@modelcontextprotocol/sdk@1.30.0",
-        "sha256": "14bdf42994d8f0a2fd443827db41d428988855c08a34d8c843b147e260ee8879"
+        "key": "@modelcontextprotocol/sdk@1.32.0",
+        "sha256": "120cf5a94c9b20e10a0d281e9170441ebcdd18b7b568fab4f7e91499077cd324"
       },
       "snapshots": [
         {
-          "key": "@modelcontextprotocol/sdk@1.30.0(patch_hash=29fac29b9e3ad9b409117f99c739c33bf4b501ab3f41162f14cda02ca60d75d9)(supports-color@7.2.0)(zod@4.4.3)",
-          "sha256": "7f5777ae3cc7b3540b8d6991743cfcf1b0c8945436784eb729ee526194845e7f"
+          "key": "@modelcontextprotocol/sdk@1.32.0(patch_hash=bbfb2c9bfabac6404c5f1302ffbe83ab6014fdda35eeffa373ce33c5845c4cbf)(supports-color@7.2.0)(zod@4.4.3)",
+          "sha256": "3034c592ca61268d1f6b34d278c391e66d65e43d8ac791e286cdf97f6df2240b"
         }
       ]
     },
@@ -4164,5 +4167,11 @@
         }
       ]
     }
-  ]
+  ],
+  "sourceUpdate": {
+    "sourceFile": "sources/sdk-1.32.0.json",
+    "replacedRecordId": "added54:01:@modelcontextprotocol/sdk@1.30.0",
+    "retainedAcceptedRecordCount": 93,
+    "graphMapping": "Only the SDK version and maintained patch qualifier change; the declared dependency and peer edge topology remains identical."
+  }
 }
