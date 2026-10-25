@@ -118,6 +118,12 @@ export async function playerActionsFixture({ nativeTimers = false } = {}) {
       cancelScheduledValues() {
         return this;
       },
+      cancelAndHoldAtTime() {
+        return this;
+      },
+      linearRampToValueAtTime(value: number) {
+        this.value = value;
+      },
       setValueAtTime(value: number) {
         this.value = value;
         return this;

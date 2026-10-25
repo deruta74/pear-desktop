@@ -61,6 +61,8 @@ class DattorroReverbProcessor extends AudioWorkletProcessor {
       }
       if (p.damping !== undefined) this.dampingAmt = p.damping;
       if (p.wetGain !== undefined) this.wetGain = p.wetGain;
+      this.pendingRamp = Number.isFinite(data.completeAt) ? { revision: data.revision, end: data.completeAt } : null;
+      if (data.revision !== undefined) this.port.postMessage?.({type: 'params-applied', revision: data.revision});
     }
   }
 
@@ -72,6 +74,7 @@ class DattorroReverbProcessor extends AudioWorkletProcessor {
 
   init() {
     this.t = 0;
+    this.pendingRamp = null;
     this.sr = sampleRate;
     this.predelay = 0.1;
     this.preFilterAmt = 0.85;
@@ -141,6 +144,14 @@ class DattorroReverbProcessor extends AudioWorkletProcessor {
 
   process(inputs, outputs) {
     if (this.disposed) return false;
+    // The post-filter native gain is scheduled on the same AudioContext clock.
+    // Report only after its final ramp sample; a suspended context cannot
+    // complete this handshake just because wall time has elapsed.
+    const audioTime = typeof currentTime === 'number' ? currentTime : this.t / this.sr;
+    if (this.pendingRamp && audioTime >= this.pendingRamp.end) {
+      this.port.postMessage?.({type:'wet-ramp-complete',revision:this.pendingRamp.revision});
+      this.pendingRamp = null;
+    }
     const inp = inputs[0];
     const out = outputs[0];
     if (!inp || !inp.length || !out || !out.length) return true;
@@ -179,6 +190,11 @@ class DattorroReverbProcessor extends AudioWorkletProcessor {
         const g = j < 2 ? this.inputDiff1Amt : this.inputDiff2Amt;
         x = this.allpassAp(d.buf, d.mask, d.off, g, x);
       }
+
+      // Each tank leg attenuates twice by decay (at cross-feed and before its
+      // second diffuser). Normalize that coherent feedback build-up, rather
+      // than driving a waveshaper harder as the decay control rises.
+      x *= 1 - this.decayAmt * this.decayAmt;
 
       if ((this.t & 0x7ff) === 0) {
         // Slow triangle LFO: sweep the modulated-delay read offsets a few
@@ -225,8 +241,11 @@ class DattorroReverbProcessor extends AudioWorkletProcessor {
             - this.decayDiff2[1].readTap(this.t, 'out1')
             + this.postDampDL[1].readTap(this.t, 'out1'));
 
-      outL[i] = this.wetGain * (wL / (1 + Math.abs(wL)));
-      outR[i] = this.wetGain * (wR / (1 + Math.abs(wR)));
+      // Seven signed tank taps form the stereo output. Normalize their energy
+      // linearly: waveshaping this sum adds audible harmonics to ordinary PCM.
+      // The renderer reserves dry+wet output headroom before the shared EQ.
+      outL[i] = this.wetGain * wL / Math.sqrt(7);
+      outR[i] = this.wetGain * wR / Math.sqrt(7);
 
       this.t++;
     }

@@ -46,6 +46,7 @@ export class EqualizerController {
     autoPreamp: boolean;
   } | null = null;
   private unsubscribeAuxiliary: (() => void) | undefined;
+  private unsubscribeMasterPeak: (() => void) | undefined;
   private media: HTMLMediaElement | undefined;
   private unsubscribeVolumePreparation: (() => void) | undefined;
   private preparedSource: string | null = null;
@@ -99,6 +100,7 @@ export class EqualizerController {
     this.unsubscribeAuxiliary = graph.observeAuxiliaryMedia?.(
       this.sourceChanged,
     );
+    this.unsubscribeMasterPeak = graph.observeMasterPeak?.(this.sourceChanged);
   }
 
   apply(profile: EqualizerProfile, bypass: boolean, autoPreamp = false) {
@@ -311,6 +313,8 @@ export class EqualizerController {
   }
 
   private sourceVolume() {
+    if (this.graph.masterSourcePeak !== undefined)
+      return this.graph.masterSourcePeak;
     // Auxiliary dry inputs have independent gains/volume: the main element's
     // headroom cannot be assumed for their sum. Keep the full-scale assumption.
     if (this.graph.auxiliaryMediaCount > 0 || !this.media) return 1;
@@ -433,6 +437,8 @@ export class EqualizerController {
     this.media?.removeEventListener('volumechange', this.sourceChanged);
     this.unsubscribeAuxiliary?.();
     this.unsubscribeAuxiliary = undefined;
+    this.unsubscribeMasterPeak?.();
+    this.unsubscribeMasterPeak = undefined;
     this.unsubscribeVolumePreparation?.();
     this.unsubscribeVolumePreparation = undefined;
     this.latest = null;

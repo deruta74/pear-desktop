@@ -112,7 +112,13 @@ test('native reverb tone cuts only the wet spectrum and Equalizer still controls
       const dry = samples[30];
       reverb.stop();
       eq.stop();
-      return { tailEnergy, peak, dry, finite: samples.every(Number.isFinite) };
+      return {
+        mixGain: owned.masterInput.gain.value,
+        tailEnergy,
+        peak,
+        dry,
+        finite: samples.every(Number.isFinite),
+      };
     };
     const bassOpen = await render(60, 20, 20000, 0);
     const bassCut = await render(60, 600, 20000, 0);
@@ -154,7 +160,10 @@ test('native reverb tone cuts only the wet spectrum and Equalizer still controls
     10 ** (-12 / 20),
     5,
   );
-  expect(result.eqFlat.dry).toBeCloseTo(result.dryOnly.dry, 6);
+  expect(result.eqFlat.dry).toBeCloseTo(
+    result.dryOnly.dry * result.eqFlat.mixGain,
+    6,
+  );
   expect(result.dryOnly.tailEnergy).toBe(0);
   expect(result.eqStopped.tailEnergy).toBeCloseTo(result.eqFlat.tailEnergy, 6);
   expect(result.eqStopped.dry).toBeCloseTo(result.eqFlat.dry, 6);

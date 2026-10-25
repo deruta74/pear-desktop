@@ -123,11 +123,11 @@ export async function renderWetVolume(options = {}) {
     if(i>=26400&&i<72000){peak=Math.max(peak,Math.abs(value));energy+=value*value;count++;}
     if(i>=72000)lateEnergy+=value*value;
   }
-  const preamp=eq.getResponse().effectivePreampDb;
+  const preamp=eq.getResponse().effectivePreampDb, mixGain=graph.masterInput.gain.value, sourcePeak=graph.masterSourcePeak;
   const inputGain=wet.wetInput?.gain.value,outputGain=wet.wetGain?.gain.value;
   const ownedInput=wet.wetInput;
   wet.teardownAudio();const afterWetStop=subscriptions;eq.stop();
-  return {preparation,samples:rendered.getChannelData(0),peak,rms:Math.sqrt(energy/count),lateEnergy,preamp,inputGain,outputGain,liveSubscriptions,afterWetStop,afterStop:subscriptions,inputReleased:wet.wetInput===null&&ownedInput!==null};
+  return {mixGain,sourcePeak,preparation,samples:rendered.getChannelData(0),peak,rms:Math.sqrt(energy/count),lateEnergy,preamp,inputGain,outputGain,liveSubscriptions,afterWetStop,afterStop:subscriptions,inputReleased:wet.wetInput===null&&ownedInput!==null};
 }
 `);
 });
@@ -145,6 +145,7 @@ for (const eqFirst of [false, true]) {
         steady: steady.peak,
         lower: lower.peak,
         preamp: lower.preamp,
+        sourcePeak: lower.sourcePeak,
         inputGain: lower.inputGain,
         outputGain: lower.outputGain,
         live: lower.liveSubscriptions,
@@ -155,9 +156,17 @@ for (const eqFirst of [false, true]) {
     }, eqFirst);
     expect(result.lower).toBeLessThan(1);
     expect(result.lower).toBeCloseTo(result.steady, 5);
-    expect(result.preamp).toBeCloseTo(-36 - 20 * Math.log10(0.03) - 0.1, 3);
+    expect(result.preamp).toBeCloseTo(
+      -36 - 20 * Math.log10(result.sourcePeak) - 0.1,
+      3,
+    );
     expect(result.inputGain).toBeCloseTo(1 / 0.03, 4);
-    expect(result.outputGain).toBeCloseTo(0.03, 6);
+    // The post-filter node owns intensity as well as the single media-volume
+    // factor, so retained HP/LP samples follow the current output reserve.
+    expect(result.outputGain).toBeCloseTo(
+      0.03 * computeDattorroParams(1).wetGain,
+      6,
+    );
     expect(result.live).toBe(3);
     expect(result.wetStopped).toBe(2);
     expect(result.stopped).toBe(1);
@@ -223,7 +232,10 @@ test('steady wet/dry mix has one volume factor and zero/mute/epsilon stay finite
       for (let i = 0; i < low.samples.length; i++)
         error = Math.max(
           error,
-          Math.abs(low.samples[i] / initialVolume - reference.samples[i]),
+          Math.abs(
+            low.samples[i] / (initialVolume * low.mixGain) -
+              reference.samples[i] / reference.mixGain,
+          ),
         );
       scaled.push({
         error,
@@ -363,11 +375,17 @@ test('wet volume listeners follow the wired source through replacement, failure 
   expect(result.switched).toEqual([1, 2]);
   expect(result.staleWrites).toBe(0);
   expect(result.currentWrite[0]).toBeCloseTo(10, 6);
-  expect(result.currentWrite[1]).toBeCloseTo(0.1, 6);
+  expect(result.currentWrite[1]).toBeCloseTo(
+    0.1 * computeDattorroParams(1).wetGain,
+    6,
+  );
   expect(result.epsilon).toEqual([0, 0]);
   expect(result.nearZero[0]).toBeLessThanOrEqual(1e6);
   expect(result.nearZero[0]).toBeCloseTo(100000, 3);
-  expect(result.nearZero[1]).toBeCloseTo(1e-5, 8);
+  expect(result.nearZero[1]).toBeCloseTo(
+    1e-5 * computeDattorroParams(1).wetGain,
+    8,
+  );
   expect(result.muted).toEqual([0, 0]);
   expect(result.repeated).toBe(2);
   expect(result.stopped).toEqual([1, true, true]);
@@ -394,7 +412,10 @@ test('wet scaling and EQ tightening finish before intervening volume listeners c
     return { down: down.preparation.between[0], up: up.preparation.between[0] };
   });
   expect(result.down.wet).not.toBeUndefined();
-  expect(result.down.wet).toBeCloseTo(0.03, 6);
+  expect(result.down.wet).toBeCloseTo(
+    0.03 * computeDattorroParams(1).wetGain,
+    6,
+  );
   expect(result.up.eq).not.toBeUndefined();
   expect(result.up.eq).toBeLessThanOrEqual(10 ** (-36.09 / 20));
 });
@@ -503,7 +524,7 @@ test('native music gate prepares zero and muted chains before reopening ahead of
     expect(state.gate).toBe(1);
     expect(state.eq).not.toBeUndefined();
     expect(state.eq).toBeLessThanOrEqual(10 ** (-36.09 / 20));
-    expect(state.wet).toBe(1);
+    expect(state.wet).toBe(computeDattorroParams(1).wetGain);
   }
 });
 
