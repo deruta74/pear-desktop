@@ -1054,7 +1054,7 @@ test('one stable MCP grant across sessions stays at two slots while distinct loc
 });
 
 test('foreign queue receipt and nonexistent ID have identical scope denial before receipt inspection', async () => {
-  const f = await fixture();
+  const f = await fixture(false, undefined, undefined, Date.now);
   try {
     const grant = await f.store.issue(
       'Queue only',
