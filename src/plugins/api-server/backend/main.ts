@@ -453,13 +453,28 @@ export const backend = createBackend<BackendType, APIServerConfig>({
           return;
         const listener = createMcpListener({ service, grants, port });
         this.mcpListener = listener;
+        const isCurrent = () =>
+          revision === this.mcpRevision &&
+          this.mcpListener === listener &&
+          this.musicService === service &&
+          this.musicWindow === window &&
+          !window.isDestroyed() &&
+          !window.webContents.isDestroyed() &&
+          listener.owner.current();
         try {
           await listener.start();
-          if (revision !== this.mcpRevision || this.mcpListener !== listener) {
+          if (!isCurrent()) {
             await listener.stop();
             return;
           }
           publishMcpGrantTarget(window, listener);
+          // Config-driven menus can snapshot before the asynchronous bind is ready.
+          // Keep later template publication fenced to this exact listener owner.
+          import('@/menu')
+            .then(({ refreshMenu }) =>
+              isCurrent() ? refreshMenu(window, isCurrent) : undefined,
+            )
+            .catch(() => {});
         } catch {
           if (this.mcpListener === listener) this.mcpListener = undefined;
           await listener.stop();
