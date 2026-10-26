@@ -19,8 +19,11 @@ async function fixture() {
     entry,
     `
 export {setupSongInfo,registerCallback,SongInfoEvent} from ${JSON.stringify(path.join(root, 'src/providers/song-info.ts'))};
+export {getMcpGrantTarget} from ${JSON.stringify(path.join(root, 'src/plugins/api-server/backend/mcp-owner.ts'))};
 export {getMusicService} from ${JSON.stringify(path.join(root, 'src/plugins/api-server/backend/music-service.ts'))};
 export {backend} from ${JSON.stringify(path.join(root, 'src/plugins/api-server/backend/main.ts'))};
+export {onMenu} from ${JSON.stringify(path.join(root, 'src/plugins/api-server/menu.ts'))};
+export {menuState,setMenuContext} from '@/menu';
 export {ipcMain,fixtureWindow,createFixtureWindow,fixtureNetwork,app} from 'electron';
 `,
   );
@@ -36,6 +39,7 @@ export const fixtureNetwork=[];
 export const nativeImage={createFromBuffer:()=>({isEmpty:()=>false})};
 export const net={fetch:async(...args)=>{fixtureNetwork.push(args);throw new Error('Fixture prohibits remote artwork/network');}};
 export const dialog={showMessageBox:async()=>({response:1})};
+export const clipboard={writeText:()=>{throw new Error('Fixture prohibits credential copies');}};
 `;
   const { rolldown } = await import(
     pathToFileURL(requireVite.resolve('rolldown')).href
@@ -50,6 +54,10 @@ export const dialog={showMessageBox:async()=>({response:1})};
           if (id === 'electron') return '\0fixture-electron';
           if (id === '@/config') return '\0fixture-config';
           if (id === '@/i18n') return '\0fixture-i18n';
+          if (id === '@/menu') return '\0fixture-menu';
+          if (id === '@/providers/prompt-options')
+            return '\0fixture-prompt-options';
+          if (id === 'custom-electron-prompt') return '\0fixture-prompt';
           if (id.startsWith('@/')) {
             const target = path.join(root, 'src', id.slice(2));
             const { access } = await import('node:fs/promises');
@@ -82,13 +90,31 @@ export const dialog={showMessageBox:async()=>({response:1})};
             return 'export const get=()=>false; export const set=()=>{};';
           if (id === '\0fixture-i18n')
             return "export const APPLICATION_NAME='Public Fixture'; export const t=(key)=>key;";
+          if (id === '\0fixture-prompt-options')
+            return 'export default ()=>({});';
+          if (id === '\0fixture-prompt')
+            return "export default async()=>{throw new Error('Fixture prohibits native prompts');};";
+          if (id === '\0fixture-menu')
+            return `
+import {onMenu} from ${JSON.stringify(path.join(root, 'src/plugins/api-server/menu.ts'))};
+export const menuState={requests:[],published:[],hold:false,releases:[],reject:false};
+let context;
+export const setMenuContext=value=>context=value;
+export async function refreshMenu(window,isCurrent=()=>true){
+  menuState.requests.push({window,isCurrent});
+  if(menuState.reject)throw Error('Owned native menu failure');
+  const menu=await onMenu(context);
+  if(menuState.hold)await new Promise(resolve=>menuState.releases.push(resolve));
+  if(isCurrent())menuState.published.push(menu);
+}
+`;
           return undefined;
         },
       },
     ],
   });
   const output = path.join(directory, 'actual-source.cjs');
-  await bundle.write({ file: output, format: 'cjs' });
+  await bundle.write({ file: output, format: 'cjs', codeSplitting: false });
   await bundle.close();
   // Only native/config/translation boundaries are supplied. Provider, mutex,
   // backend lifecycle, Hono middleware, route handlers and schemas are real.
@@ -116,9 +142,12 @@ export const dialog={showMessageBox:async()=>({response:1})};
     certPath: '',
     keyPath: '',
   };
+  const configWrites: unknown[] = [];
   const ctx = {
     getConfig: async () => config,
-    setConfig: async () => {},
+    setConfig: async (value: unknown) => {
+      configWrites.push(value);
+    },
     window: fixtureWindow,
     ipc: {
       on: (event: string, handler: (...args: unknown[]) => void) =>
@@ -126,6 +155,7 @@ export const dialog={showMessageBox:async()=>({response:1})};
       send: (...args: unknown[]) => fixtureWindow.webContents.send(...args),
     },
   };
+  source.setMenuContext({ ...ctx, refresh: () => {} });
   const waitListening = async () => {
     const server = backend.server;
     if (server && !server.listening)
@@ -174,6 +204,7 @@ export const dialog={showMessageBox:async()=>({response:1})};
     backend,
     ctx,
     config,
+    configWrites,
     writes: () => writes,
     emit: async (event: string, ...args: unknown[]) => {
       for (const listener of ipcMain.listeners(event))
@@ -391,5 +422,230 @@ test('actual owned EADDRINUSE failure never publishes and old physical server ca
   } finally {
     await f.close();
     await new Promise<void>((r) => occupied.close(() => r()));
+  }
+});
+
+test('actual main keeps MCP off by default and shares one service while native target retires before reconfiguration', async () => {
+  const f = await fixture();
+  const reservation = createServer();
+  reservation.listen(0, '127.0.0.1');
+  await once(reservation, 'listening');
+  const address = reservation.address();
+  if (!address || typeof address === 'string')
+    throw Error('Missing owned port');
+  const mcpPort = address.port;
+  await new Promise<void>((resolve) => reservation.close(() => resolve()));
+  try {
+    await f.backend.start(f.ctx);
+    await f.waitListening();
+    expect(f.backend.mcpListener).toBeUndefined();
+    expect(f.source.getMcpGrantTarget(f.ctx.window)).toBeUndefined();
+    const config = {
+      ...f.config,
+      port: f.backend.server.address().port,
+      musicApiEnabled: false,
+      mcpEnabled: true,
+      mcpPort,
+    };
+    f.backend.oldConfig = config;
+    f.backend.onConfigChange(config);
+    await expect
+      .poll(() => Boolean(f.backend.mcpListener?.owner.current()))
+      .toBe(true);
+    const service = f.backend.musicService;
+    expect(service).toBeDefined();
+    expect(f.source.getMusicService(f.ctx.window)).toBeUndefined();
+    const target = f.source.getMcpGrantTarget(f.ctx.window);
+    expect(target.resource).toBe(`http://127.0.0.1:${mcpPort}/mcp`);
+    const native = target.captureNativeOwner();
+    expect(native.current()).toBe(true);
+    const grant = await target.grants.issue(
+      'Owned main fixture',
+      'mcp',
+      target.resource,
+      [],
+      () => native.current(),
+    );
+    const initialized = await fetch(target.resource, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${grant.token}`,
+        Accept: 'application/json, text/event-stream',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'main-init',
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          clientInfo: { name: 'owned-main', version: '1' },
+        },
+      }),
+    });
+    expect(initialized.status).toBe(200);
+    await initialized.arrayBuffer();
+    f.backend.onConfigChange({ ...config, musicApiEnabled: true });
+    expect(f.backend.musicService).toBe(service);
+    expect(native.current()).toBe(false);
+    expect(f.source.getMcpGrantTarget(f.ctx.window)).toBeUndefined();
+    await expect
+      .poll(() =>
+        Boolean(
+          f.source
+            .getMcpGrantTarget(f.ctx.window)
+            ?.captureNativeOwner()
+            .current(),
+        ),
+      )
+      .toBe(true);
+    f.backend.onConfigChange({
+      ...config,
+      mcpEnabled: false,
+      musicApiEnabled: true,
+    });
+    expect(f.backend.musicService).toBe(service);
+    expect(f.backend.mcpListener).toBeUndefined();
+    expect(f.source.getMcpGrantTarget(f.ctx.window)).toBeUndefined();
+  } finally {
+    await f.close();
+  }
+});
+
+async function mcpMenuFixture() {
+  const f = await fixture();
+  const reservation = createServer();
+  reservation.listen(0, '127.0.0.1');
+  await once(reservation, 'listening');
+  const address = reservation.address();
+  if (!address || typeof address === 'string')
+    throw Error('Missing owned port');
+  await new Promise<void>((resolve) => reservation.close(() => resolve()));
+  await f.start();
+  const config = {
+    ...f.config,
+    port: f.backend.server.address().port,
+    musicApiEnabled: false,
+    mcpEnabled: true,
+    mcpPort: address.port,
+  };
+  Object.assign(f.config, config);
+  f.backend.oldConfig = config;
+  const menu = () => f.source.onMenu({ ...f.ctx, refresh: () => {} });
+  const enabled = (template: any[]) =>
+    template
+      .find((item) => item.label === 'MCP music access')
+      .submenu.filter(
+        (item: any) =>
+          item.label === 'Create client grant…' ||
+          item.label === 'Revoke client grants…',
+      )
+      .map((item: any) => item.enabled);
+  return {
+    ...f,
+    config,
+    menu,
+    enabled,
+    enable: () => f.backend.onConfigChange(config),
+  };
+}
+
+test('actual main refreshes disabled native MCP grant entries when the listener becomes ready without config writes', async () => {
+  const f = await mcpMenuFixture();
+  try {
+    f.enable();
+    expect(f.enabled(await f.menu())).toEqual([false, false]);
+    await expect
+      .poll(() => Boolean(f.source.getMcpGrantTarget(f.ctx.window)))
+      .toBe(true);
+    // The real listener is ready; rebuilding only after an unrelated config write
+    // would leave the native snapshot permanently disabled.
+    expect(f.source.menuState.requests).toHaveLength(1);
+    await expect.poll(() => f.source.menuState.published.length).toBe(1);
+    expect(f.enabled(f.source.menuState.published[0])).toEqual([true, true]);
+    expect(f.configWrites).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
+
+for (const retirement of ['stop', 'reconfigure', 'destroy'] as const) {
+  test(`actual MCP readiness cannot publish a native target or refresh after ${retirement} during bind`, async () => {
+    const f = await mcpMenuFixture();
+    try {
+      f.enable();
+      // Drain import/creation microtasks while the actual Node bind is pending.
+      for (let tick = 0; tick < 8; tick++) await Promise.resolve();
+      const listener = f.backend.mcpListener;
+      expect(listener).toBeDefined();
+      expect(listener.owner.current()).toBe(false);
+      if (retirement === 'stop') f.backend.stop();
+      else if (retirement === 'reconfigure')
+        f.backend.onConfigChange({ ...f.config, mcpEnabled: false });
+      else f.ctx.window.destroy();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(f.source.getMcpGrantTarget(f.ctx.window)).toBeUndefined();
+      expect(f.source.menuState.requests).toHaveLength(0);
+    } finally {
+      await f.close();
+    }
+  });
+
+  test(`held actual MCP menu snapshot cannot publish after ${retirement}`, async () => {
+    const f = await mcpMenuFixture();
+    try {
+      f.source.menuState.hold = true;
+      f.enable();
+      await expect.poll(() => f.source.menuState.releases.length).toBe(1);
+      const request = f.source.menuState.requests[0];
+      expect(request.window).toBe(f.ctx.window);
+      expect(request.isCurrent()).toBe(true);
+      if (retirement === 'stop') f.backend.stop();
+      else if (retirement === 'reconfigure')
+        f.backend.onConfigChange({ ...f.config, mcpEnabled: false });
+      else f.ctx.window.destroy();
+      expect(request.isCurrent()).toBe(false);
+      f.source.menuState.releases.shift()();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(f.source.menuState.published).toHaveLength(0);
+      expect(f.configWrites).toEqual([]);
+    } finally {
+      await f.close();
+    }
+  });
+}
+
+test('failed actual MCP bind cannot publish a native grant target or menu refresh', async () => {
+  const f = await mcpMenuFixture();
+  const occupied = createServer();
+  try {
+    occupied.listen(f.config.mcpPort, '127.0.0.1');
+    await once(occupied, 'listening');
+    f.enable();
+    for (let tick = 0; tick < 8; tick++) await Promise.resolve();
+    expect(f.backend.mcpListener).toBeDefined();
+    await expect.poll(() => f.backend.mcpListener).toBeUndefined();
+    expect(f.source.getMcpGrantTarget(f.ctx.window)).toBeUndefined();
+    expect(f.source.menuState.requests).toHaveLength(0);
+  } finally {
+    await new Promise<void>((resolve) => occupied.close(() => resolve()));
+    await f.close();
+  }
+});
+
+test('native menu refresh failure leaves the ready MCP listener and target healthy', async () => {
+  const f = await mcpMenuFixture();
+  try {
+    f.source.menuState.reject = true;
+    f.enable();
+    await expect.poll(() => f.source.menuState.requests.length).toBe(1);
+    const listener = f.backend.mcpListener;
+    expect(f.source.getMcpGrantTarget(f.ctx.window)).toBe(listener);
+    expect(listener.owner.current()).toBe(true);
+    expect(f.source.menuState.published).toHaveLength(0);
+  } finally {
+    await f.close();
   }
 });

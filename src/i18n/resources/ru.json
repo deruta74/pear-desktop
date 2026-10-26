@@ -79,6 +79,8 @@
       }
     },
     "menu": {
+      "mcp-dependency-notices-error": "Не удалось открыть уведомления о зависимостях MCP.",
+      "mcp-dependency-notices": "Уведомления о зависимостях MCP",
       "about": "О приложении",
       "navigation": {
         "label": "Навигация",

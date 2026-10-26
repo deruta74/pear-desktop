@@ -63,6 +63,7 @@ async function fixture(responses: number[] = [2, 0]) {
     window: {},
     getConfig: async () => config,
     setConfig: async (v: any) => writes.push(v),
+    refresh: () => {},
   };
   const menu = await m.createMusicGrantMenu(ctx, () => service, native);
   return {
@@ -168,4 +169,61 @@ test('native editor independently selects Home and library with empty defaults a
       'synthetic-native-only-bearer',
     );
   }
+});
+
+test('MCP native target uses separate transport/resource and explicitly offers all seven scopes', async () => {
+  const m = await musicModuleSource('src/plugins/api-server/music-menu.ts');
+  const issues: unknown[][] = [],
+    dialogs: any[] = [],
+    writes: unknown[] = [];
+  const choices = [6, 7, 8, 2, 0];
+  const target = {
+    transport: 'mcp',
+    resource: 'http://127.0.0.1:26539/mcp',
+    captureNativeOwner: () => ({ current: () => true }),
+    grants: {
+      issue: async (...args: unknown[]) => {
+        issues.push(args);
+        return { token: 'owned-native-mcp', record: { id: 'owned' } };
+      },
+      revoke: async () => {},
+      list: async () => [],
+    },
+  };
+  const menu = await m.createMusicGrantMenu(
+    {
+      getConfig: async () => ({ enabled: true, mcpEnabled: true }),
+      setConfig: async (value: unknown) => {
+        writes.push(value);
+      },
+      refresh: () => {},
+    },
+    () => target,
+    {
+      prompt: async () => 'Owned MCP',
+      show: async (value: unknown) => {
+        dialogs.push(value);
+        return { response: choices.shift() };
+      },
+      copy: () => {},
+    },
+    'mcp',
+  );
+  await menu
+    .find((entry: any) => entry.type === 'checkbox')
+    .click({ checked: false });
+  expect(writes).toEqual([{ mcpEnabled: false }]);
+  await menu
+    .find((entry: any) => entry.label === 'Create client grant…')
+    .click();
+  expect(issues[0].slice(0, 4)).toEqual([
+    'Owned MCP',
+    'mcp',
+    target.resource,
+    ['comments.read', 'playback.control', 'queue.write'],
+  ]);
+  expect(dialogs[0].detail).toContain('Selected: none');
+  expect(JSON.stringify(dialogs)).toContain('playback control');
+  expect(JSON.stringify(dialogs)).toContain('queue write');
+  expect(JSON.stringify(dialogs)).not.toContain('owned-native-mcp');
 });

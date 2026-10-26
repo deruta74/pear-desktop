@@ -8,6 +8,7 @@ export interface NativeGrantOwner {
   current(): boolean;
 }
 export interface NativeGrantService {
+  transport?: 'rest' | 'mcp';
   resource: string;
   grants: MusicGrantStore;
   captureNativeOwner(): NativeGrantOwner;
@@ -22,10 +23,11 @@ export async function createMusicGrantMenu(
   context: MenuContext<APIServerConfig>,
   resolveService: () => NativeGrantService | undefined,
   native: MusicNativeActions,
+  transport: 'rest' | 'mcp' = 'rest',
 ) {
   const config = await context.getConfig();
   const policy = (resource: string) =>
-    `REST at ${resource}\nLocal peers only (127.0.0.0/8 / ::1), exact Host, no browser Origin or forwarded-host access. Grants expire after 24 hours.`;
+    `${transport === 'mcp' ? 'MCP' : 'REST'} at ${resource}\nLocal peers only (127.0.0.0/8 / ::1), exact Host, no browser Origin or forwarded-host access. Grants expire after 24 hours.`;
   const safeOwner = (service: NativeGrantService) => {
     try {
       return service.captureNativeOwner();
@@ -42,17 +44,30 @@ export async function createMusicGrantMenu(
   };
   return [
     {
-      label: 'Enable expanded music API',
+      label:
+        transport === 'mcp'
+          ? 'Enable MCP music access'
+          : 'Enable expanded music API',
       type: 'checkbox' as const,
-      checked: !!config.musicApiEnabled,
+      checked:
+        transport === 'mcp' ? !!config.mcpEnabled : !!config.musicApiEnabled,
       async click(item: { checked: boolean }) {
-        await context.setConfig({ musicApiEnabled: item.checked });
+        await context.setConfig(
+          transport === 'mcp'
+            ? { mcpEnabled: item.checked }
+            : { musicApiEnabled: item.checked },
+        );
+        await context.refresh();
       },
     },
     {
       label: 'Create client grant…',
       enabled:
-        !!config.enabled && !!config.musicApiEnabled && !!resolveService(),
+        !!config.enabled &&
+        (transport === 'mcp'
+          ? !!config.mcpEnabled
+          : !!config.musicApiEnabled) &&
+        !!resolveService(),
       async click() {
         const service = resolveService();
         if (!service) return;
@@ -80,26 +95,50 @@ export async function createMusicGrantMenu(
               'Cancel',
               `${scopes.includes('personalized.read') ? 'Remove' : 'Add'} Home read`,
               `${scopes.includes('library.read') ? 'Remove' : 'Add'} library playlists read`,
-              `${scopes.includes('playback.control') ? 'Remove' : 'Add'} playback control`,
-              `${scopes.includes('queue.write') ? 'Remove' : 'Add'} queue write`,
+              ...(transport === 'rest'
+                ? [
+                    `${scopes.includes('playback.control') ? 'Remove' : 'Add'} playback control`,
+                    `${scopes.includes('queue.write') ? 'Remove' : 'Add'} queue write`,
+                  ]
+                : []),
               `${scopes.includes('comments.read') ? 'Remove' : 'Add'} public comments read`,
+              ...(transport === 'mcp'
+                ? [
+                    `${scopes.includes('playback.control') ? 'Remove' : 'Add'} playback control`,
+                    `${scopes.includes('queue.write') ? 'Remove' : 'Add'} queue write`,
+                  ]
+                : []),
             ],
             defaultId: 3,
             cancelId: 3,
           });
           if (!current() || !choice || choice.response === 3) return;
+          if (
+            transport === 'mcp' &&
+            ![0, 1, 2, 3, 4, 5, 6, 7, 8].includes(choice.response)
+          )
+            return;
           if (choice.response === 2) break;
-          const scope = (
-            {
-              0: 'playback.read',
-              1: 'catalog.read',
-              4: 'personalized.read',
-              5: 'library.read',
-              6: 'playback.control',
-              7: 'queue.write',
-              8: 'comments.read',
-            } as const
-          )[choice.response as 0 | 1 | 4 | 5 | 6 | 7 | 8];
+          const scope =
+            transport === 'mcp' && choice.response >= 6
+              ? (
+                  {
+                    6: 'comments.read',
+                    7: 'playback.control',
+                    8: 'queue.write',
+                  } as const
+                )[choice.response as 6 | 7 | 8]
+              : (
+                  {
+                    0: 'playback.read',
+                    1: 'catalog.read',
+                    4: 'personalized.read',
+                    5: 'library.read',
+                    6: 'playback.control',
+                    7: 'queue.write',
+                    8: 'comments.read',
+                  } as const
+                )[choice.response as 0 | 1 | 4 | 5 | 6 | 7 | 8];
           if (!scope) return;
           const index = scopes.indexOf(scope);
           if (index < 0) scopes.push(scope);
@@ -109,7 +148,7 @@ export async function createMusicGrantMenu(
         try {
           grant = await service.grants.issue(
             name,
-            'rest',
+            transport,
             service.resource,
             scopes,
             current,

@@ -20,6 +20,7 @@ import * as config from './config';
 import { getAllMenuTemplate, loadAllMenuPlugins } from './loader/menu';
 import { restart } from './providers/app-controls';
 import { startingPages } from './providers/extracted-data';
+import { openMcpDependencyNotices } from './providers/mcp-notices';
 import promptOptions from './providers/prompt-options';
 
 import packageJson from '../package.json';
@@ -745,7 +746,21 @@ export const mainMenuTemplate = async (
     },
     {
       label: t('main.menu.about'),
-      submenu: [{ role: 'about' }],
+      submenu: [
+        { role: 'about' },
+        {
+          label: t('main.menu.mcp-dependency-notices'),
+          async click() {
+            await openMcpDependencyNotices().catch((error: unknown) => {
+              console.error('Failed to open MCP dependency notices', error);
+              dialog.showErrorBox(
+                t('main.menu.mcp-dependency-notices'),
+                t('main.menu.mcp-dependency-notices-error'),
+              );
+            });
+          },
+        },
+      ],
     },
   ];
 };
