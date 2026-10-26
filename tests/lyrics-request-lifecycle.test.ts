@@ -1003,7 +1003,7 @@ test('export bridge rejects wrong native identity and retires captured calls on 
   }
 });
 
-test('current provider export works through the actual keyboard-accessible picker button', async ({
+test('lyrics export visibility is reactive and the button remains keyboard accessible', async ({
   page,
 }) => {
   await page.setContent(
@@ -1074,15 +1074,51 @@ test('current provider export works through the actual keyboard-accessible picke
     });
   });
   const button = page.locator('.lyrics-export');
+  const status = page.locator('.lyrics-export-status');
+  await expect(button).toBeVisible();
   await expect(button).toBeEnabled();
   await button.focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.lyrics-export-status')).toHaveText(
-    'Lyrics saved',
-  );
+  await expect(status).toHaveText('Lyrics saved');
   expect(await page.evaluate(() => (window as any).exportCalls)).toHaveLength(
     1,
   );
+  const searchesBeforeToggle = await page.evaluate(
+    () => (window as any).lyricsFixture.pending.length,
+  );
+  await page.evaluate(() => {
+    const f = (window as any).lyricsFixture;
+    f.renderer.onConfigChange({
+      enabled: true,
+      lineEffect: 'fancy',
+      romanization: false,
+      defaultTextString: '',
+      showTimeCodes: false,
+      enableDownload: false,
+    });
+  });
+  await expect(button).toBeHidden();
+  await expect(status).toBeHidden();
+  expect(await page.evaluate(() => (window as any).exportCalls)).toHaveLength(
+    1,
+  );
+  await page.evaluate(() => {
+    const f = (window as any).lyricsFixture;
+    f.renderer.onConfigChange({
+      enabled: true,
+      lineEffect: 'fancy',
+      romanization: false,
+      defaultTextString: '',
+      showTimeCodes: false,
+      enableDownload: true,
+    });
+  });
+  await expect(button).toBeVisible();
+  await expect(status).toHaveText('Lyrics saved');
+  expect(
+    await page.evaluate(() => (window as any).lyricsFixture.pending.length),
+  ).toBe(searchesBeforeToggle);
+  await button.focus();
   expect(
     await button.evaluate((node) => getComputedStyle(node).outlineStyle),
   ).not.toBe('none');

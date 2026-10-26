@@ -1212,7 +1212,11 @@
         "offset-help": "Positive values show lyrics later; negative values show them earlier.",
         "romanization-size": "Romanization size",
         "enhanced-lrc": "Export real word timing in enhanced LRC",
-        "enhanced-lrc-help": "Use source word timestamps when available; other lines retain line timing."
+        "enhanced-lrc-help": "Use source word timestamps when available; other lines retain line timing.",
+        "show-export": {
+          "label": "Show lyrics export button",
+          "tooltip": "Show or hide the export button and its status in the lyrics picker."
+        }
       }
     },
     "taskbar-mediacontrol": {
