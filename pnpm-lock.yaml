@@ -15,6 +15,7 @@ overrides:
   '@xmldom/xmldom@<0.8.15': 0.8.15
 
 patchedDependencies:
+  '@ffmpeg.wasm/main@0.12.0': d749fc3c8b99878699baea49e636d78140e8868d04ad7ef4734673a0c4a92766
   '@malept/flatpak-bundler@0.4.0': c787371eeb2af011ea934e8818a0dad6d7dcb2df31bbb1686babc7231af0183c
   app-builder-lib@26.15.3: af2afd40125fec6b874ce0d4058a8fec4ce3a2b0cb3947343a8b40285a501f53
   electron-is@3.0.0: 08664a5453f092fe45542f9005ffc07527b1f207447318374cba0f4d30f466a0
@@ -40,7 +41,7 @@ importers:
         version: 0.12.0
       '@ffmpeg.wasm/main':
         specifier: 0.12.0
-        version: 0.12.0
+        version: 0.12.0(patch_hash=d749fc3c8b99878699baea49e636d78140e8868d04ad7ef4734673a0c4a92766)
       '@floating-ui/dom':
         specifier: 1.7.6
         version: 1.7.6
@@ -4539,7 +4540,7 @@ snapshots:
 
   '@ffmpeg.wasm/core-mt@0.12.0': {}
 
-  '@ffmpeg.wasm/main@0.12.0':
+  '@ffmpeg.wasm/main@0.12.0(patch_hash=d749fc3c8b99878699baea49e636d78140e8868d04ad7ef4734673a0c4a92766)':
     dependencies:
       is-url: 1.2.4
       node-fetch: 3.3.2
