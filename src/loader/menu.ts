@@ -3,7 +3,7 @@ import { allPlugins } from 'virtual:plugins';
 
 import * as config from '@/config';
 import { t } from '@/i18n';
-import { setApplicationMenu } from '@/menu';
+import { refreshMenu } from '@/menu';
 import { LoggerPrefix } from '@/utils';
 
 import type { MenuContext } from '@/types/contexts';
@@ -28,13 +28,9 @@ const createContext = (
     );
   },
   window: win,
-  refresh: async () => {
-    await setApplicationMenu(win);
-
-    if (await config.plugins.isEnabled('in-app-menu')) {
-      win.webContents.send('refresh-in-app-menu');
-    }
-  },
+  // in-app-menu requires restart, so the shared refresh notifies the renderer
+  // loaded at launch and fences that send to the current full menu publication.
+  refresh: () => refreshMenu(win),
 });
 
 export const forceLoadMenuPlugin = async (id: string, win: BrowserWindow) => {

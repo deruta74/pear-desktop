@@ -20,6 +20,7 @@ export const onMenu = async ({
   getConfig,
   setConfig,
   window,
+  refresh,
 }: MenuContext<APIServerConfig>): Promise<MenuTemplate> => {
   const config = await getConfig();
 
@@ -39,7 +40,7 @@ export const onMenu = async ({
       dialog.showMessageBox(window, options),
     copy: (token: string) => clipboard.writeText(token),
   };
-  const context = { getConfig, setConfig, window, refresh: () => {} };
+  const context = { getConfig, setConfig, window, refresh };
   const musicMenu = await createMusicGrantMenu(
     context,
     () => getMusicService(window),

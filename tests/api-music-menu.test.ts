@@ -63,6 +63,7 @@ async function fixture(responses: number[] = [2, 0]) {
     window: {},
     getConfig: async () => config,
     setConfig: async (v: any) => writes.push(v),
+    refresh: () => {},
   };
   const menu = await m.createMusicGrantMenu(ctx, () => service, native);
   return {
@@ -195,6 +196,7 @@ test('MCP native target uses separate transport/resource and explicitly offers a
       setConfig: async (value: unknown) => {
         writes.push(value);
       },
+      refresh: () => {},
     },
     () => target,
     {

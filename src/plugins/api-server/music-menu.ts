@@ -57,6 +57,7 @@ export async function createMusicGrantMenu(
             ? { mcpEnabled: item.checked }
             : { musicApiEnabled: item.checked },
         );
+        await context.refresh();
       },
     },
     {
