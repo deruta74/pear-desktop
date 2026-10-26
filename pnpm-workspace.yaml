@@ -25,6 +25,7 @@ patchedDependencies:
   electron-is@3.0.0: patches/electron-is@3.0.0.patch
   mdui@2.1.4: patches/mdui@2.1.4.patch
   '@modelcontextprotocol/sdk@1.32.0': patches/@modelcontextprotocol__sdk@1.32.0.patch
+  '@ffmpeg.wasm/main@0.12.0': patches/@ffmpeg.wasm__main@0.12.0.patch
 engineStrict: true
 minimumReleaseAgeExclude:
   - vite@8.1.0
