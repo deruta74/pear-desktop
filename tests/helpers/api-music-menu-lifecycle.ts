@@ -83,6 +83,7 @@ export const store={get:key=>key.split('.').reduce((value,part)=>value?.[part],d
           name: 'owned-native-menu-config-boundaries',
           enforce: 'pre',
           resolveId(id, importer) {
+            const normalizedImporter = importer?.replaceAll('\\', '/');
             const boundaries: Record<string, string> = {
               'owned-state': 'state',
               electron: 'electron',
@@ -100,12 +101,12 @@ export const store={get:key=>key.split('.').reduce((value,part)=>value?.[part],d
             if (boundaries[id]) return '\0' + boundaries[id];
             if (
               id === './mcp' &&
-              importer?.endsWith('/api-server/backend/main.ts')
+              normalizedImporter?.endsWith('/api-server/backend/main.ts')
             )
               return '\0mcp';
             if (
               (id === './store' || id === './defaults') &&
-              importer?.includes('/src/config/')
+              normalizedImporter?.includes('/src/config/')
             )
               return id === './store' ? '\0store' : '\0defaults';
             if (id.startsWith('@/')) {
