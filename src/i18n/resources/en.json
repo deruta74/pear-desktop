@@ -82,6 +82,8 @@
       }
     },
     "menu": {
+      "mcp-dependency-notices-error": "The MCP dependency notices could not be opened.",
+      "mcp-dependency-notices": "MCP dependency notices",
       "about": "About",
       "navigation": {
         "label": "Navigation",
