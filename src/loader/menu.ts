@@ -21,11 +21,13 @@ const createContext = (
       config.get(`plugins.${id}`) ?? {},
     ) as PluginConfig,
   setConfig: async (newConfig) => {
-    config.setPartial(
-      `plugins.${id}`,
-      newConfig,
-      (await allPlugins())[id].config,
-    );
+    const plugin = (await allPlugins())[id];
+    if (
+      plugin.menuWhenDisabled === true &&
+      (win.isDestroyed() || win.webContents.isDestroyed())
+    )
+      return;
+    config.setPartial(`plugins.${id}`, newConfig, plugin.config);
   },
   window: win,
   // in-app-menu requires restart, so the shared refresh notifies the renderer
@@ -44,9 +46,13 @@ export const forceLoadMenuPlugin = async (id: string, win: BrowserWindow) => {
       if (result.length > 0) {
         menuTemplateMap[id] = result;
       } else {
+        if (plugin.menuWhenDisabled === true) delete menuTemplateMap[id];
         return;
       }
-    } else return;
+    } else {
+      if (plugin.menuWhenDisabled === true) delete menuTemplateMap[id];
+      return;
+    }
 
     console.log(
       LoggerPrefix,
@@ -72,7 +78,7 @@ export const loadAllMenuPlugins = async (win: BrowserWindow) => {
       pluginConfigs[pluginId] ?? {},
     );
 
-    if (config.enabled) {
+    if (config.enabled || pluginDef.menuWhenDisabled === true) {
       await forceLoadMenuPlugin(pluginId, win);
     }
   }

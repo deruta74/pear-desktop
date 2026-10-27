@@ -1381,8 +1381,16 @@
       }
     },
     "skip-live-songs": {
-      "name": "Skip live recordings",
-      "description": "Skip explicitly marked live recordings. Ordinary city, radio and studio titles are retained."
+      "name": "Skip non-studio recordings",
+      "description": "Skip selected, explicitly marked live, acoustic, demo, session or venue recordings. Ordinary song titles are retained.",
+      "menu": {
+        "live": "Live, concert, festival and tour recordings",
+        "acoustic": "Acoustic and unplugged versions",
+        "demo": "Demo and rehearsal recordings",
+        "session": "Radio, BBC and broadcast sessions",
+        "venue": "Recordings with a performance location",
+        "unsupported": "Recording categories contain unsupported data; stored preferences are preserved."
+      }
     },
     "auto-acknowledge": {
       "name": "Auto-acknowledge content warnings",
