@@ -1,6 +1,6 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
-import { createRequire, isBuiltin } from 'node:module';
+import { isBuiltin } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -9,7 +9,6 @@ import pluginLoader from '../../vite-plugins/plugin-loader.mts';
 import { pluginVirtualModuleGenerator } from '../../vite-plugins/plugin-importer.mts';
 
 const root = path.resolve(import.meta.dirname, '../..');
-const requireRoot = createRequire(path.join(root, 'package.json'));
 
 /** Actual generated stubs, config wrappers, menu loader/publication and in-app serialization. */
 export async function nonstudioApplicationMenuFixture() {
@@ -57,7 +56,15 @@ export const Menu={buildFromTemplate:rows=>{const hook=state.beforeBuild;state.b
               './providers/prompt-options': '\0options',
             };
             if (virtual[id]) return virtual[id];
-            if (id === './store' && importer?.includes('/src/config/'))
+            const normalizedImporter = importer?.replaceAll('\\', '/');
+            if (
+              id === './store' &&
+              normalizedImporter &&
+              path.relative(
+                path.join(root, 'src', 'config'),
+                path.dirname(normalizedImporter),
+              ) === ''
+            )
               return '\0store';
             const candidate = id.replaceAll('\\', '/');
             if (path.isAbsolute(id) && candidate.includes('/src/plugins/')) {
@@ -77,15 +84,7 @@ export const Menu={buildFromTemplate:rows=>{const hook=state.beforeBuild;state.b
                 `${base}.tsx`,
               ].find((file) => existsSync(file) && statSync(file).isFile());
             }
-            if (
-              !id.startsWith('.') &&
-              !path.isAbsolute(id) &&
-              !id.startsWith('\0') &&
-              !isBuiltin(id) &&
-              importer &&
-              path.isAbsolute(importer)
-            )
-              return requireRoot.resolve(id);
+            // Let Vite preserve each importer's package scope and import conditions.
           },
           load(id) {
             if (id === '\0state') return state;
