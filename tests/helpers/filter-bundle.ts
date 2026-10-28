@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { build } from 'vite';
 
 const root = path.resolve(import.meta.dirname, '../..');
-export async function filterBundle() {
+export async function filterBundle(rootDirectory = root) {
+  const root = rootDirectory;
   const directory = await mkdtemp(path.join(tmpdir(), 'pear-filter-'));
   const entry = path.join(directory, 'entry.ts');
   const exports = ['blocklist', 'skip-live-songs'].map((name, index) => {
@@ -15,6 +16,11 @@ export async function filterBundle() {
       ? `export {default as ${index ? 'live' : 'blocklist'}} from ${JSON.stringify(target)};`
       : `export const ${index ? 'live' : 'blocklist'}={renderer:{async start(){},onPlayerApiReady(){},onConfigChange(){},stop(){}}};`;
   });
+  exports.push(
+    `export {claimCrossfadeNext,createPlaybackFilter} from ${JSON.stringify(path.join(root, 'src/plugins/utils/renderer/playback-filter.ts'))};`,
+    `export {publishMusicActionsOwner,getMusicActionsOwner,dispatchMusicControl} from ${JSON.stringify(path.join(root, 'src/providers/music-actions.ts'))};`,
+    `export {adoptPlaybackOwner} from ${JSON.stringify(path.join(root, 'src/providers/playback-owner.ts'))};`,
+  );
   await writeFile(entry, exports.join('\n'));
   try {
     await build({
