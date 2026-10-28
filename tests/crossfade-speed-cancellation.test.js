@@ -12,6 +12,7 @@ for (const direction of [1, -1])
   }) => {
     await startCrossfadeFixture(page, {
       diagnosticCase: direction === -1 ? 'SPEED_SAME_NEGATIVE' : undefined,
+      startNearAdmission: true,
     });
     await expect
       .poll(() =>
@@ -40,6 +41,7 @@ for (const command of [0, 2, '1', null, [], {}])
     page,
   }) => {
     await startCrossfadeFixture(page, {
+      startNearAdmission: true,
       diagnosticCase:
         command === 2
           ? 'SPEED_INVALID_NUMBER_TWO'
@@ -64,7 +66,10 @@ for (const command of [0, 2, '1', null, [], {}])
 test('speed-owner transfer at the same numeric rate retires outgoing without touching user controls', async ({
   page,
 }) => {
-  await startCrossfadeFixture(page, { diagnosticCase: 'SPEED_TRANSFER' });
+  await startCrossfadeFixture(page, {
+    diagnosticCase: 'SPEED_TRANSFER',
+    startNearAdmission: true,
+  });
   await expect
     .poll(() =>
       page.evaluate(() => window.crossfadeFixture.graph.auxiliaryMediaCount),
@@ -141,7 +146,7 @@ for (const action of ['pause', 'seek', 'stop', 'config', 'manual'])
 test('old speed callback and stop cannot retire successor controller resources', async ({
   page,
 }) => {
-  await startCrossfadeFixture(page);
+  await startCrossfadeFixture(page, { startNearAdmission: true });
   await expect
     .poll(() => page.evaluate(() => window.crossfadeFixture.requests))
     .toBe(1);

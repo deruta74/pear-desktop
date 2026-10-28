@@ -73,6 +73,7 @@ export async function startCrossfadeFixture(
     holdAuxPlay?: boolean;
     sourceExports?: string;
     diagnosticCase?: DiagnosticCase;
+    startNearAdmission?: boolean;
   } = {},
 ) {
   await page.addInitScript(() => {
@@ -257,7 +258,7 @@ export async function startCrossfadeFixture(
     main.volume = 0.65;
     main.src = 'https://media.eq.fixture.invalid/a.wav';
     await main.play();
-    main.currentTime = 3.1;
+    main.currentTime = options.startNearAdmission ? 4.4 : 3.1;
     await new Promise<void>((r) =>
       main.addEventListener('seeked', () => r(), { once: true }),
     );
@@ -312,6 +313,7 @@ export async function startCrossfadeFixture(
       api,
       graph,
       context,
+      analyser,
       aux,
       events,
       renderer,

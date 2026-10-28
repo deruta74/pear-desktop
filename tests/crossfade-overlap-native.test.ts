@@ -281,15 +281,66 @@ test('default handoff uses approved bounded seven-second lead rather than saved 
       body: body.subarray(start, end + 1),
     });
   });
-  await page.evaluate(async () => {
+  const setup = await page.evaluate(async () => {
     const f = (window as any).crossfadeFixture;
-    f.main.pause();
-    f.main.src = 'https://media.eq.fixture.invalid/a20.wav';
-    await f.main.play();
-    f.main.currentTime = 9.5;
-    await new Promise<void>((r) =>
-      f.main.addEventListener('seeked', () => r(), { once: true }),
+    const main = f.main as HTMLMediaElement;
+    const ready = () =>
+      main.currentSrc === 'https://media.eq.fixture.invalid/a20.wav' &&
+      main.duration === 20 &&
+      main.readyState >= 2 &&
+      main.seekable.length > 0 &&
+      !main.seeking &&
+      !main.paused &&
+      f.context.state === 'running';
+    const waitForMedia = async (events: string[], action: () => unknown) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let onEvent = () => {},
+        onError = () => {};
+      let settled = false;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let eventSeen = false,
+            actionDone = false;
+          const check = () => {
+            if (!settled && eventSeen && actionDone && ready()) resolve();
+          };
+          onEvent = () => {
+            eventSeen = true;
+            check();
+          };
+          onError = () => {
+            if (!settled) reject(new Error('Owned A20 media readiness failed'));
+          };
+          for (const event of events) main.addEventListener(event, onEvent);
+          main.addEventListener('error', onError);
+          timer = setTimeout(onError, 5000);
+          try {
+            Promise.resolve(action()).then(() => {
+              actionDone = true;
+              check();
+            }, onError);
+          } catch {
+            onError();
+          }
+        });
+      } finally {
+        settled = true;
+        clearTimeout(timer);
+        for (const event of events) main.removeEventListener(event, onEvent);
+        main.removeEventListener('error', onError);
+      }
+    };
+    main.pause();
+    await waitForMedia(
+      ['loadedmetadata', 'loadeddata', 'canplay', 'playing'],
+      () => {
+        main.src = 'https://media.eq.fixture.invalid/a20.wav';
+        return main.play();
+      },
     );
+    await waitForMedia(['seeked'], () => {
+      main.currentTime = 9.5;
+    });
     const next = f.api.nextVideo;
     f.api.nextVideo = () => {
       f.beforeNext = {
@@ -300,8 +351,55 @@ test('default handoff uses approved bounded seven-second lead rather than saved 
       };
       return next();
     };
+    const names = [
+      'getVideoData',
+      'getPlayerResponse',
+      'getPlayerState',
+      'getCurrentTime',
+      'getPlaybackRate',
+      'nextVideo',
+    ];
+    const references = names.map((name) => f.api[name]);
+    const witness = () => ({
+      main: main.currentTime,
+      duration: main.duration,
+      remaining: main.duration - main.currentTime,
+      readyState: main.readyState,
+      seekableRanges: main.seekable.length,
+      seeking: main.seeking,
+      paused: main.paused,
+      sourceIsA20:
+        main.currentSrc === 'https://media.eq.fixture.invalid/a20.wav',
+      contextRunning: f.context.state === 'running',
+      nexts: f.nexts,
+      methodsStable: Object.fromEntries(
+        names.map((name, i) => [name, f.api[name] === references[i]]),
+      ),
+    });
+    const disabledStart = witness();
+    if (!ready() || f.nexts !== 0 || f.renderer.config.enabled !== false)
+      throw new Error('Owned disabled9.5 precondition failed');
+    await waitForMedia(['seeked'], () => {
+      main.currentTime = 12.5;
+    });
+    const beforeEnable = witness();
+    if (
+      !ready() ||
+      f.nexts !== 0 ||
+      f.renderer.config.enabled !== false ||
+      !(beforeEnable.remaining > 7 && beforeEnable.remaining < 10) ||
+      !Object.values(beforeEnable.methodsStable).every((same) => same === true)
+    )
+      throw new Error('Owned pre-enable lead boundary invalid');
     f.setConfig({ enabled: true });
+    if (
+      f.renderer.config.fadeInDuration !== 5000 ||
+      f.renderer.config.fadeOutDuration !== 5000 ||
+      f.renderer.config.secondsBeforeEnd !== 10
+    )
+      throw new Error('Owned production defaults changed');
     f.main.dispatchEvent(new Event('timeupdate'));
+    return { disabledStart, beforeEnable, productionDefaultsVerified: true };
   });
   await expect
     .poll(() => page.evaluate(() => (window as any).crossfadeFixture.nexts), {
@@ -316,8 +414,9 @@ test('default handoff uses approved bounded seven-second lead rather than saved 
     void f.context.close();
     return r;
   });
-  await saveReviewProbe('default-lead', result);
-  console.log('LEAD', JSON.stringify(result));
+  const observation = { ...result, setup };
+  await saveReviewProbe('default-lead', observation);
+  console.log('LEAD', JSON.stringify(observation));
   expect(
     result.remaining,
     'lead=min(10,max(5000,5000)/1000+2)=7 seconds',

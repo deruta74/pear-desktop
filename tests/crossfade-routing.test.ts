@@ -69,17 +69,54 @@ function wave(frequency = 1000) {
   return bytes;
 }
 
+async function admittedAuxiliaryCount(page: Page) {
+  return page.evaluate(async () => {
+    const graph = (window as any).crossfadeFixture.graph;
+    const deadline = performance.now() + 5000;
+    let release: (() => void) | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const returned = graph.observeAuxiliaryMedia((count: number) => {
+          if (settled || count !== 1) return;
+          settled = true;
+          if (performance.now() >= deadline)
+            reject(new Error('Owned admission event arrived after deadline'));
+          else resolve();
+        });
+        release = returned;
+        // The public observer immediately publishes the current count.
+        if (settled) {
+          const owned = release;
+          release = undefined;
+          owned?.();
+        } else {
+          timer = setTimeout(
+            () => reject(new Error('Owned auxiliary admission timed out')),
+            Math.max(0, deadline - performance.now()),
+          );
+        }
+      });
+      // A prior event cannot satisfy ownership after its route has retired.
+      return graph.auxiliaryMediaCount;
+    } finally {
+      clearTimeout(timer);
+      const owned = release;
+      release = undefined;
+      owned?.();
+    }
+  });
+}
+
 test('actual crossfade renderer registers its outgoing media in the owned dry mix', async ({
   page,
 }) => {
-  await startCrossfadeFixture(page, { diagnosticCase: 'ROUTING_REGISTER' });
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as any).crossfadeFixture.graph.auxiliaryMediaCount,
-      ),
-    )
-    .toBe(1);
+  await startCrossfadeFixture(page, {
+    diagnosticCase: 'ROUTING_REGISTER',
+    startNearAdmission: true,
+  });
+  expect(await admittedAuxiliaryCount(page)).toBe(1);
   expect(
     await page.evaluate(() => {
       const f = (window as any).crossfadeFixture;
@@ -100,6 +137,69 @@ test('actual crossfade renderer registers its outgoing media in the owned dry mi
 
 export { wave };
 
+type VolumeControl = 'REDUCE' | 'MUTE' | 'UNMUTE' | 'ZERO';
+
+// Readiness is based only on delivered control events and rendered frames.
+async function beginAudioFrameBoundary(page: Page, control?: VolumeControl) {
+  return page.evaluate(async (control) => {
+    const f = (window as any).crossfadeFixture;
+    const context = f.context as AudioContext;
+    const deadline = performance.now() + 5000;
+    let origin = context.currentTime;
+    if (control) {
+      const main = f.main as HTMLMediaElement;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let onVolume = () => {};
+      try {
+        origin = await new Promise<number>((resolve, reject) => {
+          onVolume = () => resolve(context.currentTime);
+          // Existing graph/TransitionAudio volume listeners run before this one.
+          main.addEventListener('volumechange', onVolume, { once: true });
+          timer = setTimeout(
+            () => reject(new Error('Owned volume event timed out')),
+            Math.max(0, deadline - performance.now()),
+          );
+          if (control === 'REDUCE') main.volume = 0.35;
+          else if (control === 'MUTE') main.muted = true;
+          else if (control === 'UNMUTE') main.muted = false;
+          else if (control === 'ZERO') main.volume = 0;
+        });
+      } finally {
+        main.removeEventListener('volumechange', onVolume);
+        clearTimeout(timer);
+      }
+    }
+    return {
+      origin,
+      deadline,
+      sampleRate: context.sampleRate,
+      minimumFrames: f.analyser.fftSize + 128,
+    };
+  }, control);
+}
+
+async function finishAudioFrameBoundary(
+  page: Page,
+  boundary: Awaited<ReturnType<typeof beginAudioFrameBoundary>>,
+) {
+  await page.evaluate(async (boundary) => {
+    const context = (window as any).crossfadeFixture.context as AudioContext;
+    for (let attempt = 0; attempt < 1001; attempt++) {
+      if (context.state !== 'running')
+        throw new Error('Owned render context is not running');
+      if (performance.now() >= boundary.deadline)
+        throw new Error('Owned audio frame boundary timed out');
+      if (
+        (context.currentTime - boundary.origin) * boundary.sampleRate >=
+        boundary.minimumFrames
+      )
+        return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error('Owned audio frame attempt cap reached');
+  }, boundary);
+}
+
 test('deliberate main mute and volume zero silence outgoing audio during an actual fade', async ({
   page,
 }) => {
@@ -117,7 +217,9 @@ test('deliberate main mute and volume zero silence outgoing audio during an actu
       intervals: [20],
     })
     .toBe(1);
+  const initial = await beginAudioFrameBoundary(page);
   await page.waitForTimeout(200);
+  await finishAudioFrameBoundary(page, initial);
   const peak = (phase?: 'HEARD' | 'REDUCED') =>
     page.evaluate((phase) => {
       const f = (window as any).crossfadeFixture;
@@ -128,28 +230,26 @@ test('deliberate main mute and volume zero silence outgoing audio during an actu
     }, phase);
   const heard = await peak('HEARD');
   expect(heard).toBeGreaterThan(0.001);
-  await page.evaluate(
-    () => ((window as any).crossfadeFixture.main.volume = 0.35),
-  );
+  const volume = await beginAudioFrameBoundary(page, 'REDUCE');
   await page.waitForTimeout(70);
+  await finishAudioFrameBoundary(page, volume);
   const reduced = await peak('REDUCED');
   expect(reduced).toBeLessThan(heard * 0.85);
   expect(reduced).toBeGreaterThan(heard * 0.1);
-  await page.evaluate(
-    () => ((window as any).crossfadeFixture.main.muted = true),
-  );
+  const muted = await beginAudioFrameBoundary(page, 'MUTE');
   await page.waitForTimeout(100);
+  await finishAudioFrameBoundary(page, muted);
   expect(await peak()).toBeLessThan(0.000001);
-  await page.evaluate(
-    () => ((window as any).crossfadeFixture.main.muted = false),
-  );
+  const unmuted = await beginAudioFrameBoundary(page, 'UNMUTE');
   await page.waitForTimeout(70);
+  await finishAudioFrameBoundary(page, unmuted);
   expect(await peak()).toBeGreaterThan(0.001);
   expect(
     await page.evaluate(() => (window as any).crossfadeFixture.main.volume),
   ).toBe(0.35);
-  await page.evaluate(() => ((window as any).crossfadeFixture.main.volume = 0));
+  const zero = await beginAudioFrameBoundary(page, 'ZERO');
   await page.waitForTimeout(100);
+  await finishAudioFrameBoundary(page, zero);
   expect(await peak()).toBeLessThan(0.000001);
   await page.evaluate(() => {
     const f = (window as any).crossfadeFixture;
