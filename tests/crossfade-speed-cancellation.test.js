@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { startCrossfadeFixture } from './helpers/crossfade-native';
+import { installCrossfadeDiagnosticReporter } from './helpers/crossfade-diagnostic-reporter';
+
+installCrossfadeDiagnosticReporter();
 
 // These actual-module fixtures supersede the old eager-navigation/RAF VM host.
 // Numeric rate can be unchanged when ownership or the clamped speed command changes.
@@ -7,7 +10,9 @@ for (const direction of [1, -1])
   test(`owned same-value speed command ${direction} retires an admitted outgoing source`, async ({
     page,
   }) => {
-    await startCrossfadeFixture(page);
+    await startCrossfadeFixture(page, {
+      diagnosticCase: direction === -1 ? 'SPEED_SAME_NEGATIVE' : undefined,
+    });
     await expect
       .poll(() =>
         page.evaluate(() => window.crossfadeFixture.graph.auxiliaryMediaCount),
@@ -34,7 +39,16 @@ for (const command of [0, 2, '1', null, [], {}])
   test(`invalid speed command ${JSON.stringify(command)} does not acquire cancellation ownership`, async ({
     page,
   }) => {
-    await startCrossfadeFixture(page);
+    await startCrossfadeFixture(page, {
+      diagnosticCase:
+        command === 2
+          ? 'SPEED_INVALID_NUMBER_TWO'
+          : command === '1'
+            ? 'SPEED_INVALID_STRING_ONE'
+            : Array.isArray(command)
+              ? 'SPEED_INVALID_ARRAY'
+              : undefined,
+    });
     await expect
       .poll(() =>
         page.evaluate(() => window.crossfadeFixture.graph.auxiliaryMediaCount),
@@ -50,7 +64,7 @@ for (const command of [0, 2, '1', null, [], {}])
 test('speed-owner transfer at the same numeric rate retires outgoing without touching user controls', async ({
   page,
 }) => {
-  await startCrossfadeFixture(page);
+  await startCrossfadeFixture(page, { diagnosticCase: 'SPEED_TRANSFER' });
   await expect
     .poll(() =>
       page.evaluate(() => window.crossfadeFixture.graph.auxiliaryMediaCount),

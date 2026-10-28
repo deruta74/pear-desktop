@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { equalizerBundle, fixturePage } from './equalizer-bundle';
 import type { Page } from '@playwright/test';
+import type { DiagnosticCase } from './crossfade-diagnostics';
 export function timeCodedWave(outgoing = true) {
   const rate = 48000,
     seconds = 6,
@@ -71,6 +72,7 @@ export async function startCrossfadeFixture(
     delayAuxLoadMs?: number;
     holdAuxPlay?: boolean;
     sourceExports?: string;
+    diagnosticCase?: DiagnosticCase;
   } = {},
 ) {
   await page.addInitScript(() => {
@@ -107,7 +109,13 @@ export async function startCrossfadeFixture(
   });
   await fixturePage(
     page,
-    await crossfadeSourceBundle(options.baseline, options.sourceExports),
+    await crossfadeSourceBundle(
+      options.baseline,
+      (options.sourceExports ?? '') +
+        (options.diagnosticCase
+          ? `export {createCrossfadeDiagnostic} from ${JSON.stringify(path.join(import.meta.dirname, 'crossfade-diagnostics.ts'))};`
+          : ''),
+    ),
   );
   await page.evaluate(async (options) => {
     const f = (window as any).EqualizerFixture,
@@ -228,6 +236,22 @@ export async function startCrossfadeFixture(
       main.addEventListener(name, () =>
         events.push({ name, time: main.currentTime, wall: performance.now() }),
       );
+    // The existing aux array supplies a count only. No element is inferred by index.
+    let diagnostic: any = null;
+    if (options.diagnosticCase) {
+      try {
+        diagnostic = f.createCrossfadeDiagnostic(options.diagnosticCase, {
+          main,
+          context,
+          analyser,
+          graph,
+          requests: () => requests,
+          registered: () => aux.length,
+        });
+      } catch {
+        /* Diagnostics cannot change the fixture's original assertions. */
+      }
+    }
     await context.resume();
     main.crossOrigin = 'anonymous';
     main.volume = 0.65;
@@ -292,6 +316,7 @@ export async function startCrossfadeFixture(
       events,
       renderer,
       power,
+      diagnostic,
       get requests() {
         return requests;
       },
@@ -318,5 +343,6 @@ export async function startCrossfadeFixture(
       },
       state: () => f.readNativeCrossfadeState(api, main, graph),
     };
+    diagnostic?.checkpoint('FIXTURE_READY');
   }, options);
 }

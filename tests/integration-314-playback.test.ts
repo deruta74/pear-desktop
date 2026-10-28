@@ -279,7 +279,7 @@ for (const filterFirst of [false, true]) {
     await startCrossfadeFixture(page, {
       requestDelay: true,
       sourceExports:
-        "export {createPlaybackFilter} from '@/plugins/utils/renderer/playback-filter';",
+        "export {createPlaybackFilter,claimCrossfadeNext} from '@/plugins/utils/renderer/playback-filter';",
     });
     await expect
       .poll(() =>
@@ -298,19 +298,38 @@ for (const filterFirst of [false, true]) {
       );
       filter.attach(f.api);
       f.integrationFilter = filter;
-      const advance = f.api.nextVideo;
+      f.integrationProbeCalls = 0;
       if (filterFirst) {
         enabled = true;
         filter.refresh();
       } else {
-        Object.defineProperty(f.api, 'nextVideo', {
-          configurable: true,
-          get() {
-            enabled = true;
-            filter.refresh();
-            return advance;
-          },
-        });
+        // Snapshot validation also reads nextVideo. Its getter is not a
+        // reservation boundary and would recursively refresh the filter.
+        // The handoff's zero-gain callout runs after the actual shared claim.
+        const insert = f.graph.insertMain.bind(f.graph);
+        f.graph.insertMain = (input: GainNode, output: GainNode) => {
+          const set = input.gain.setValueAtTime.bind(input.gain);
+          input.gain.setValueAtTime = (value: number, time: number) => {
+            const result = set(value, time);
+            // Incoming-B envelope setup can also write zero after native next.
+            if (value === 0 && f.nexts === 0) {
+              f.integrationProbeCalls++;
+              f.integrationProbeBefore = f.nexts;
+              const competing = production.claimCrossfadeNext(
+                f.api,
+                'AAAAAAAAAAA',
+                0,
+              );
+              f.integrationProbeExcluded = competing === null;
+              competing?.release();
+              enabled = true;
+              filter.refresh();
+              f.integrationProbeAfter = f.nexts;
+            }
+            return result;
+          };
+          return insert(input, output);
+        };
       }
       f.resolve();
     }, filterFirst);
@@ -323,11 +342,24 @@ for (const filterFirst of [false, true]) {
       const f = (window as any).crossfadeFixture;
       await new Promise((resolve) => setTimeout(resolve, 400));
       const nexts = f.nexts;
+      const probe = {
+        calls: f.integrationProbeCalls,
+        before: f.integrationProbeBefore,
+        after: f.integrationProbeAfter,
+        excluded: f.integrationProbeExcluded,
+      };
       f.integrationFilter.stop();
       f.renderer.stop();
       await f.context.close();
-      return nexts;
+      return { nexts, probe };
     });
-    expect(result).toBe(1);
+    expect(result.nexts).toBe(1);
+    if (!filterFirst)
+      expect(result.probe).toEqual({
+        calls: 1,
+        before: 0,
+        after: 0,
+        excluded: true,
+      });
   });
 }

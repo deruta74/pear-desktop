@@ -3,6 +3,9 @@ import { startCrossfadeFixture } from './helpers/crossfade-native';
 import { equalizerBundle, fixturePage } from './helpers/equalizer-bundle';
 import { createServer } from 'node:http';
 import type { Page } from '@playwright/test';
+import { installCrossfadeDiagnosticReporter } from './helpers/crossfade-diagnostic-reporter';
+
+installCrossfadeDiagnosticReporter();
 
 async function mediaFixture(page: Page, source: string, cors: boolean) {
   const main = createServer((request, response) => {
@@ -69,7 +72,7 @@ function wave(frequency = 1000) {
 test('actual crossfade renderer registers its outgoing media in the owned dry mix', async ({
   page,
 }) => {
-  await startCrossfadeFixture(page);
+  await startCrossfadeFixture(page, { diagnosticCase: 'ROUTING_REGISTER' });
   await expect
     .poll(() =>
       page.evaluate(
@@ -89,6 +92,7 @@ test('actual crossfade renderer registers its outgoing media in the owned dry mi
   ).toEqual({ requests: 1, count: 1, volume: 0.65 });
   await page.evaluate(() => {
     const f = (window as any).crossfadeFixture;
+    f.diagnostic?.checkpoint('TERMINAL');
     f.renderer.stop();
     return f.context.close();
   });
@@ -100,6 +104,7 @@ test('deliberate main mute and volume zero silence outgoing audio during an actu
   page,
 }) => {
   await startCrossfadeFixture(page, {
+    diagnosticCase: 'ROUTING_VOLUME',
     config: {
       fadeInDuration: 2000,
       fadeOutDuration: 2000,
@@ -113,18 +118,21 @@ test('deliberate main mute and volume zero silence outgoing audio during an actu
     })
     .toBe(1);
   await page.waitForTimeout(200);
-  const peak = () =>
-    page.evaluate(() => {
+  const peak = (phase?: 'HEARD' | 'REDUCED') =>
+    page.evaluate((phase) => {
       const f = (window as any).crossfadeFixture;
-      return Math.max(f.power(500), f.power(1000));
-    });
-  const heard = await peak();
+      const peak500 = f.power(500),
+        peak1000 = f.power(1000);
+      if (phase) f.diagnostic?.volumeSample(phase, peak500, peak1000);
+      return Math.max(peak500, peak1000);
+    }, phase);
+  const heard = await peak('HEARD');
   expect(heard).toBeGreaterThan(0.001);
   await page.evaluate(
     () => ((window as any).crossfadeFixture.main.volume = 0.35),
   );
   await page.waitForTimeout(70);
-  const reduced = await peak();
+  const reduced = await peak('REDUCED');
   expect(reduced).toBeLessThan(heard * 0.85);
   expect(reduced).toBeGreaterThan(heard * 0.1);
   await page.evaluate(
@@ -145,6 +153,7 @@ test('deliberate main mute and volume zero silence outgoing audio during an actu
   expect(await peak()).toBeLessThan(0.000001);
   await page.evaluate(() => {
     const f = (window as any).crossfadeFixture;
+    f.diagnostic?.checkpoint('TERMINAL');
     f.renderer.stop();
     return f.context.close();
   });

@@ -1,12 +1,16 @@
 import { writeFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { startCrossfadeFixture } from './helpers/crossfade-native';
+import { installCrossfadeDiagnosticReporter } from './helpers/crossfade-diagnostic-reporter';
+
+installCrossfadeDiagnosticReporter();
 
 test('actual source retains the same outgoing A tail after B play; opening 750Hz never returns in qualified overlap', async ({
   page,
 }) => {
   await startCrossfadeFixture(page, {
     baseline: process.env.CROSSFADE_M87_BASELINE === '1',
+    diagnosticCase: 'OVERLAP_DEFAULT',
   });
   await expect
     .poll(() => page.evaluate(() => (window as any).crossfadeFixture.nexts), {
@@ -30,6 +34,7 @@ test('actual source retains the same outgoing A tail after B play; opening 750Hz
       });
     }
     const events = f.events;
+    f.diagnostic?.checkpoint('TERMINAL');
     f.renderer.stop();
     await f.context.close();
     return {
