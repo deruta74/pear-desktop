@@ -106,7 +106,10 @@ export const mainMenuTemplate = async (
         ? satisfies(packageJson.version, plugin.addedVersion)
         : false;
 
-      if (!(await config.plugins.isEnabled(id))) {
+      if (
+        !(await config.plugins.isEnabled(id)) &&
+        plugin?.menuWhenDisabled !== true
+      ) {
         return [
           id,
           await pluginEnabledMenu(
