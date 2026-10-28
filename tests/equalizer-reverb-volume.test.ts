@@ -306,6 +306,17 @@ test('wet volume listeners follow the wired source through replacement, failure 
     const second = create();
     wet.wireAudio(second.context, second.source);
     await wet.ensureWorklet();
+    // The listener assertions below require the existing intensity ramp to end.
+    const rampEnd = wet.wetEnvelope.end;
+    const readyBy = performance.now() + 5000;
+    for (;;) {
+      if (performance.now() >= readyBy)
+        throw new Error('Owned wet intensity ramp did not finish');
+      if (second.context.currentTime >= rampEnd) break;
+      if (second.context.state !== 'running')
+        throw new Error('Owned wet intensity ramp has no running audio clock');
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
     const switched = [first.count(), second.count()];
     const writes: { input: number[]; output: number[] } = {
       input: [],
