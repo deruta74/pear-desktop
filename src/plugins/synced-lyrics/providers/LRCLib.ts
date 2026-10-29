@@ -17,6 +17,7 @@ type Candidate = {
   result: LyricResult;
   identity: LRCLibIdentity;
   timed: boolean;
+  timing?: 'sparse' | 'distributed';
 };
 type Request = {
   controller: AbortController;
@@ -73,6 +74,7 @@ export class LRCLib implements LyricProvider {
   private result(
     track: LRCLibTrack,
     identity: LRCLibIdentity,
+    duration?: number,
   ): Candidate | null {
     if (track.instrumental)
       return {
@@ -113,9 +115,24 @@ export class LRCLib implements LyricProvider {
     if (timedLines && timedLines.length > 5000) return null;
     const plain = track.plainLyrics?.trim() ? track.plainLyrics : undefined;
     if (!timedLines && !plain) return null;
+    const positions = [
+      ...new Set(
+        timedLines
+          ?.filter((line) => line.text.trim())
+          .map((line) => line.timeInMs),
+      ),
+    ];
     return {
       identity,
       timed: !!timedLines,
+      timing:
+        positions.length === 1
+          ? 'sparse'
+          : duration !== undefined &&
+              positions.length >= 3 &&
+              Math.max(...positions) - Math.min(...positions) >= duration * 500
+            ? 'distributed'
+            : undefined,
       result: {
         title: track.trackName,
         artists: identity.artists,
@@ -266,6 +283,12 @@ export class LRCLib implements LyricProvider {
     timer.unref?.();
     let best: Candidate | undefined,
       examined = 0;
+    const candidates: Candidate[] = [];
+    const qualityEligible = (candidate: Candidate) =>
+      planned.duration !== undefined &&
+      candidate.identity.exact &&
+      candidate.identity.duration <= 4 &&
+      (!planned.album || candidate.identity.album === 1);
     const better = (a: Candidate, b: Candidate) =>
       a.identity.rank - b.identity.rank ||
       Number(a.timed) - Number(b.timed) ||
@@ -283,13 +306,29 @@ export class LRCLib implements LyricProvider {
           if (!track) continue;
           const identity = rankLRCLibIdentity(planned, track, fuzzy);
           if (!identity) continue;
-          const candidate = this.result(track, identity);
-          if (candidate && (!best || better(candidate, best) > 0))
-            best = candidate;
+          const candidate = this.result(track, identity, planned.duration);
+          if (candidate) candidates.push(candidate);
+        }
+        // Apply a group-level penalty before the existing ordering so the
+        // outcome cannot depend on a non-transitive pairwise comparison.
+        const distributed = candidates.some(
+          (candidate) =>
+            qualityEligible(candidate) && candidate.timing === 'distributed',
+        );
+        best = undefined;
+        for (const candidate of candidates) {
+          if (
+            distributed &&
+            qualityEligible(candidate) &&
+            candidate.timing === 'sparse'
+          )
+            continue;
+          if (!best || better(candidate, best) > 0) best = candidate;
         }
         if (
           best?.identity.exact &&
           best.timed &&
+          best.timing !== 'sparse' &&
           best.identity.duration <= 2 &&
           (!planned.album || best.identity.album === 1)
         )
