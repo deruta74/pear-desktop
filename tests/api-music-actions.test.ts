@@ -119,7 +119,7 @@ test.beforeAll(async () => {
         `export * from ${JSON.stringify(path.join(root, 'src/providers/music-actions.ts'))};`,
         `export * from ${JSON.stringify(path.join(root, 'src/providers/music-renderer.ts'))};`,
         `export * from ${JSON.stringify(path.join(root, 'src/plugins/api-server/backend/scheme/music.ts'))};`,
-        `import {publishMusicActionsOwner} from ${JSON.stringify(path.join(root, 'src/providers/music-actions.ts'))};`,
+        `import {publishMusicActionsOwner,getMusicActionsOwner} from ${JSON.stringify(path.join(root, 'src/providers/music-actions.ts'))};`,
         `import {createRepeatPreference} from ${JSON.stringify(path.join(root, 'src/providers/repeat-preference.ts'))};`,
         `import {createPlaylistQueueController} from ${JSON.stringify(path.join(root, 'src/providers/queue-playlist-renderer.ts'))};`,
         `let api,repeatPreference,playlistQueue,disposeMusicActionsOwner; export function initializeCore(next){api=next;${coreInit};return{repeatPreference,playlistQueue,disposeMusicActionsOwner};}`,
