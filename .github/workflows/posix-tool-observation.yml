@@ -1,0 +1,60 @@
+name: POSIX tool observation
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - .github/workflows/posix-tool-observation.yml
+      - scripts/observe-posix-tools.cjs
+permissions:
+  contents: read
+jobs:
+  observe:
+    name: observe-tools-${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 7
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, platform: linux, arch: x64}
+          - {os: macos-26, platform: darwin, arch: arm64}
+    steps:
+      - name: Checkout observation source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Provision exact Node patch
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        timeout-minutes: 2
+        with:
+          node-version: 24.22.0
+          architecture: ${{ matrix.arch }}
+          check-latest: false
+          package-manager-cache: false
+      - name: Provision exact pnpm without project installation
+        id: pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        timeout-minutes: 1
+        with:
+          version: 11.28.6
+          run_install: false
+      - name: Measure public tool identity and package closure
+        timeout-minutes: 2
+        env:
+          OBSERVE_PLATFORM: ${{ matrix.platform }}
+          OBSERVE_ARCH: ${{ matrix.arch }}
+          OBSERVE_PNPM_DEST: ${{ steps.pnpm.outputs.dest }}
+          OBSERVE_PNPM_BIN_DEST: ${{ steps.pnpm.outputs.bin_dest }}
+          NODE_OPTIONS: ''
+        run: node scripts/observe-posix-tools.cjs
+      - name: Upload only the public tool receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        timeout-minutes: 1
+        with:
+          name: posix-tools-${{ matrix.platform }}-${{ matrix.arch }}
+          path: posix-tool-observation/result.json
+          if-no-files-found: error
+          retention-days: 1
