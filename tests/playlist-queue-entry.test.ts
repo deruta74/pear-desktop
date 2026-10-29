@@ -1,3 +1,4 @@
+import { rendererAudioFixtureSource } from './helpers/renderer-audio-source';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { test, expect } from '@playwright/test';
@@ -51,12 +52,7 @@ async function entry() {
       'utf8',
     ),
   );
-  const audio = strip(
-    await readFile(
-      new URL('../src/providers/renderer-audio.ts', import.meta.url),
-      'utf8',
-    ),
-  );
+  const audio = await rendererAudioFixtureSource(false);
   const raw = stripTypeScriptTypes(
     await readFile(new URL('../src/renderer.ts', import.meta.url), 'utf8'),
   )

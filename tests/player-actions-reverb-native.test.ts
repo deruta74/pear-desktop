@@ -10,6 +10,7 @@ test('native reverb tone cuts only the wet spectrum and Equalizer still controls
     export {createSlowedReverbController} from '@/plugins/player-actions/slowed-reverb/controller';
     export {EqualizerController} from '@/plugins/equalizer/controller';
     export * from '@/providers/renderer-audio';
+    export {outputPeakDelayFrames} from '@/providers/output-peak-worklet';
     export {DATTORRO_WORKLET_SOURCE} from '@/plugins/player-actions/slowed-reverb/worklet';
   `),
   );
@@ -70,7 +71,12 @@ test('native reverb tone cuts only the wet spectrum and Equalizer still controls
         const addModule = context.audioWorklet.addModule.bind(
           context.audioWorklet,
         );
-        context.audioWorklet.addModule = async () => {
+        context.audioWorklet.addModule = async (moduleUrl) => {
+          const moduleSource = await fetch(moduleUrl).then((response) =>
+            response.text(),
+          );
+          if (!moduleSource.includes("registerProcessor('dattorro-reverb'"))
+            return addModule(moduleUrl);
           const url = URL.createObjectURL(
             new Blob([source], { type: 'application/javascript' }),
           );
@@ -105,14 +111,22 @@ test('native reverb tone cuts only the wet spectrum and Equalizer still controls
       let tailEnergy = 0,
         peak = 0;
       for (let i = 0; i < samples.length; i++) {
-        if (i >= 24000) tailEnergy += samples[i] ** 2;
+        if (i >= 24000 + (wet ? fixture.outputPeakDelayFrames(48000) : 0))
+          tailEnergy += samples[i] ** 2;
         peak = Math.max(peak, Math.abs(samples[i]));
       }
       // Before predelay, only the unity dry route (plus EQ preamp) is audible.
-      const dry = samples[30];
+      const dry =
+        samples[30 + (wet ? fixture.outputPeakDelayFrames(48000) : 0)];
       reverb.stop();
       eq.stop();
-      return { tailEnergy, peak, dry, finite: samples.every(Number.isFinite) };
+      return {
+        mixGain: owned.masterInput.gain.value,
+        tailEnergy,
+        peak,
+        dry,
+        finite: samples.every(Number.isFinite),
+      };
     };
     const bassOpen = await render(60, 20, 20000, 0);
     const bassCut = await render(60, 600, 20000, 0);
@@ -154,7 +168,10 @@ test('native reverb tone cuts only the wet spectrum and Equalizer still controls
     10 ** (-12 / 20),
     5,
   );
-  expect(result.eqFlat.dry).toBeCloseTo(result.dryOnly.dry, 6);
+  expect(result.eqFlat.dry).toBeCloseTo(
+    result.dryOnly.dry * result.eqFlat.mixGain,
+    6,
+  );
   expect(result.dryOnly.tailEnergy).toBe(0);
   expect(result.eqStopped.tailEnergy).toBeCloseTo(result.eqFlat.tailEnergy, 6);
   expect(result.eqStopped.dry).toBeCloseTo(result.eqFlat.dry, 6);

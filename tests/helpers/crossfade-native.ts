@@ -6,7 +6,7 @@ import path from 'node:path';
 import { equalizerBundle, fixturePage } from './equalizer-bundle';
 import type { Page } from '@playwright/test';
 import type { DiagnosticCase } from './crossfade-diagnostics';
-export function timeCodedWave(outgoing = true) {
+export function timeCodedWave(outgoing = true, amplitude = 0.1) {
   const rate = 48000,
     seconds = 6,
     n = rate * seconds,
@@ -26,7 +26,9 @@ export function timeCodedWave(outgoing = true) {
   for (let i = 0; i < n; i++) {
     const frequency = outgoing ? (i / rate < 2 ? 750 : 500) : 1000;
     bytes.writeInt16LE(
-      Math.round(0.1 * 32767 * Math.sin((2 * Math.PI * frequency * i) / rate)),
+      Math.round(
+        amplitude * 32767 * Math.sin((2 * Math.PI * frequency * i) / rate),
+      ),
       44 + i * 2,
     );
   }
@@ -74,6 +76,10 @@ export async function startCrossfadeFixture(
     sourceExports?: string;
     diagnosticCase?: DiagnosticCase;
     startNearAdmission?: boolean;
+    waveAmplitude?: number;
+    mainVolume?: number;
+    beforeArmExport?: string;
+    setupOptions?: Record<string, unknown>;
   } = {},
 ) {
   await page.addInitScript(() => {
@@ -84,7 +90,10 @@ export async function startCrossfadeFixture(
       await new Promise((r) => setTimeout(r, options.delayAuxLoadMs));
     if (options.denied && route.request().url().includes('/aux-a.wav'))
       return route.abort();
-    const body = timeCodedWave(!route.request().url().endsWith('b.wav'));
+    const body = timeCodedWave(
+      !route.request().url().endsWith('b.wav'),
+      options.waveAmplitude ?? 0.1,
+    );
     const range = route
       .request()
       .headers()
@@ -255,7 +264,12 @@ export async function startCrossfadeFixture(
     }
     await context.resume();
     main.crossOrigin = 'anonymous';
-    main.volume = 0.65;
+    main.volume = options.mainVolume ?? 0.65;
+    if (options.beforeArmExport)
+      await f[options.beforeArmExport](
+        { main, graph, context, analyser, aux },
+        options.setupOptions ?? {},
+      );
     main.src = 'https://media.eq.fixture.invalid/a.wav';
     await main.play();
     main.currentTime = options.startNearAdmission ? 4.4 : 3.1;

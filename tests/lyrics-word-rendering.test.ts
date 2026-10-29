@@ -457,6 +457,17 @@ test('only the playing current gap breathes, freezes on pause and respects reduc
   ).toBe(0);
   await page.evaluate(() => (window as any).fixture.video.pause());
   await expect.poll(playState).toBe('paused');
+  await pulse.evaluate(async (node) => {
+    const animation = node.getAnimations()[0];
+    if (!animation) throw new Error('Expected the current gap animation');
+    await animation.ready;
+    if (
+      node.getAnimations()[0] !== animation ||
+      animation.pending ||
+      animation.playState !== 'paused'
+    )
+      throw new Error('The current gap pause did not settle');
+  });
   const frozen = await sample();
   await page.waitForTimeout(200);
   expect(await sample()).toEqual(frozen);
