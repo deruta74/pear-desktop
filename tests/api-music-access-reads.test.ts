@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { musicModuleSource } from './helpers/api-music-source';
 import { musicRequestFixture } from './helpers/api-music-request';
+import { windowsLaunchEvidence } from './helpers/windows-launch-evidence';
 
 const resource = 'http://127.0.0.1:26539/mcp';
 const videoId = 'abcdefghijk';
@@ -124,6 +125,7 @@ async function fixture(rest = false) {
     [
       'src/plugins/api-server/backend/music-service.ts',
       'src/plugins/api-server/backend/music-grant-store.ts',
+      'src/plugins/api-server/backend/windows-private-path.ts',
     ],
     { ipcMain: f.ipcMain },
   );
@@ -137,14 +139,23 @@ async function fixture(rest = false) {
     port: 26538,
     useHttps: false,
   };
-  const store = new g.MusicGrantStore(path.join(folder, 'owned'), now);
-  const grant = await store.issue(
-    'Owned MCP',
-    'mcp',
-    resource,
-    scopes,
-    () => true,
-  );
+  const evidence = windowsLaunchEvidence();
+  const windows =
+    process.platform === 'win32'
+      ? g.createWindowsPrivatePath({ launch: evidence.launch })
+      : undefined;
+  const store = new g.MusicGrantStore(path.join(folder, 'owned'), now, windows);
+  const grant = await store
+    .issue('Owned MCP', 'mcp', resource, scopes, () => true)
+    .catch((error: unknown) => {
+      // Only enums, byte counts and timing; preserve the original failure and worker.
+      if (windows)
+        console.error(
+          'MUSIC_GRANT_SETUP_FAILURE',
+          JSON.stringify(evidence.snapshot()),
+        );
+      throw error;
+    });
   const owner = { identity: {}, current: () => true };
   let registered: any = owner;
   const webCalls: any[] = [],
