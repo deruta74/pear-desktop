@@ -311,9 +311,10 @@ const initializeDownloader = async (
         previousDocument?.configurable === false
       )
         return;
+      let window: import('happy-dom').Window | undefined;
       try {
         const [width, height] = targetWindow.getSize();
-        const window = new (await import('happy-dom')).Window({
+        window = new (await import('happy-dom')).Window({
           width,
           height,
           console,
@@ -361,12 +362,18 @@ const initializeDownloader = async (
         // A missing PoToken stays optional; backend retirement is terminal.
         assertCurrentBinding(owner);
       } finally {
-        if (previousWindow)
-          Object.defineProperty(globalThis, 'window', previousWindow);
-        else Reflect.deleteProperty(globalThis, 'window');
-        if (previousDocument)
-          Object.defineProperty(globalThis, 'document', previousDocument);
-        else Reflect.deleteProperty(globalThis, 'document');
+        try {
+          await window?.happyDOM.close();
+        } catch {
+          console.warn('Could not close downloader temporary DOM');
+        } finally {
+          if (previousWindow)
+            Object.defineProperty(globalThis, 'window', previousWindow);
+          else Reflect.deleteProperty(globalThis, 'window');
+          if (previousDocument)
+            Object.defineProperty(globalThis, 'document', previousDocument);
+          else Reflect.deleteProperty(globalThis, 'document');
+        }
       }
     });
   }

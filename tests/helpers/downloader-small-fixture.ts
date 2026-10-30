@@ -21,6 +21,7 @@ import type { Preset } from '../../src/plugins/downloader/types';
 import type { BackendContext } from '../../src/types/contexts';
 import type { BrowserWindow } from 'electron';
 import type { EventEmitter } from 'node:events';
+import type { Window as HappyDOMWindow } from 'happy-dom';
 
 interface InitializationOptions {
   cookie: string;
@@ -30,7 +31,9 @@ interface FixtureState {
   creates: InitializationOptions[];
   clients: { options: InitializationOptions; session: { po_token?: string } }[];
   pending: { resolve: () => void; reject: (error: Error) => void }[];
-  tokens: { resolve: () => void }[];
+  tokens: { resolve: () => void; reject: (error: Error) => void }[];
+  domWindows?: HappyDOMWindow[];
+  onDomWindow?: (window: HappyDOMWindow) => void;
   infoCalls: { id: string; cookie: string; index: number }[];
   continuations: number;
   network: { url: string; init?: RequestInit }[];
@@ -117,6 +120,7 @@ const requireVite = createRequire(requireRoot.resolve('vite'));
 export async function downloaderFixture(
   options: {
     realFFmpeg?: boolean;
+    domLifecycle?: boolean;
     badgePlatform?: 'linux' | 'darwin' | 'win32';
   } = {},
 ) {
@@ -204,7 +208,7 @@ export const createFFmpeg=()=>{let loaded=false;const files=new Map(state.ffmpeg
 `;
   const bg = `
 import {state} from 'electron';
-export const BG={Challenge:{create:async()=>({program:'owned-program',globalName:'fixtureBotguard',interpreterJavascript:{privateDoNotAccessOrElseSafeScriptWrappedValue:'globalThis.fixtureBotguard={};'}})},PoToken:{generate:async()=>{if(state.tokenMode==='reject')throw Error('Owned token failure');if(state.tokenMode==='defer')return new Promise(resolve=>state.tokens.push({resolve:()=>resolve({poToken:'fixture-token'})}));return {poToken:'fixture-token'};}}};
+export const BG={Challenge:{create:async()=>({program:'owned-program',globalName:'fixtureBotguard',interpreterJavascript:{privateDoNotAccessOrElseSafeScriptWrappedValue:${JSON.stringify(options.domLifecycle ? '(()=>{const vm={ticks:0};globalThis.fixtureBotguard=vm;window.setInterval(()=>vm.ticks++,5);})()' : 'globalThis.fixtureBotguard={};')}}})},PoToken:{generate:async()=>{if(state.tokenMode==='reject')throw Error('Owned token failure');if(state.tokenMode==='defer')return new Promise((resolve,reject)=>state.tokens.push({resolve:()=>resolve({poToken:'fixture-token'}),reject}));return {poToken:'fixture-token'};}}};
 `;
   const loaderUrl = pathToFileURL(requireVite.resolve('rolldown')).href;
   const { rolldown } = (await import(loaderUrl)) as BuildApi;
@@ -220,6 +224,15 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
       {
         name: 'owned-downloader-network-ffmpeg-native',
         async resolveId(id: string, importer: string | undefined) {
+          if (id === 'owned-real-happy-dom')
+            return {
+              id: normalizeDownloaderFixtureId(
+                requireRoot.resolve('happy-dom'),
+              ),
+              external: true,
+            };
+          if (id === 'happy-dom' && options.domLifecycle)
+            return '\0owned-happy-dom';
           if (id === 'owned-real-sdk')
             return {
               id: normalizeDownloaderFixtureId(
@@ -276,6 +289,8 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
           if (id === '\0owned-youtube') return youtube;
           if (id === '\0owned-ffmpeg') return ffmpeg;
           if (id === '\0owned-bg') return bg;
+          if (id === '\0owned-happy-dom')
+            return `import {Window as ActualWindow} from 'owned-real-happy-dom';import {state} from 'electron';export class Window extends ActualWindow {constructor(options){super(options);(state.domWindows??=[]).push(this);state.onDomWindow?.(this);}}`;
           if (id === '\0owned-filenamify')
             return `import {createRequire} from 'node:module';const require=createRequire(${JSON.stringify(path.join(root, 'package.json'))});const value=require('filenamify');export default value.default??value;`;
           if (id === '\0unused-plugins')
@@ -411,6 +426,8 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
         info.reject(new Error('Owned fixture teardown'));
       for (const engine of source.state.realEngines ?? [])
         if (engine.isLoaded()) engine.exit();
+      for (const window of source.state.domWindows ?? [])
+        await window.happyDOM.close().catch(() => {});
       await new Promise<void>((resolve) => setImmediate(resolve));
       delete requireRoot.cache[output];
       process.chdir(previousCwd);
