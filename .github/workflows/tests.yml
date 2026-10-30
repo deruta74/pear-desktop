@@ -69,6 +69,9 @@ jobs:
           fetch-depth: 1
       # Bootstrap trust: hosted image shell/Git/ambient Node + SHA-pinned actions.
       # bind-source performs no project install, topology query or qualification.
+      - name: Observe bounded public bootstrap facts before binding
+        timeout-minutes: 1
+        run: node -e "process.stdout.write(JSON.stringify(require('./scripts/api-music-posix-carrier.cjs').publicFacts(process,process.env))+'\n')"
       - name: Bind reviewed carrier/source/image before tool setup
         timeout-minutes: 1
         run: node scripts/api-music-posix-carrier.cjs bind-source

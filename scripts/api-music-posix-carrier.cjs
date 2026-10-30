@@ -777,6 +777,31 @@ const json = (b) => {
   if (!Buffer.from(s).equals(b)) fail('FILE_UNPROVEN');
   return JSON.parse(s);
 };
+// Public observations only. These never contribute to admission or safe-result cells.
+function publicFacts(runtime, e) {
+  const member = (value, allowed) => allowed.includes(value) ? value : null;
+  return {tag:'PEAR_POSIX_BOOTSTRAP',platform:member(runtime.platform,['linux','darwin','win32']),arch:member(runtime.arch,['x64','arm64','ia32']),
+    nodeVersion:typeof runtime.version==='string' && /^v\d{1,3}\.\d{1,4}\.\d{1,4}$/.test(runtime.version)?runtime.version:null,
+    runnerOS:member(e.RUNNER_OS,['Linux','macOS','Windows']),runnerArch:member(e.RUNNER_ARCH,['X64','ARM64','X86']),
+    imageOS:image(e.ImageOS)?e.ImageOS:null,imageVersion:image(e.ImageVersion)?e.ImageVersion:null};
+}
+function formatToolObservation(check, facts) {
+  if (!['NODE_VERSION','NODE_CANONICAL','NODE_SHA256','PNPM_CANONICAL','PNPM_ENTRY_SHA256','PNPM_ENTRY_LAYOUT','PNPM_PACKAGE_VERSION','PNPM_TREE',
+    'PLAYWRIGHT_CLI_CANONICAL','PLAYWRIGHT_CLI_SHA256','PLAYWRIGHT_PACKAGE_CANONICAL','PLAYWRIGHT_PACKAGE_VERSION'].includes(check)) return null;
+  const out={tag:'PEAR_POSIX_TOOL',check,completed:facts.completed===true};
+  if (out.completed) {
+    out.matches=typeof facts.matches==='boolean'?facts.matches:null;
+    if (['NODE_VERSION','PNPM_PACKAGE_VERSION','PLAYWRIGHT_PACKAGE_VERSION'].includes(check))
+      out.version=typeof facts.version==='string' && /^v?\d{1,3}\.\d{1,4}\.\d{1,4}$/.test(facts.version)?facts.version:null;
+    if (['NODE_SHA256','PNPM_ENTRY_SHA256','PNPM_TREE','PLAYWRIGHT_CLI_SHA256'].includes(check)) out.sha256=sha(facts.sha256)?facts.sha256:null;
+    if (check==='PNPM_TREE') { out.entries=boundedNumber(facts.entries,30000);out.files=boundedNumber(facts.files,30000);out.bytes=boundedNumber(facts.bytes,256*1024*1024); }
+  }
+  return JSON.stringify(out)+'\n';
+}
+function observeTool(io, check, facts) {
+  // A diagnostic sink failure cannot change the original pin result or exception.
+  try { if (io.observeTool) io.observeTool(formatToolObservation(check,facts)); } catch {}
+}
 function guard(command, runtime) {
   if (!['bind-source', 'prepare', 'install', 'qualify', 'cleanup'].includes(command) ||
       !((runtime.platform === 'linux' && runtime.arch === 'x64') || (runtime.platform === 'darwin' && runtime.arch === 'arm64')))
@@ -856,8 +881,17 @@ async function measureSource(ctx, io) {
 }
 async function nodePins(ctx, io) {
   const r = ctx.row;
-  if (io.runtime.version !== r.nodeVersion || await io.realpath(io.runtime.execPath) !== r.nodeCanonicalPathExpected ||
-      io.hash(await io.read(r.nodeCanonicalPathExpected, 256 * 1024 * 1024)) !== r.nodeSHA256) fail('ADMISSION_UNPROVEN');
+  let check='NODE_VERSION';
+  try {
+    observeTool(io,check,{completed:true,version:io.runtime.version,matches:io.runtime.version===r.nodeVersion});
+    if (io.runtime.version!==r.nodeVersion) fail('ADMISSION_UNPROVEN');
+    check='NODE_CANONICAL';const canonical=await io.realpath(io.runtime.execPath);
+    observeTool(io,check,{completed:true,matches:canonical===r.nodeCanonicalPathExpected});
+    if (canonical!==r.nodeCanonicalPathExpected) fail('ADMISSION_UNPROVEN');
+    check='NODE_SHA256';const digest=io.hash(await io.read(r.nodeCanonicalPathExpected,256*1024*1024));
+    observeTool(io,check,{completed:true,sha256:digest,matches:digest===r.nodeSHA256});
+    if (digest!==r.nodeSHA256) fail('ADMISSION_UNPROVEN');
+  } catch (error) { observeTool(io,check,{completed:false});throw error; }
 }
 async function measureTree(roots, limits, io) {
   let timer;
@@ -896,18 +930,35 @@ async function scanTree(roots, limits, io) {
 async function toolPins(ctx, io, installed = false, root) {
   await nodePins(ctx,io);
   const r = ctx.row, entry = r.pnpmCanonicalEntryPathExpected;
-  if (await io.realpath(entry) !== entry || io.hash(await io.read(entry, SOURCE_LIMIT)) !== r.pnpmEntrySHA256) fail('DEPENDENCY_UNPROVEN');
+  let check='PNPM_CANONICAL';
+  try {
+  const canonical=await io.realpath(entry);observeTool(io,check,{completed:true,matches:canonical===entry});
+  if (canonical!==entry) fail('DEPENDENCY_UNPROVEN');
+  check='PNPM_ENTRY_SHA256';const entrySHA256=io.hash(await io.read(entry,SOURCE_LIMIT));
+  observeTool(io,check,{completed:true,sha256:entrySHA256,matches:entrySHA256===r.pnpmEntrySHA256});
+  if (entrySHA256!==r.pnpmEntrySHA256) fail('DEPENDENCY_UNPROVEN');
   const pnpmRoot = io.path.dirname(io.path.dirname(entry));
-  if (!entry.endsWith('/bin/pnpm.cjs') || json(await io.read(io.path.join(pnpmRoot,'package.json'),SOURCE_LIMIT)).version !== r.pnpmVersion ||
-      (await measureTree({pnpm:pnpmRoot}, {entries:30000,file:64*1024*1024,total:256*1024*1024,ms:60000},io)).sha256 !== r.pnpmPackageClosureSHA256) fail('DEPENDENCY_UNPROVEN');
+  check='PNPM_ENTRY_LAYOUT';const layout=entry.endsWith('/bin/pnpm.cjs');observeTool(io,check,{completed:true,matches:layout});
+  if (!layout) fail('DEPENDENCY_UNPROVEN');
+  check='PNPM_PACKAGE_VERSION';const version=json(await io.read(io.path.join(pnpmRoot,'package.json'),SOURCE_LIMIT)).version;
+  observeTool(io,check,{completed:true,version,matches:version===r.pnpmVersion});
+  if (version!==r.pnpmVersion) fail('DEPENDENCY_UNPROVEN');
+  check='PNPM_TREE';const tree=await measureTree({pnpm:pnpmRoot},{entries:30000,file:64*1024*1024,total:256*1024*1024,ms:60000},io);
+  observeTool(io,check,{completed:true,...tree,matches:tree.sha256===r.pnpmPackageClosureSHA256});
+  if (tree.sha256!==r.pnpmPackageClosureSHA256) fail('DEPENDENCY_UNPROVEN');
   if (installed) {
     for (const [relative,want] of [['node_modules/@playwright/test/cli.js',r.cliSHA256], ['node_modules/@playwright/test/package.json',null]]) {
+      check=want?'PLAYWRIGHT_CLI_CANONICAL':'PLAYWRIGHT_PACKAGE_CANONICAL';
       const canonical = await io.realpath(io.path.join(ctx.sourceRoot,relative));
-      if (![io.path.join(ctx.sourceRoot,'node_modules'),io.path.join(root,'store')].some((p) => inside(p,canonical))) fail('DEPENDENCY_UNPROVEN');
+      const member=[io.path.join(ctx.sourceRoot,'node_modules'),io.path.join(root,'store')].some((p) => inside(p,canonical));
+      observeTool(io,check,{completed:true,matches:member});if (!member) fail('DEPENDENCY_UNPROVEN');
+      check=want?'PLAYWRIGHT_CLI_SHA256':'PLAYWRIGHT_PACKAGE_VERSION';
       const data = await io.read(canonical,SOURCE_LIMIT);
-      if (want ? io.hash(data) !== want : json(data).version !== r.playwrightVersion) fail('DEPENDENCY_UNPROVEN');
+      if (want) { const digest=io.hash(data);observeTool(io,check,{completed:true,sha256:digest,matches:digest===want});if (digest!==want) fail('DEPENDENCY_UNPROVEN'); }
+      else { const version=json(data).version;observeTool(io,check,{completed:true,version,matches:version===r.playwrightVersion});if (version!==r.playwrightVersion) fail('DEPENDENCY_UNPROVEN'); }
     }
   }
+  } catch (error) { observeTool(io,check,{completed:false});throw error; }
 }
 function childEnvironment(e, node, root, p) {
   const out = {CI:'1',PATH:p.dirname(node),HOME:p.join(root,'home'),TMPDIR:p.join(root,'tmp'),TMP:p.join(root,'tmp'),TEMP:p.join(root,'tmp'),
@@ -1139,7 +1190,7 @@ function realIO(e) {
       };
     } catch { if (h) await h.close(); fail('OWNERSHIP_UNPROVEN'); }
   };
-  return {path,read,openState,hash:(b)=>crypto.createHash('sha256').update(b).digest('hex'),blob:(b)=>crypto.createHash('sha1').update('blob '+b.length+'\0').update(b).digest('hex'),
+  return {path,read,openState,observeTool:(line)=>process.stderr.write(line),hash:(b)=>crypto.createHash('sha256').update(b).digest('hex'),blob:(b)=>crypto.createHash('sha1').update('blob '+b.length+'\0').update(b).digest('hex'),
     runtime:{cwd,sourceRoot:path.join(cwd,'qualified-source'),platform:process.platform,arch:process.arch,version:process.version,execPath:process.execPath,uid:process.getuid()},
     qualifier:require('./qualify-api-music-nonloopback.cjs'),now:()=>Date.now(),signalSource:process,setTimeout,clearTimeout,spawn:cp.spawn,
     write:(...v)=>fsp.writeFile(...v),append:(...v)=>fsp.appendFile(...v),mkdir:(...v)=>fsp.mkdir(...v),mkdtemp:(...v)=>fsp.mkdtemp(...v),chmod:(...v)=>fsp.chmod(...v),
@@ -1165,5 +1216,5 @@ async function main() {
   if(process.argv.length!==3) fail('HOST_UNPROVEN');
   await handle(process.argv[2],realIO(process.env),process.env);
 }
-module.exports={handle,measureTree,runOwned,safeRunner,safeInnerFailure,safeChildFailure,childFacts,formatResult};
+module.exports={handle,measureTree,runOwned,safeRunner,safeInnerFailure,safeChildFailure,childFacts,formatResult,publicFacts,formatToolObservation};
 if(typeof require!=='undefined' && require.main===module) main().catch(()=>{process.stderr.write('CARRIER_UNPROVEN\n');process.exitCode=1;});
