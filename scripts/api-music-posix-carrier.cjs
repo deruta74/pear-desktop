@@ -820,7 +820,7 @@ function guard(command, runtime) {
     fail('HOST_UNPROVEN');
 }
 function staticPolicy(policy, runtime) {
-  if (!keys(policy, ['schema', 'source', 'platforms']) || policy.schema !== 1 ||
+  if (!keys(policy, ['schema', 'source', 'platforms']) || policy.schema !== 2 ||
       !keys(policy.source, ['head','tree','trackedCount','runnerCount','sourceInventorySHA256','lockSHA256','packageSHA256','certificateSHA256','leafFingerprint256','staticOmission'])) fail('ADMISSION_UNPROVEN');
   const s = policy.source;
   if (!head(s.head) || !head(s.tree) || !number(s.trackedCount) || s.trackedCount > 10000 ||
@@ -828,13 +828,26 @@ function staticPolicy(policy, runtime) {
       !['sourceInventorySHA256','lockSHA256','packageSHA256'].every((k) => sha(s[k])) || !Array.isArray(policy.platforms) || policy.platforms.length !== 2) fail('ADMISSION_UNPROVEN');
   const triples = [['linux','x64','ubuntu-24.04'], ['darwin','arm64','macos-26']];
   policy.platforms.forEach((r, i) => {
-    if (!keys(r, ['platform','arch','runnerLabelCandidate','imageOS','imageVersion','nodeSHA256','pnpmEntrySHA256','pnpmPackageClosureSHA256','cliSHA256','nodeVersion','nodeCanonicalPathExpected','pnpmVersion','pnpmCanonicalEntryPathExpected','playwrightVersion']) ||
-        [r.platform,r.arch,r.runnerLabelCandidate].join('|') !== triples[i].join('|') || !image(r.imageOS) || !image(r.imageVersion) ||
+    if (!keys(r, ['platform','arch','runnerLabelCandidate','imageOS','imageVersionMode','imageVersion','nodeSHA256','pnpmEntrySHA256','pnpmPackageClosureSHA256','cliSHA256','nodeVersion','nodeCanonicalPathExpected','pnpmVersion','pnpmCanonicalEntryPathExpected','playwrightVersion']) ||
+        [r.platform,r.arch,r.runnerLabelCandidate].join('|') !== triples[i].join('|') || !image(r.imageOS) ||
+        !(r.imageVersionMode==='exact' && image(r.imageVersion) || i===1 && r.imageOS==='macos26' && r.imageVersionMode==='runtime-observed' && r.imageVersion===null) ||
         !['nodeSHA256','pnpmEntrySHA256','pnpmPackageClosureSHA256','cliSHA256'].every((k) => sha(r[k])) ||
         r.nodeVersion !== 'v24.22.0' || r.pnpmVersion !== '11.28.6' || r.playwrightVersion !== '1.61.1' ||
         !absolute(r.nodeCanonicalPathExpected) || !absolute(r.pnpmCanonicalEntryPathExpected)) fail('ADMISSION_UNPROVEN');
   });
   return policy.platforms.find((r) => r.platform === runtime.platform && r.arch === runtime.arch);
+}
+function checkImage(row,e) {
+  if (e.ImageOS!==row.imageOS || (row.imageVersionMode==='exact' ? e.ImageVersion!==row.imageVersion :
+      typeof e.ImageVersion!=='string' || !/^[0-9]{8}\.[0-9]{4}\.[0-9]{1,2}$/.test(e.ImageVersion))) fail('ADMISSION_UNPROVEN');
+}
+function capturedImage(row,e) {
+  checkImage(row,e);
+  return {schema:1,mode:row.imageVersionMode,platform:row.platform,arch:row.arch,imageOS:e.ImageOS,imageVersion:e.ImageVersion,
+    origin:'GITHUB_HOSTED_PROCESS_ENVIRONMENT',preselectedVersion:row.imageVersionMode==='exact'};
+}
+function sameImage(ctx,e) {
+  if (e.ImageOS!==ctx.image.imageOS || e.ImageVersion!==ctx.image.imageVersion) fail('ADMISSION_UNPROVEN');
 }
 async function bind(command, io, e) {
   const p = io.path, cwd = io.runtime.cwd;
@@ -851,11 +864,12 @@ async function bind(command, io, e) {
   if (await io.git(cwd, ['rev-parse','HEAD']) !== e.EXPECTED_CARRIER_SHA ||
       await io.git(cwd, ['rev-parse','HEAD^{tree}']) !== e.EXPECTED_CARRIER_TREE ||
       await io.git(cwd, ['status','--porcelain','--untracked-files=no']) !== '') fail('SOURCE_UNPROVEN');
-  if (e.ImageOS !== row.imageOS || e.ImageVersion !== row.imageVersion) fail('ADMISSION_UNPROVEN');
+  checkImage(row,e);
   const sourceRoot = io.runtime.sourceRoot || p.join(cwd, 'qualified-source');
   if (e.PEAR_SOURCE_ROOT !== sourceRoot || !absolute(sourceRoot) || await io.realpath(sourceRoot) !== sourceRoot) fail('SOURCE_UNPROVEN');
   const ctx = {policy,row,cwd,sourceRoot,carrier:{head:e.EXPECTED_CARRIER_SHA,tree:e.EXPECTED_CARRIER_TREE}};
   if (command !== 'cleanup') ctx.source = await measureSource(ctx, io);
+  ctx.image=capturedImage(row,e);
   return ctx;
 }
 async function measureSource(ctx, io) {
@@ -905,14 +919,15 @@ async function nodePins(ctx, io) {
     if (digest!==r.nodeSHA256) fail('ADMISSION_UNPROVEN');
   } catch (error) { observeTool(io,check,{completed:false});throw error; }
 }
-async function measureTree(roots, limits, io) {
+async function measureTree(roots, limits, io, project) {
   // Only the installed dependencies/store inventory emits these two records.
   const probe=keys(roots,['dependencies','store'])?{operation:'START',root:'UNKNOWN',kind:'UNKNOWN',member:null,entries:0,files:0,bytes:0,largestFile:0,elapsedMs:0}:null;
+  const reference=probe && keys(project,['sourceRoot']) && absolute(project.sourceRoot)?{path:io.path.join(roots.store,'v11','projects',io.hash(Buffer.from(project.sourceRoot)).slice(0,32)),target:project.sourceRoot}:null;
   if (probe) observeInventory(io,'BEGIN',probe,null);
   let timer, boundary;
   try {
     let result;
-    try { result=await Promise.race([scanTree(roots,limits,io,probe),new Promise((_,reject) => {
+    try { result=await Promise.race([scanTree(roots,limits,io,probe,reference),new Promise((_,reject) => {
       try { timer=io.setTimeout(() => { boundary='WALL_TIMEOUT';reject(Error('DEPENDENCY_UNPROVEN')); },limits.ms); }
       catch (error) { boundary='TIMER_SETUP';throw error; }
     })]); }
@@ -924,7 +939,7 @@ async function measureTree(roots, limits, io) {
     throw error;
   }
 }
-async function scanTree(roots, limits, io, probe) {
+async function scanTree(roots, limits, io, probe, reference) {
   if (probe) probe.operation='CLOCK_IO';
   const records = [], seen = new Map(), start = io.now(); let entries = 0, files = 0, bytes = 0;
   const rootRows = Object.entries(roots).sort(([a],[b]) => bytewise(a,b));
@@ -940,7 +955,14 @@ async function scanTree(roots, limits, io, probe) {
     if (probe) probe.kind=stat.kind;
     if (!isRoot) { ++entries;if (probe) probe.entries=entries;if (entries > limits.entries) { if (probe) probe.operation='ENTRY_LIMIT';fail('DEPENDENCY_UNPROVEN'); } }
     if (probe) probe.operation='REALPATH_IO';
-    const canonical = await io.realpath(file); locate(canonical);
+    const canonical = await io.realpath(file);
+    if (reference && file===reference.path) {
+      if (stat.kind!=='symlink') { if (probe) probe.operation='NODE_KIND';fail('DEPENDENCY_UNPROVEN'); }
+      if (canonical!==reference.target) { if (probe) probe.operation='CANONICAL_MATCH';fail('DEPENDENCY_UNPROVEN'); }
+      if (probe) probe.member=false;
+      records.push([label,'project-reference','qualified-source']);continue;
+    }
+    locate(canonical);
     if (stat.kind === 'symlink') { records.push([label,'symlink',locate(canonical)]); continue; }
     if (canonical !== file) { if (probe) probe.operation='CANONICAL_MATCH';fail('DEPENDENCY_UNPROVEN'); }
     if (stat.kind === 'directory') {
@@ -999,11 +1021,13 @@ async function toolPins(ctx, io, installed = false, root) {
   }
   } catch (error) { observeTool(io,check,{completed:false});throw error; }
 }
-function childEnvironment(e, node, root, p) {
+function childEnvironment(e, node, root, p, identity) {
+  sameImage({image:identity},e);
   const out = {CI:'1',PATH:p.dirname(node),HOME:p.join(root,'home'),TMPDIR:p.join(root,'tmp'),TMP:p.join(root,'tmp'),TEMP:p.join(root,'tmp'),
     npm_config_userconfig:p.join(root,'empty-user.npmrc'),npm_config_globalconfig:p.join(root,'empty-global.npmrc'),
     npm_config_ignore_scripts:'true',npm_config_registry:'https://registry.npmjs.org',ELECTRON_SKIP_BINARY_DOWNLOAD:'1',PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:'1'};
-  for (const k of ['GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','ImageVersion']) out[k] = e[k];
+  for (const k of ['GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT']) out[k] = e[k];
+  out.ImageVersion=identity.imageVersion;
   out.RUNNER_TEMP = p.join(root,'tmp');
   return out;
 }
@@ -1042,12 +1066,16 @@ function runOwned(spec, kind, io) {
     } catch { reason = 'SPAWN_FAILED'; finish(true); }
   });
 }
-function marker(ctx,e) { return {schema:1,carrier:e.EXPECTED_CARRIER_SHA,tree:e.EXPECTED_CARRIER_TREE,run:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT,platform:ctx.row.platform}; }
+function marker(ctx,e) { return {schema:2,carrier:e.EXPECTED_CARRIER_SHA,tree:e.EXPECTED_CARRIER_TREE,run:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT,platform:ctx.row.platform,policySHA256:e.EXPECTED_POLICY_SHA256,image:ctx.image}; }
 async function ownedRoot(ctx,io,e) {
   const root = e.PEAR_POSIX_PRIVATE_ROOT, p = io.path;
+  if (!sha(e.PEAR_POSIX_IMAGE_BINDING_SHA256)) fail('OWNERSHIP_UNPROVEN');
   if (!absolute(root) || !absolute(e.RUNNER_TEMP) || p.dirname(root) !== e.RUNNER_TEMP || !p.basename(root).startsWith('pear-api-posix-') || await io.realpath(root) !== root) fail('OWNERSHIP_UNPROVEN');
   const st = await io.stat(root);
-  if (st.kind !== 'directory' || (st.mode & 0o777) !== 0o700 || st.uid !== io.runtime.uid || JSON.stringify(json(await io.read(p.join(root,'owner.json'),2048))) !== JSON.stringify(marker(ctx,e))) fail('OWNERSHIP_UNPROVEN');
+  if (st.kind !== 'directory' || (st.mode & 0o777) !== 0o700 || st.uid !== io.runtime.uid) fail('OWNERSHIP_UNPROVEN');
+  const bytes=await io.read(p.join(root,'owner.json'),2048),owner=json(bytes);
+  if (io.hash(bytes)!==e.PEAR_POSIX_IMAGE_BINDING_SHA256 || JSON.stringify(owner)!==JSON.stringify(marker(ctx,e))) fail('OWNERSHIP_UNPROVEN');
+  ctx.image=owner.image;
   return root;
 }
 async function allocatedIdentity(ctx,io,e) {
@@ -1085,16 +1113,16 @@ async function removeBounded(root,io) {
   finally { io.clearTimeout(timer); }
 }
 function finalResult(ctx,state,e,cleanup) {
-  const expectedPlan={schema:1,disposableRunner:true,platform:ctx.row.platform,arch:ctx.row.arch,image:ctx.row.imageVersion,repository:e.GITHUB_REPOSITORY,
+  const expectedPlan={schema:1,disposableRunner:true,platform:ctx.row.platform,arch:ctx.row.arch,image:ctx.image.imageVersion,repository:e.GITHUB_REPOSITORY,
     runId:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT,jobId:state.jobId,expectedHead:ctx.policy.source.head,expectedTree:ctx.policy.source.tree,
     sourceManifestSHA256:state.source.runnerSHA256,node:{path:ctx.row.nodeCanonicalPathExpected,version:ctx.row.nodeVersion,sha256:ctx.row.nodeSHA256},cliSHA256:ctx.row.cliSHA256,lockSHA256:ctx.policy.source.lockSHA256};
   const qualification = state.inner && state.plan ? safeRunner(state.inner,expectedPlan) : null;
   const pass = !state.failed && !state.active && numberId(state.jobId) && state.phase === 'qualified' && state.postchecked === true && state.installer?.normal === true && state.outer?.normal === true &&
     qualification?.status === 'PASS' && state.toolsVerified===true && cleanup.furtherOuterDeletion === 'COMPLETED';
-  const result = {schema:1,status:pass?'PASS':'UNPROVEN',reason:pass?'MEASURED_PROTOCOLS_AND_OWNED_DIRECTORY_CLEANUP':'CARRIER_RUN_UNPROVEN',adoptableCells:pass?2:0,
+  const result = {schema:2,status:pass?'PASS':'UNPROVEN',reason:pass?'MEASURED_PROTOCOLS_AND_OWNED_DIRECTORY_CLEANUP':'CARRIER_RUN_UNPROVEN',adoptableCells:pass?2:0,imageBinding:{...ctx.image},
     source:{head:ctx.policy.source.head,tree:ctx.policy.source.tree,...safeSource(state.source)},
     carrier:{head:e.EXPECTED_CARRIER_SHA,tree:e.EXPECTED_CARRIER_TREE,workflowSHA256:e.EXPECTED_WORKFLOW_SHA256,helperSHA256:e.EXPECTED_HELPER_SHA256,policySHA256:e.EXPECTED_POLICY_SHA256},
-    tools:{platform:ctx.row.platform,arch:ctx.row.arch,imageOS:ctx.row.imageOS,imageVersion:ctx.row.imageVersion,nodeVersion:ctx.row.nodeVersion,nodeSHA256:ctx.row.nodeSHA256,
+    tools:{platform:ctx.row.platform,arch:ctx.row.arch,imageOS:ctx.image.imageOS,imageVersion:ctx.image.imageVersion,nodeVersion:ctx.row.nodeVersion,nodeSHA256:ctx.row.nodeSHA256,
       pnpmVersion:ctx.row.pnpmVersion,pnpmEntrySHA256:ctx.row.pnpmEntrySHA256,pnpmPackageClosureSHA256:ctx.row.pnpmPackageClosureSHA256,cliSHA256:ctx.row.cliSHA256,canonicalPathsVerified:state.toolsVerified===true},
     runtime:{repository:e.GITHUB_REPOSITORY,ref:e.EXPECTED_REF,workflowId:e.EXPECTED_REGISTERED_WORKFLOW_ID,runId:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT,jobId:numberId(state.jobId)?state.jobId:null},
     inventory:state.inventory && sha(state.inventory.sha256) ? {sha256:state.inventory.sha256,entries:boundedNumber(state.inventory.entries,250000),files:boundedNumber(state.inventory.files,250000),bytes:boundedNumber(state.inventory.bytes,8*1024**3)} : null,
@@ -1108,22 +1136,23 @@ async function handle(command,io,e) {
   if (command === 'bind-source') return;
   if (command === 'prepare') {
     await nodePins(ctx,io);
-    if (e.PEAR_POSIX_PRIVATE_ROOT || !absolute(e.RUNNER_TEMP) || await io.realpath(e.RUNNER_TEMP) !== e.RUNNER_TEMP) fail('OWNERSHIP_UNPROVEN');
+    if (e.PEAR_POSIX_PRIVATE_ROOT || e.PEAR_POSIX_IMAGE_BINDING_SHA256 || !absolute(e.RUNNER_TEMP) || await io.realpath(e.RUNNER_TEMP) !== e.RUNNER_TEMP) fail('OWNERSHIP_UNPROVEN');
     const root = await io.mkdtemp(p.join(e.RUNNER_TEMP,'pear-api-posix-'));
     if (p.dirname(root) !== e.RUNNER_TEMP || !p.basename(root).startsWith('pear-api-posix-') || await io.realpath(root) !== root) fail('OWNERSHIP_UNPROVEN');
     await io.chmod(root,0o700);
     for (const name of ['home','tmp','store','logs']) await io.mkdir(p.join(root,name),{mode:0o700});
     for (const name of ['empty-user.npmrc','empty-global.npmrc']) await io.write(p.join(root,name),'',{flag:'wx',mode:0o600});
-    await io.write(p.join(root,'owner.json'),JSON.stringify(marker(ctx,e)),{flag:'wx',mode:0o600});
+    const owner=Buffer.from(JSON.stringify(marker(ctx,e)));
+    await io.write(p.join(root,'owner.json'),owner,{flag:'wx',mode:0o600});
     await io.write(p.join(root,'complete-source-manifest.json'),JSON.stringify(ctx.source.complete),{flag:'wx',mode:0o600});
-    await io.write(p.join(root,'state.json'),JSON.stringify({schema:1,phase:'prepared',source:safeSource(ctx.source),active:null,failed:false,postchecked:false}),{flag:'wx',mode:0o600});
-    await io.append(e.GITHUB_ENV,'PEAR_POSIX_PRIVATE_ROOT=' + root + '\n'); return;
+    await io.write(p.join(root,'state.json'),JSON.stringify({schema:2,image:ctx.image,phase:'prepared',source:safeSource(ctx.source),active:null,failed:false,postchecked:false}),{flag:'wx',mode:0o600});
+    await io.append(e.GITHUB_ENV,'PEAR_POSIX_PRIVATE_ROOT=' + root + '\nPEAR_POSIX_IMAGE_BINDING_SHA256=' + io.hash(owner) + '\n'); return;
   }
   const root = await ownedRoot(ctx,io,e), statePath = p.join(root,'state.json');
   const stateFile = await io.openState(statePath);
   try {
   const state = json(await stateFile.read());
-  if (state.schema !== 1 || !state.source || !sha(state.source.completeSHA256) || !sha(state.source.runnerSHA256) ||
+  if (state.schema !== 2 || JSON.stringify(state.image)!==JSON.stringify(ctx.image) || state.plan && state.plan.image!==ctx.image.imageVersion || !state.source || !sha(state.source.completeSHA256) || !sha(state.source.runnerSHA256) ||
       state.source.completeCount !== ctx.policy.source.trackedCount || state.source.runnerCount !== ctx.policy.source.runnerCount) fail('OWNERSHIP_UNPROVEN');
   const save = () => stateFile.write(JSON.stringify(state));
   if (command === 'cleanup') {
@@ -1142,12 +1171,12 @@ async function handle(command,io,e) {
     if (command === 'install') {
       state.active='installer'; await save(); ledger.stage='CHILD';
       const child=await runOwned({command:ctx.row.nodeCanonicalPathExpected,args:[ctx.row.pnpmCanonicalEntryPathExpected,'install','--frozen-lockfile','--ignore-scripts','--ignore-pnpmfile','--config.manage-package-manager-versions=false','--store-dir',p.join(root,'store')],
-        cwd:ctx.sourceRoot,env:childEnvironment(e,ctx.row.nodeCanonicalPathExpected,root,p)},'installer',io);
+        cwd:ctx.sourceRoot,env:childEnvironment(e,ctx.row.nodeCanonicalPathExpected,root,p,ctx.image)},'installer',io);
       state.installer=safeTransport(child); state.active=null; state.hold=!child.normal;
       await io.write(p.join(root,'logs/install.stdout'),child.stdout,{flag:'wx',mode:0o600}); await io.write(p.join(root,'logs/install.stderr'),child.stderr,{flag:'wx',mode:0o600});
       if (!child.normal) fail('DEPENDENCY_UNPROVEN');
-      ledger.stage='TOOL_PINS'; await toolPins(ctx,io,true,root);
-      state.inventory=await measureTree({dependencies:p.join(ctx.sourceRoot,'node_modules'),store:p.join(root,'store')},DEPENDENCY_LIMITS,io);
+      sameImage(ctx,e);ledger.stage='TOOL_PINS'; await toolPins(ctx,io,true,root);
+      state.inventory=await measureTree({dependencies:p.join(ctx.sourceRoot,'node_modules'),store:p.join(root,'store')},DEPENDENCY_LIMITS,io,{sourceRoot:ctx.sourceRoot});
       const after=await measureSource(ctx,io); if (after.completeSHA256!==state.source.completeSHA256) fail('SOURCE_UNPROVEN');
       state.phase='installed'; await save(); return;
     }
@@ -1155,24 +1184,24 @@ async function handle(command,io,e) {
     const runtimeEnvelope={schema:1,allocatedRunId:e.GITHUB_RUN_ID,allocatedAttempt:e.GITHUB_RUN_ATTEMPT,apiUniqueJobId:state.jobId,apiWorkflowId:e.EXPECTED_REGISTERED_WORKFLOW_ID,
       apiJobName:'current-posix-api-'+ctx.row.platform,apiJobHeadSHA:ctx.carrier.head,measuredCarrierHead:ctx.carrier.head,measuredCarrierTree:ctx.carrier.tree,
       measuredSourceHead:ctx.policy.source.head,measuredSourceTree:ctx.policy.source.tree,actualPlatform:io.runtime.platform,actualArch:io.runtime.arch,
-      actualImageOS:e.ImageOS,actualImageVersion:e.ImageVersion,actualNodeCanonicalPath:ctx.row.nodeCanonicalPathExpected,actualPnpmCanonicalEntryPath:ctx.row.pnpmCanonicalEntryPathExpected,
+      actualImageOS:ctx.image.imageOS,actualImageVersion:ctx.image.imageVersion,actualNodeCanonicalPath:ctx.row.nodeCanonicalPathExpected,actualPnpmCanonicalEntryPath:ctx.row.pnpmCanonicalEntryPathExpected,
       completeSourceManifestSHA256:ctx.source.completeSHA256,runnerManifestSHA256:ctx.source.runnerSHA256,measuredInstalledDependencyInventorySHA256:state.inventory.sha256};
     await io.write(p.join(root,'runtime-envelope.json'),JSON.stringify(runtimeEnvelope),{flag:'wx',mode:0o600});
-    const plan={schema:1,disposableRunner:true,platform:ctx.row.platform,arch:ctx.row.arch,image:ctx.row.imageVersion,repository:e.GITHUB_REPOSITORY,
+    const plan={schema:1,disposableRunner:true,platform:ctx.row.platform,arch:ctx.row.arch,image:ctx.image.imageVersion,repository:e.GITHUB_REPOSITORY,
       runId:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT,jobId:state.jobId,expectedHead:ctx.policy.source.head,expectedTree:ctx.policy.source.tree,
       sourceManifestSHA256:ctx.source.runnerSHA256,node:{path:ctx.row.nodeCanonicalPathExpected,version:ctx.row.nodeVersion,sha256:ctx.row.nodeSHA256},cliSHA256:ctx.row.cliSHA256,lockSHA256:ctx.policy.source.lockSHA256};
-    io.qualifier.validatePlan(plan); state.plan=plan;
+    io.qualifier.validatePlan(plan);if (plan.image!==ctx.image.imageVersion) fail('ADMISSION_UNPROVEN');state.plan=plan;
     await io.write(p.join(ctx.sourceRoot,'api-music-runtime-manifest.json'),JSON.stringify(ctx.source.runner),{flag:'wx',mode:0o600});
     await io.write(p.join(root,'plan.json'),JSON.stringify(plan),{flag:'wx',mode:0o600});
     state.qualifierStarted=true; state.active='qualifier'; await save(); ledger.stage='CHILD';
     const child=await runOwned({command:ctx.row.nodeCanonicalPathExpected,args:[p.join(ctx.sourceRoot,'scripts/qualify-api-music-nonloopback.cjs'),'--execute-admitted-runner',p.join(root,'plan.json')],
-      cwd:ctx.sourceRoot,env:childEnvironment(e,ctx.row.nodeCanonicalPathExpected,root,p)},'qualifier',io);
+      cwd:ctx.sourceRoot,env:childEnvironment(e,ctx.row.nodeCanonicalPathExpected,root,p,ctx.image)},'qualifier',io);
     state.outer=safeTransport(child); state.active=null; state.hold=!child.normal;
     await io.write(p.join(root,'logs/qualifier.stdout'),child.stdout,{flag:'wx',mode:0o600}); await io.write(p.join(root,'logs/qualifier.stderr'),child.stderr,{flag:'wx',mode:0o600});
     try { state.inner=safeRunner(json(child.stdout),plan); } catch { state.hold=true; }
     if (!child.normal) fail('RUNNER_UNPROVEN');
     ledger.stage='RESULT_PARSE'; if (!state.inner || state.inner.status!=='PASS') { state.hold=true; fail('RUNNER_EVIDENCE_REJECTED'); }
-    ledger.stage='POST_PINS'; await toolPins(ctx,io,true,root);
+    sameImage(ctx,e);ledger.stage='POST_PINS'; await toolPins(ctx,io,true,root);
     if ((await measureSource(ctx,io)).completeSHA256!==state.source.completeSHA256) fail('SOURCE_UNPROVEN');
     state.postchecked=true; state.phase='qualified'; await save();
   } catch (error) {

@@ -46,13 +46,13 @@ function fixture() {
   for (const n of sourceNames) put('/source/' + n, n.endsWith('cert.pem') ? certificate : n);
   const entries = sourceNames.map((p) => ({path: p, mode: '100644', type: 'blob', blob: blob(files.get('/source/' + p))}));
   const sourceBytes = Buffer.from(JSON.stringify({head: H, tree: T, trackedCount: 947, entries}));
-  const row = {platform: 'linux', arch: 'x64', runnerLabelCandidate: 'ubuntu-24.04', imageOS: 'ubuntu24', imageVersion: '20261028.1',
+  const row = {platform: 'linux', arch: 'x64', runnerLabelCandidate: 'ubuntu-24.04', imageOS: 'ubuntu24', imageVersionMode: 'exact', imageVersion: '20261028.1',
     nodeSHA256: hash(Buffer.from('node')), pnpmEntrySHA256: hash(Buffer.from('pnpm')), pnpmPackageClosureSHA256: hash(Buffer.from(JSON.stringify([
       ['pnpm/bin/pnpm.cjs', 'file', hash(Buffer.from('pnpm'))],
       ['pnpm/package.json', 'file', hash(Buffer.from('{"version":"11.28.6"}'))],
     ]))), cliSHA256: hash(Buffer.from('cli')), nodeVersion: 'v24.22.0', nodeCanonicalPathExpected: '/tools/node/bin/node', pnpmVersion: '11.28.6',
     pnpmCanonicalEntryPathExpected: '/tools/pnpm/bin/pnpm.cjs', playwrightVersion: '1.61.1'};
-  const policy = {schema: 1, source: {head: H, tree: T, trackedCount: 947, runnerCount: 946, sourceInventorySHA256: hash(sourceBytes),
+  const policy = {schema: 2, source: {head: H, tree: T, trackedCount: 947, runnerCount: 946, sourceInventorySHA256: hash(sourceBytes),
     lockSHA256: hash(files.get('/source/pnpm-lock.yaml')), packageSHA256: hash(files.get('/source/package.json')),
     certificateSHA256: '597b4509e1ad0c12b69402bc0cff55bcb3f28603dea13a36623eb38891d109a3',
     leafFingerprint256: 'fb6e906aa7015cfe4194ac90bd771a3b4f4d2eecef8ba4614b079a59138f35b1', staticOmission: SVG},
@@ -77,7 +77,7 @@ function fixture() {
     read: async (p, max = Infinity) => { effects.push(['read', p]); if (!files.has(p)) throw Object.assign(Error('missing'), {code: 'ENOENT'}); const b = files.get(p); if (b.length > max) throw Error('FILE_UNPROVEN'); return b; },
     write: async (p, b, options = {}) => { effects.push(['write', p]); if (options.flag === 'wx' && files.has(p)) throw Error('EEXIST'); put(p, b, options.mode || 0o600); if (p.endsWith('/plan.json')) plan = JSON.parse(b); },
     openState: async (p) => ({read: () => io.read(p,1024*1024), write: (b) => io.write(p,b,{mode:0o600}), close: async () => {}}),
-    append: async (p, text) => { if (p === '/runner/env') env.PEAR_POSIX_PRIVATE_ROOT = text.trim().split('=')[1]; },
+    append: async (p, text) => { if (p === '/runner/env') for (const line of text.trim().split('\n')) { const at=line.indexOf('=');env[line.slice(0,at)]=line.slice(at+1); } },
     realpath: async (p) => p,
     stat: async (p) => { if (dirs.has(p)) return {kind: 'directory', mode: 0o700, uid: 501, size: 0}; if (!files.has(p)) throw Error('ENOENT'); return {kind: 'file', mode: modes.get(p), uid: 501, size: files.get(p).length}; },
     readdir: async (p) => [...new Set([...files.keys(), ...dirs].filter((n) => path.dirname(n) === p).map((n) => path.basename(n)))],
