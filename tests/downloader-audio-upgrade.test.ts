@@ -334,7 +334,7 @@ for (const failRange of [undefined, 1]) {
         expect(await readdir(f.downloads)).toEqual([]);
         expect(
           f.state.logs.some((line) =>
-            line.includes('Owned intermediate range failure'),
+            line.includes('Audio transfer failed (stage: transfer)'),
           ),
         ).toBe(true);
       } else {
