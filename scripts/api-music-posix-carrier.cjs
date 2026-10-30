@@ -802,6 +802,18 @@ function observeTool(io, check, facts) {
   // A diagnostic sink failure cannot change the original pin result or exception.
   try { if (io.observeTool) io.observeTool(formatToolObservation(check,facts)); } catch {}
 }
+function formatInventoryObservation(event, probe, success) {
+  const member=(value,allowed)=>allowed.includes(value)?value:'UNKNOWN';
+  const count=(value,max)=>typeof value==='number' && !Number.isNaN(value)?Math.max(0,Math.min(max,Math.trunc(value))):null;
+  return JSON.stringify({tag:'PEAR_POSIX_INVENTORY',event:member(event,['BEGIN','END']),success:typeof success==='boolean'?success:null,
+    operation:member(probe.operation,['START','COMPLETE','CLOCK','CLOCK_IO','STAT_IO','REALPATH_IO','ROOT_MEMBERSHIP','CANONICAL_MATCH','READDIR_IO','DIRECTORY_NAMES',
+      'ENTRY_LIMIT','NODE_KIND','FILE_SIZE','TOTAL_BYTES','READ_IO','READ_LENGTH','DIGEST_IO','WALL_TIMEOUT','TIMER_SETUP','TIMER_CLEAR']),
+    root:member(probe.root,['DEPENDENCIES','STORE']),kind:member(probe.kind,['file','directory','symlink','other']),member:typeof probe.member==='boolean'?probe.member:null,
+    entries:count(probe.entries,250001),files:count(probe.files,250000),bytes:count(probe.bytes,8589934592),largestFile:count(probe.largestFile,536870913),elapsedMs:count(probe.elapsedMs,60001)})+'\n';
+}
+function observeInventory(io, event, probe, success) {
+  try { if (io.observeInventory) io.observeInventory(formatInventoryObservation(event,probe,success)); } catch {}
+}
 function guard(command, runtime) {
   if (!['bind-source', 'prepare', 'install', 'qualify', 'cleanup'].includes(command) ||
       !((runtime.platform === 'linux' && runtime.arch === 'x64') || (runtime.platform === 'darwin' && runtime.arch === 'arm64')))
@@ -894,37 +906,64 @@ async function nodePins(ctx, io) {
   } catch (error) { observeTool(io,check,{completed:false});throw error; }
 }
 async function measureTree(roots, limits, io) {
-  let timer;
-  try { return await Promise.race([scanTree(roots,limits,io),new Promise((_,reject) => { timer=io.setTimeout(() => reject(Error('DEPENDENCY_UNPROVEN')),limits.ms); })]); }
-  finally { io.clearTimeout(timer); }
+  // Only the installed dependencies/store inventory emits these two records.
+  const probe=keys(roots,['dependencies','store'])?{operation:'START',root:'UNKNOWN',kind:'UNKNOWN',member:null,entries:0,files:0,bytes:0,largestFile:0,elapsedMs:0}:null;
+  if (probe) observeInventory(io,'BEGIN',probe,null);
+  let timer, boundary;
+  try {
+    let result;
+    try { result=await Promise.race([scanTree(roots,limits,io,probe),new Promise((_,reject) => {
+      try { timer=io.setTimeout(() => { boundary='WALL_TIMEOUT';reject(Error('DEPENDENCY_UNPROVEN')); },limits.ms); }
+      catch (error) { boundary='TIMER_SETUP';throw error; }
+    })]); }
+    finally { try { io.clearTimeout(timer); } catch (error) { boundary='TIMER_CLEAR';throw error; } }
+    if (probe) { probe.operation='COMPLETE';observeInventory(io,'END',probe,true); }
+    return result;
+  } catch (error) {
+    if (probe) { if (boundary) probe.operation=boundary;observeInventory(io,'END',probe,false); }
+    throw error;
+  }
 }
-async function scanTree(roots, limits, io) {
+async function scanTree(roots, limits, io, probe) {
+  if (probe) probe.operation='CLOCK_IO';
   const records = [], seen = new Map(), start = io.now(); let entries = 0, files = 0, bytes = 0;
   const rootRows = Object.entries(roots).sort(([a],[b]) => bytewise(a,b));
-  const locate = (file) => { const row = rootRows.find(([,root]) => inside(root,file)); if (!row) fail('DEPENDENCY_UNPROVEN'); return row[0] + (file === row[1] ? '' : '/' + io.path.relative(row[1], file)); };
+  const locate = (file) => { const row = rootRows.find(([,root]) => inside(root,file)); if (probe) probe.member=!!row; if (!row) { if (probe) probe.operation='ROOT_MEMBERSHIP';fail('DEPENDENCY_UNPROVEN'); } return row[0] + (file === row[1] ? '' : '/' + io.path.relative(row[1], file)); };
   const pending = rootRows.map(([label, root]) => [root,label,true]);
   while (pending.length) {
-    if (io.now() - start > limits.ms) fail('DEPENDENCY_UNPROVEN');
-    const [file,label,isRoot] = pending.pop(), stat = await io.stat(file);
-    if (!isRoot && ++entries > limits.entries) fail('DEPENDENCY_UNPROVEN');
+    if (probe) probe.operation='CLOCK_IO';
+    const elapsed=io.now()-start;if (probe) probe.elapsedMs=elapsed;
+    if (elapsed > limits.ms) { if (probe) probe.operation='CLOCK';fail('DEPENDENCY_UNPROVEN'); }
+    const [file,label,isRoot] = pending.pop();
+    if (probe) { probe.root=label==='store'||label.startsWith('store/')?'STORE':'DEPENDENCIES';probe.kind='UNKNOWN';probe.member=null;probe.operation='STAT_IO'; }
+    const stat = await io.stat(file);
+    if (probe) probe.kind=stat.kind;
+    if (!isRoot) { ++entries;if (probe) probe.entries=entries;if (entries > limits.entries) { if (probe) probe.operation='ENTRY_LIMIT';fail('DEPENDENCY_UNPROVEN'); } }
+    if (probe) probe.operation='REALPATH_IO';
     const canonical = await io.realpath(file); locate(canonical);
     if (stat.kind === 'symlink') { records.push([label,'symlink',locate(canonical)]); continue; }
-    if (canonical !== file) fail('DEPENDENCY_UNPROVEN');
+    if (canonical !== file) { if (probe) probe.operation='CANONICAL_MATCH';fail('DEPENDENCY_UNPROVEN'); }
     if (stat.kind === 'directory') {
+      if (probe) probe.operation='READDIR_IO';
       const names = await io.readdir(file);
-      if (!Array.isArray(names) || names.length > limits.entries || names.some((n) => typeof n !== 'string' || !n || /[\/\x00-\x1f]/.test(n) || n === '.' || n === '..')) fail('DEPENDENCY_UNPROVEN');
+      if (!Array.isArray(names) || names.length > limits.entries || names.some((n) => typeof n !== 'string' || !n || /[\/\x00-\x1f]/.test(n) || n === '.' || n === '..')) { if (probe) probe.operation='DIRECTORY_NAMES';fail('DEPENDENCY_UNPROVEN'); }
       for (const name of names.sort(bytewise).reverse()) pending.push([io.path.join(file,name),label + '/' + name,false]);
     } else if (stat.kind === 'file') {
-      if (!Number.isSafeInteger(stat.size) || stat.size < 0 || stat.size > limits.file) fail('DEPENDENCY_UNPROVEN');
+      if (probe && typeof stat.size==='number' && !Number.isNaN(stat.size)) probe.largestFile=Math.max(probe.largestFile,stat.size);
+      if (!Number.isSafeInteger(stat.size) || stat.size < 0 || stat.size > limits.file) { if (probe) probe.operation='FILE_SIZE';fail('DEPENDENCY_UNPROVEN'); }
       if (seen.has(canonical)) { records.push([label,'reference',seen.get(canonical)]); continue; }
-      if (bytes + stat.size > limits.total) fail('DEPENDENCY_UNPROVEN');
+      if (bytes + stat.size > limits.total) { if (probe) probe.operation='TOTAL_BYTES';fail('DEPENDENCY_UNPROVEN'); }
+      if (probe) probe.operation='READ_IO';
       const data = await io.read(file, limits.file);
-      if (data.length !== stat.size) fail('DEPENDENCY_UNPROVEN');
-      bytes += data.length; files++; seen.set(canonical,label); records.push([label,'file',io.hash(data)]);
-    } else fail('DEPENDENCY_UNPROVEN');
+      if (data.length !== stat.size) { if (probe) probe.operation='READ_LENGTH';fail('DEPENDENCY_UNPROVEN'); }
+      bytes += data.length; files++;if (probe) { probe.bytes=bytes;probe.files=files;probe.operation='DIGEST_IO'; } seen.set(canonical,label); records.push([label,'file',io.hash(data)]);
+    } else { if (probe) probe.operation='NODE_KIND';fail('DEPENDENCY_UNPROVEN'); }
   }
-  if (io.now() - start > limits.ms) fail('DEPENDENCY_UNPROVEN');
+  if (probe) probe.operation='CLOCK_IO';
+  const elapsed=io.now()-start;if (probe) probe.elapsedMs=elapsed;
+  if (elapsed > limits.ms) { if (probe) probe.operation='CLOCK';fail('DEPENDENCY_UNPROVEN'); }
   records.sort((a,b) => bytewise(a[0],b[0]));
+  if (probe) probe.operation='DIGEST_IO';
   return {sha256:io.hash(Buffer.from(JSON.stringify(records))),entries,files,bytes};
 }
 async function toolPins(ctx, io, installed = false, root) {
@@ -1190,7 +1229,7 @@ function realIO(e) {
       };
     } catch { if (h) await h.close(); fail('OWNERSHIP_UNPROVEN'); }
   };
-  return {path,read,openState,observeTool:(line)=>process.stderr.write(line),hash:(b)=>crypto.createHash('sha256').update(b).digest('hex'),blob:(b)=>crypto.createHash('sha1').update('blob '+b.length+'\0').update(b).digest('hex'),
+  return {path,read,openState,observeTool:(line)=>process.stderr.write(line),observeInventory:(line)=>process.stderr.write(line),hash:(b)=>crypto.createHash('sha256').update(b).digest('hex'),blob:(b)=>crypto.createHash('sha1').update('blob '+b.length+'\0').update(b).digest('hex'),
     runtime:{cwd,sourceRoot:path.join(cwd,'qualified-source'),platform:process.platform,arch:process.arch,version:process.version,execPath:process.execPath,uid:process.getuid()},
     qualifier:require('./qualify-api-music-nonloopback.cjs'),now:()=>Date.now(),signalSource:process,setTimeout,clearTimeout,spawn:cp.spawn,
     write:(...v)=>fsp.writeFile(...v),append:(...v)=>fsp.appendFile(...v),mkdir:(...v)=>fsp.mkdir(...v),mkdtemp:(...v)=>fsp.mkdtemp(...v),chmod:(...v)=>fsp.chmod(...v),
@@ -1216,5 +1255,5 @@ async function main() {
   if(process.argv.length!==3) fail('HOST_UNPROVEN');
   await handle(process.argv[2],realIO(process.env),process.env);
 }
-module.exports={handle,measureTree,runOwned,safeRunner,safeInnerFailure,safeChildFailure,childFacts,formatResult,publicFacts,formatToolObservation};
+module.exports={handle,measureTree,runOwned,safeRunner,safeInnerFailure,safeChildFailure,childFacts,formatResult,publicFacts,formatToolObservation,formatInventoryObservation};
 if(typeof require!=='undefined' && require.main===module) main().catch(()=>{process.stderr.write('CARRIER_UNPROVEN\n');process.exitCode=1;});
