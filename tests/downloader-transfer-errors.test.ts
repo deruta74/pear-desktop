@@ -11,34 +11,39 @@ const outputs = (f: Awaited<ReturnType<typeof downloaderFixture>>) =>
     logs: f.state.logs,
   });
 
-for (const status of [302, 403, 410])
-  test(`actual SDK HTTP ${status} stays a single safe transfer failure through processing`, async () => {
-    const f = await downloaderFixture();
-    try {
-      f.state.infoMode = 'resolve';
-      f.state.mediaStatus = status;
-      const context = f.createContext('transfer-status');
-      (context.window as unknown as { focused: boolean }).focused = true;
-      await f.source.downloader.onMainLoad(context);
-      await f.source.downloader.downloadSongFromId('one');
-      expect(f.state.dialogs).toHaveLength(1);
-      expect(f.state.dialogs[0]).toMatchObject({
-        detail: expect.stringMatching(
-          new RegExp(
-            `Audio transfer failed.*stage: transfer.*HTTP status: ${status}`,
+for (const { badgePlatform, expectedBadges } of [
+  { badgePlatform: 'linux', expectedBadges: [0] },
+  { badgePlatform: 'darwin', expectedBadges: [0] },
+  { badgePlatform: 'win32', expectedBadges: [] },
+] as const)
+  for (const status of [302, 403, 410])
+    test(`actual SDK HTTP ${status} stays a single safe transfer failure through processing on ${badgePlatform}`, async () => {
+      const f = await downloaderFixture({ badgePlatform });
+      try {
+        f.state.infoMode = 'resolve';
+        f.state.mediaStatus = status;
+        const context = f.createContext('transfer-status');
+        (context.window as unknown as { focused: boolean }).focused = true;
+        await f.source.downloader.onMainLoad(context);
+        await f.source.downloader.downloadSongFromId('one');
+        expect(f.state.dialogs).toHaveLength(1);
+        expect(f.state.dialogs[0]).toMatchObject({
+          detail: expect.stringMatching(
+            new RegExp(
+              `Audio transfer failed.*stage: transfer.*HTTP status: ${status}`,
+            ),
           ),
-        ),
-      });
-      expect(outputs(f)).not.toContain('Audio processing/tagging failed');
-      expect(outputs(f)).not.toContain('private-');
-      expect(f.state.runs).toEqual([]);
-      expect(await readdir(f.downloads)).toEqual([]);
-      expect(f.state.progress.at(-1)?.value).toBe(-1);
-      expect(f.state.badges.at(-1)).toBe(0);
-    } finally {
-      await f.close();
-    }
-  });
+        });
+        expect(outputs(f)).not.toContain('Audio processing/tagging failed');
+        expect(outputs(f)).not.toContain('private-');
+        expect(f.state.runs).toEqual([]);
+        expect(await readdir(f.downloads)).toEqual([]);
+        expect(f.state.progress.at(-1)?.value).toBe(-1);
+        expect(f.state.badges).toEqual(expectedBadges);
+      } finally {
+        await f.close();
+      }
+    });
 
 test('unknown network failure remains a safe transfer failure without invented HTTP status', async () => {
   const f = await downloaderFixture();

@@ -118,7 +118,11 @@ const requireRoot = createRequire(path.join(root, 'package.json'));
 const requireVite = createRequire(requireRoot.resolve('vite'));
 
 export async function downloaderFixture(
-  options: { realFFmpeg?: boolean; domLifecycle?: boolean } = {},
+  options: {
+    realFFmpeg?: boolean;
+    domLifecycle?: boolean;
+    badgePlatform?: 'linux' | 'darwin' | 'win32';
+  } = {},
 ) {
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pear-downloader-small-'),
@@ -237,6 +241,8 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
               external: true,
             };
           if (id === 'electron') return '\0owned-native';
+          if (id === 'electron-is' && options.badgePlatform)
+            return '\0owned-platform';
           if (id === 'youtubei.js') return '\0owned-youtube';
           if (id === '@ffmpeg.wasm/main') return '\0owned-ffmpeg';
           if (id === 'bgutils-js') return '\0owned-bg';
@@ -276,6 +282,9 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
           return undefined;
         },
         load(id: string) {
+          // Preserve the dependency API while selecting OS branches per fixture.
+          if (id === '\0owned-platform')
+            return `import {createRequire} from 'node:module';const require=createRequire(${JSON.stringify(path.join(root, 'package.json'))});const is=require('electron-is');const platform=${JSON.stringify(options.badgePlatform)};export default {...is,linux:()=>platform==='linux',osx:()=>platform==='darwin',macOS:()=>platform==='darwin',windows:()=>platform==='win32'};`;
           if (id === '\0owned-native') return native;
           if (id === '\0owned-youtube') return youtube;
           if (id === '\0owned-ffmpeg') return ffmpeg;
