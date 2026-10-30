@@ -65,7 +65,7 @@ import {
   type CompletedInput,
   type LibraryReport,
 } from '../library';
-import { downloadSelectedAudio } from '../transfer';
+import { AudioTransferError, downloadSelectedAudio } from '../transfer';
 import { DefaultPresetList, type Preset } from '../types';
 
 import type { DownloaderPluginConfig } from '../index';
@@ -311,9 +311,10 @@ const initializeDownloader = async (
         previousDocument?.configurable === false
       )
         return;
+      let window: import('happy-dom').Window | undefined;
       try {
         const [width, height] = targetWindow.getSize();
-        const window = new (await import('happy-dom')).Window({
+        window = new (await import('happy-dom')).Window({
           width,
           height,
           console,
@@ -361,12 +362,18 @@ const initializeDownloader = async (
         // A missing PoToken stays optional; backend retirement is terminal.
         assertCurrentBinding(owner);
       } finally {
-        if (previousWindow)
-          Object.defineProperty(globalThis, 'window', previousWindow);
-        else Reflect.deleteProperty(globalThis, 'window');
-        if (previousDocument)
-          Object.defineProperty(globalThis, 'document', previousDocument);
-        else Reflect.deleteProperty(globalThis, 'document');
+        try {
+          await window?.happyDOM.close();
+        } catch {
+          console.warn('Could not close downloader temporary DOM');
+        } finally {
+          if (previousWindow)
+            Object.defineProperty(globalThis, 'window', previousWindow);
+          else Reflect.deleteProperty(globalThis, 'window');
+          if (previousDocument)
+            Object.defineProperty(globalThis, 'document', previousDocument);
+          else Reflect.deleteProperty(globalThis, 'document');
+        }
       }
     });
   }
@@ -938,7 +945,7 @@ async function downloadSongUnsafe(
     mkdirSync(dir);
   }
 
-  let fileBuffer = await iterableStreamToProcessedUint8Array(
+  let fileBuffer: Uint8Array | null = await iterableStreamToProcessedUint8Array(
     iterableStream,
     targetFileExtension,
     metadata,
@@ -1004,20 +1011,26 @@ async function downloadChunks(
 ) {
   const chunks = [];
   let downloaded = 0;
-  for await (const chunk of stream) {
-    downloaded += chunk.length;
-    chunks.push(chunk);
-    const ratio = downloaded / contentLength;
-    const progress = Math.floor(ratio * 100);
-    sendFeedback(
-      t('plugins.downloader.backend.feedback.download-progress', {
-        percent: progress,
-      }),
-      ratio,
-    );
-    // 15% for download, 85% for conversion
-    // This is a very rough estimate, trying to make the progress bar look nice
-    increasePlaylistProgress(ratio * 0.15);
+  try {
+    for await (const chunk of stream) {
+      downloaded += chunk.length;
+      chunks.push(chunk);
+      const ratio = downloaded / contentLength;
+      const progress = Math.floor(ratio * 100);
+      sendFeedback(
+        t('plugins.downloader.backend.feedback.download-progress', {
+          percent: progress,
+        }),
+        ratio,
+      );
+      // 15% for download, 85% for conversion
+      // This is a very rough estimate, trying to make the progress bar look nice
+      increasePlaylistProgress(ratio * 0.15);
+    }
+  } catch (error) {
+    throw error instanceof AudioTransferError
+      ? error
+      : new AudioTransferError('failed', error);
   }
   return chunks;
 }
@@ -1031,7 +1044,7 @@ async function iterableStreamToProcessedUint8Array(
   sendFeedback: (str: string, value?: number) => void,
   increasePlaylistProgress: (value: number) => void = () => {},
   owner: DownloaderBinding,
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array> {
   sendFeedback(t('plugins.downloader.backend.feedback.loading'), 2); // Indefinite progress bar after download
 
   const safeVideoName = randomBytes(32).toString('hex');
@@ -1101,9 +1114,9 @@ async function iterableStreamToProcessedUint8Array(
         }
       }
     } catch (error: unknown) {
-      if (isCurrentBinding(owner)) sendError(error as Error, safeVideoName);
+      assertCurrentBinding(owner);
+      throw error;
     }
-    return null;
   });
 }
 

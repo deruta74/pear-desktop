@@ -10,7 +10,15 @@ export interface RendererAudioGraph {
   insertMain(input: AudioNode, output: AudioNode): () => void;
   insertDry(input: AudioNode, output: AudioNode): () => void;
   insertMaster(input: AudioNode, output: AudioNode): () => void;
-  registerMedia(element: HTMLMediaElement, gain?: GainNode): () => void;
+  registerMedia(
+    element: HTMLMediaElement,
+    gain?: GainNode,
+    output?: AudioNode,
+    admission?: {
+      publishDispose(dispose: () => void): void;
+      isCurrent(): boolean;
+    },
+  ): () => void;
   readonly auxiliaryMediaCount: number;
   observeAuxiliaryMedia(listener: (count: number) => void): () => void;
   registerVolumePreparation(
@@ -175,53 +183,93 @@ export function initializeAudioGraph(
       return () => callbacks.delete(owned);
     },
     prepareVolumeChange,
-    registerMedia(element, suppliedGain) {
+    registerMedia(element, suppliedGain, suppliedOutput, admission) {
       if (element === audioSource.mediaElement)
         throw new Error('Main media is already registered');
       if (activeMedia.has(element))
         throw new Error('Auxiliary media is already registered');
-      if (suppliedGain && suppliedGain.context !== audioContext)
-        throw new Error('Auxiliary gain belongs to another audio context');
-      let source = mediaNodes.get(element);
-      if (!source) {
-        source = audioContext.createMediaElementSource(element);
-        mediaNodes.set(element, source);
-      }
-      const gain = suppliedGain ?? audioContext.createGain();
+      if (
+        (suppliedGain && suppliedGain.context !== audioContext) ||
+        (suppliedOutput && suppliedOutput.context !== audioContext)
+      )
+        throw new Error('Auxiliary nodes belong to another audio context');
+      let source: MediaElementAudioSourceNode | undefined;
+      let gain: GainNode | undefined = suppliedGain;
+      let output: AudioNode | undefined = suppliedOutput;
+      let disposed = false,
+        counted = false;
       activeMedia.add(element);
-      auxiliaryMediaCount++;
-      // Observers may remove makeup gain before any auxiliary audio enters dry.
-      notifyAuxiliaryMedia();
-      try {
-        source.connect(gain);
-        gain.connect(dryInput);
-      } catch (error) {
+      const disconnect = () => {
+        let fault: unknown;
         try {
-          source.disconnect(gain);
-        } catch {
-          /* own edge only */
+          if (source && gain) source.disconnect(gain);
+        } catch (error) {
+          fault = error;
         }
         try {
-          gain.disconnect(dryInput);
-        } catch {
-          /* own edge only */
+          if (output) output.disconnect(dryInput);
+        } catch (error) {
+          fault ??= error;
         }
-        activeMedia.delete(element);
-        auxiliaryMediaCount--;
-        notifyAuxiliaryMedia();
-        throw error;
-      }
-      let disposed = false;
-      return () => {
+        return fault;
+      };
+      const dispose = () => {
         if (disposed) return;
         disposed = true;
-        source.disconnect(gain);
-        gain.disconnect(dryInput);
+        const fault = disconnect();
         activeMedia.delete(element);
-        auxiliaryMediaCount--;
-        // A zero count is observable only after the dry edge is retired.
-        notifyAuxiliaryMedia();
+        if (counted) {
+          counted = false;
+          auxiliaryMediaCount--;
+          notifyAuxiliaryMedia();
+        }
+        if (fault) throw new Error('Auxiliary route retirement failed');
       };
+      const live = () => {
+        if (disposed) return false;
+        const current = !admission || admission.isCurrent();
+        return !disposed && current;
+      };
+      const check = () => {
+        if (live()) return true;
+        // A connection callout may finish after an early disposer ran.
+        disconnect();
+        dispose();
+        return false;
+      };
+      try {
+        admission?.publishDispose(dispose);
+        if (!check()) return dispose;
+        source = mediaNodes.get(element);
+        if (!source) {
+          source = audioContext.createMediaElementSource(element);
+          mediaNodes.set(element, source);
+        }
+        if (!check()) return dispose;
+        gain ??= audioContext.createGain();
+        output ??= gain;
+        if (!check()) return dispose;
+        counted = true;
+        auxiliaryMediaCount++;
+        // Publish count before any dry edge; each observer can retire this route.
+        for (const listener of [...auxiliaryObservers]) {
+          if (!check()) return dispose;
+          if (auxiliaryObservers.has(listener)) notifyObserver(listener);
+          if (!check()) return dispose;
+        }
+        source.connect(gain);
+        if (!check()) return dispose;
+        output.connect(dryInput);
+        check();
+        return dispose;
+      } catch (error) {
+        try {
+          dispose();
+        } finally {
+          disconnect();
+        }
+        throw error;
+      }
     },
   };
   graphs.set(audioSource, graph);
