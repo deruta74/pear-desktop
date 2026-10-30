@@ -1,157 +1,118 @@
-name: Regression tests
-
+# Target route in selected diagnostic carrier: .github/workflows/tests.yml
+# Historical registered ID 376634247 must be freshly resolved by Root.
+# SOURCE PROPOSAL ONLY. Helper/policy exist; unknown tool pins reject.
+# d0/947/946 are planning references; Root must refresh stable release-source pins.
+# Root must select/review/seal the actual carrier and explicitly replace if:false.
+# No Windows/C6 paths. This workflow must not be merged into product.
+name: Proposed current POSIX API qualification r2
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [master]
   workflow_dispatch:
     inputs:
-      source_only:
-        description: Run source checks without rebuilding and running the full test matrix
-        type: boolean
-        default: false
-      panels_only:
-        description: Run the audio panel browser tests and source checks
-        type: boolean
-        default: false
-
+      expected_carrier_sha: {type: string, required: true}
+      expected_carrier_tree: {type: string, required: true}
+      expected_ref: {type: string, required: true}
+      expected_registered_workflow_id: {type: string, required: true}
+      expected_workflow_sha256: {type: string, required: true}
+      expected_helper_sha256: {type: string, required: true}
+      expected_policy_sha256: {type: string, required: true}
 permissions:
   contents: read
-
+  actions: read
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.panels_only && 'panels' || inputs.source_only && 'source' || 'full' }}
-  cancel-in-progress: true
-
+  group: proposed-current-posix-api-qualification
+  cancel-in-progress: false
 jobs:
-  test:
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && inputs.source_only != true && inputs.panels_only != true
+  qualify:
+    if: ${{ github.event_name == 'workflow_dispatch' }} # Deliberate source-only dispatch barrier.
+    name: current-posix-api-${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+        include:
+          - {os: ubuntu-24.04, platform: linux, arch: x64}
+          - {os: macos-26, platform: darwin, arch: arm64}
+    defaults:
+      run:
+        shell: bash
+    env:
+      EXPECTED_CARRIER_SHA: ${{ inputs.expected_carrier_sha }}
+      EXPECTED_CARRIER_TREE: ${{ inputs.expected_carrier_tree }}
+      EXPECTED_REF: ${{ inputs.expected_ref }}
+      EXPECTED_REGISTERED_WORKFLOW_ID: ${{ inputs.expected_registered_workflow_id }}
+      EXPECTED_WORKFLOW_SHA256: ${{ inputs.expected_workflow_sha256 }}
+      EXPECTED_HELPER_SHA256: ${{ inputs.expected_helper_sha256 }}
+      EXPECTED_POLICY_SHA256: ${{ inputs.expected_policy_sha256 }}
+      PEAR_SOURCE_ROOT: ${{ github.workspace }}/qualified-source
+      PEAR_POSIX_PLATFORM: ${{ matrix.platform }}
+      PEAR_POSIX_ARCH: ${{ matrix.arch }}
+      NODE_OPTIONS: ''
+      NODE_TLS_REJECT_UNAUTHORIZED: '1'
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Checkout separately selected carrier
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        timeout-minutes: 1
         with:
+          ref: ${{ inputs.expected_carrier_sha }}
           persist-credentials: false
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+          fetch-depth: 2
+      - name: Checkout exact qualified source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        timeout-minutes: 1
         with:
-          version: 11
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+          ref: d0ccbce0efb793bfec48095c25d6f32791e5654a
+          path: qualified-source
+          persist-credentials: false
+          fetch-depth: 1
+      # Bootstrap trust: hosted image shell/Git/ambient Node + SHA-pinned actions.
+      # bind-source performs no project install, topology query or qualification.
+      - name: Bind reviewed carrier/source/image before tool setup
+        timeout-minutes: 1
+        run: node scripts/api-music-posix-carrier.cjs bind-source
+      - name: Provision exact admitted Node patch
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        timeout-minutes: 2
         with:
-          # Node 24.21 macOS ARM64 can crash in V8 GC; fixed in 24.22 (nodejs/node#65753).
           node-version: 24.22.0
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Install test browser and OS libraries
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install virtual display
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
-      - run: pnpm build
-      - name: CI test grouping contracts
-        run: node --test scripts/ci-test-groups.node.cjs
-      - name: Run Linux tests in a virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/run-ci-tests.cjs
-      - name: Record macOS crash evidence boundary
-        if: runner.os == 'macOS'
-        continue-on-error: true
+          architecture: ${{ matrix.arch }}
+          check-latest: false
+      - name: Verify Node/image and establish owned private root
+        timeout-minutes: 1
+        run: node scripts/api-music-posix-carrier.cjs prepare
+      - name: Provision exact pnpm without project installation
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        timeout-minutes: 1
+        with:
+          version: 11.28.6
+          run_install: false
+      - name: Verify pnpm and run one bounded isolated frozen install
+        timeout-minutes: 4
+        run: node scripts/api-music-posix-carrier.cjs install
+      - name: Fixed accepted qualifier and strict safe draft
+        timeout-minutes: 4
         env:
-          NODE_CRASH_MARKER: ${{ runner.temp }}/pear-node-crash-${{ github.run_id }}-${{ github.run_attempt }}.json
-        run: node scripts/collect-macos-node-crashes.cjs mark "$NODE_CRASH_MARKER"
-      - name: Run macOS and Windows tests
-        id: regression
-        if: runner.os != 'Linux'
-        run: node scripts/run-ci-tests.cjs
-      - name: Release staging tests
-        run: node --test scripts/verify-release.test.cjs
-      - name: Collect sanitized macOS Node crash evidence
-        if: ${{ always() && !cancelled() && runner.os == 'macOS' && steps.regression.outcome == 'failure' }}
-        continue-on-error: true
-        env:
-          NODE_CRASH_MARKER: ${{ runner.temp }}/pear-node-crash-${{ github.run_id }}-${{ github.run_attempt }}.json
-        run: node scripts/collect-macos-node-crashes.cjs collect "$NODE_CRASH_MARKER" test-results/native-node-crashes
-      - name: Upload browser test evidence
+          PEAR_API_TOKEN: ${{ github.token }}
+        run: node scripts/api-music-posix-carrier.cjs qualify
+      - name: Bounded owned cleanup and final safe result
+        if: always()
+        timeout-minutes: 1
+        run: node scripts/api-music-posix-carrier.cjs cleanup
+      - name: Upload only reconstructed final safe result
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        timeout-minutes: 1
         with:
-          name: browser-test-evidence-${{ matrix.os }}
-          path: test-results/
-          retention-days: 7
-          if-no-files-found: ignore
-
-  panel-tests:
-    if: github.event_name == 'workflow_dispatch' && inputs.panels_only == true
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
-        with:
-          version: 11
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
-        with:
-          node-version: 24.22.0
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - name: Run native audio and constrained panel regressions
-        run: pnpm exec playwright test tests/equalizer-auto-preamp.test.ts tests/equalizer-layout.test.ts tests/downloader-settings.test.ts --workers=1 --reporter=line
-      - name: Upload panel evidence
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
-        with:
-          name: panel-test-evidence
-          path: test-results/
-          retention-days: 7
-          if-no-files-found: ignore
-
-  source-checks:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
-        with:
-          version: 11
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
-        with:
-          node-version: 24.22.0
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Check passive crash evidence contracts
-        run: node --test scripts/collect-macos-node-crashes.node.cjs
-      - name: Check Linux packaging contracts
-        run: node --test scripts/prepare-linux-tools.node.cjs scripts/linux-snap-shared-input.node.cjs
-      - name: Check MCP notice and source contracts
-        run: node --test scripts/mcp-notices.node.mjs
-      - name: Lint
-        if: ${{ !cancelled() }}
-        run: pnpm lint
-      - name: Typecheck
-        if: ${{ !cancelled() }}
-        run: pnpm typecheck
-      - name: Check panel formatting
-        id: format
-        if: ${{ !cancelled() }}
-        run: pnpm exec oxfmt --check src/plugins/equalizer src/plugins/downloader/settings.tsx src/plugins/downloader/style.css src/i18n/resources/en.json src/i18n/resources/ru.json tests/equalizer-auto-preamp.test.ts tests/equalizer-config.test.ts tests/equalizer-safety.test.ts tests/equalizer-layout.test.ts tests/downloader-settings.test.ts
-      - name: Preserve proposed formatting patch
-        if: ${{ failure() && steps.format.outcome == 'failure' }}
-        run: |
-          pnpm exec oxfmt --write src/plugins/equalizer src/plugins/downloader/settings.tsx src/plugins/downloader/style.css src/i18n/resources/en.json src/i18n/resources/ru.json tests/equalizer-auto-preamp.test.ts tests/equalizer-config.test.ts tests/equalizer-safety.test.ts tests/equalizer-layout.test.ts tests/downloader-settings.test.ts
-          git diff --binary --output=panel-format.patch
-      - name: Upload proposed formatting patch
-        if: ${{ failure() && steps.format.outcome == 'failure' }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
-        with:
-          name: panel-format-patch
-          path: panel-format.patch
-          retention-days: 7
+          name: current-posix-api-${{ matrix.platform }}-safe-result
+          path: api-music-posix-safe/result.json
           if-no-files-found: error
+          retention-days: 1
+# The helper reads bounded live GitHub run/jobs metadata before qualifier spawn.
+# Runtime envelope is allocated after dispatch; static policy has no run/job fields.
+# always() is not guaranteed after termination; absent final artifact = zero cells.
+# Inherited inner rm may already have run; withhold only further outer deletion on uncertainty.
+# A filesystem watchdog bounds waiting, not cancellation of recursive removal.
+# Job termination supplies the declared hosted-VM outer boundary.
+# Neither normal close nor a timer proves descendant/process absence or VM reap.

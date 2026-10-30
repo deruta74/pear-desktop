@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "source": {
+    "head": "d0ccbce0efb793bfec48095c25d6f32791e5654a",
+    "tree": "1d46c8d42e7f93efd2d7931d7c05642a4216b7a5",
+    "trackedCount": 947,
+    "runnerCount": 946,
+    "sourceInventorySHA256": "f67b0c79c150595ab5bc8578bef61e41fb593b806b945f098e750f1b12e37ef9",
+    "lockSHA256": "3ed6dfde1bf9f12bab158c790176223bc275afb27eee8aa377b62f79ea3d745c",
+    "packageSHA256": "5abad56df6cb88c0e3f5750db206b66029d1764bcef3472ab8d94f2cdbefa677",
+    "certificateSHA256": "597b4509e1ad0c12b69402bc0cff55bcb3f28603dea13a36623eb38891d109a3",
+    "leafFingerprint256": "fb6e906aa7015cfe4194ac90bd771a3b4f4d2eecef8ba4614b079a59138f35b1",
+    "staticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg"
+  },
+  "platforms": [
+    {
+      "platform": "linux",
+      "arch": "x64",
+      "runnerLabelCandidate": "ubuntu-24.04",
+      "imageOS": "ubuntu24",
+      "imageVersion": "20261026.354.1",
+      "nodeSHA256": "67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c",
+      "pnpmEntrySHA256": "67b035e322203961795e8e34ca63a08c37a4386eda94107fb3d28f3246d882ad",
+      "pnpmPackageClosureSHA256": "b1711f4d71fbf0c6148fdcaba3fc0ad9f36bcdc8023b0e25f837838ac7b513e3",
+      "cliSHA256": "79e23e6a249176295b8490567daa7717448a75866d6ea6f6b296ff3d23305c69",
+      "nodeVersion": "v24.22.0",
+      "nodeCanonicalPathExpected": "/opt/hostedtoolcache/node/24.22.0/x64/bin/node",
+      "pnpmVersion": "11.28.6",
+      "pnpmCanonicalEntryPathExpected": "/home/runner/setup-pnpm/node_modules/.pnpm/pnpm@11.28.6/node_modules/pnpm/bin/pnpm.cjs",
+      "playwrightVersion": "1.61.1"
+    },
+    {
+      "platform": "darwin",
+      "arch": "arm64",
+      "runnerLabelCandidate": "macos-26",
+      "imageOS": "macos26",
+      "imageVersion": "20261021.0445.8",
+      "nodeSHA256": "b468fb9c67427c9d3aec07ee1105e63020923a631a9a2a00beb71a7ba3768bfd",
+      "pnpmEntrySHA256": "67b035e322203961795e8e34ca63a08c37a4386eda94107fb3d28f3246d882ad",
+      "pnpmPackageClosureSHA256": "0ee6e72756076be4c6950605c8333c1ae8c6c3e874833dfad723c1aa301e047e",
+      "cliSHA256": "79e23e6a249176295b8490567daa7717448a75866d6ea6f6b296ff3d23305c69",
+      "nodeVersion": "v24.22.0",
+      "nodeCanonicalPathExpected": "/Users/runner/hostedtoolcache/node/24.22.0/arm64/bin/node",
+      "pnpmVersion": "11.28.6",
+      "pnpmCanonicalEntryPathExpected": "/Users/runner/setup-pnpm/node_modules/.pnpm/pnpm@11.28.6/node_modules/pnpm/bin/pnpm.cjs",
+      "playwrightVersion": "1.61.1"
+    }
+  ]
+}

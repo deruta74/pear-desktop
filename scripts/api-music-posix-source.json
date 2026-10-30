@@ -1,0 +1,5791 @@
+{
+  "observedLocallyUTC": "2026-10-28T20:01:56.310428+00:00",
+  "head": "d0ccbce0efb793bfec48095c25d6f32791e5654a",
+  "tree": "1d46c8d42e7f93efd2d7931d7c05642a4216b7a5",
+  "trackedCount": 947,
+  "entries": [
+    {
+      "path": ".devcontainer/devcontainer.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1458d853117eccfa71f4d9b8436799a492a73aae"
+    },
+    {
+      "path": ".editorconfig",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c6c8b3621938a4691225a870a59bf382af1883dd"
+    },
+    {
+      "path": ".gitattributes",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9a8a05c9a11ca3fab91b0a340322ab9d756e6abc"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1ebad743901cc9b368a9c4f52caa0bc5e50c7c7a"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2c295cc716e05d65e4913823649f9812cba0e9e1"
+    },
+    {
+      "path": ".github/workflows/build.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "625ed2fc7a89d6ec6d583aec571eb525c9a5f72b"
+    },
+    {
+      "path": ".github/workflows/dependency-review.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b0773d6ac4a9bf50b4bbe763b7901a1b189b3b4e"
+    },
+    {
+      "path": ".github/workflows/issue-triage.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8f228254afa4a6fcd9acefdc873dc1dd5e593f1d"
+    },
+    {
+      "path": ".github/workflows/pr-build-artifacts.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f9199bc7a1c91f830166066e04006369de47c78d"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "743198993185f35a139ddda08ac5fc396af8e55e"
+    },
+    {
+      "path": ".github/workflows/reviewdog.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a8d9305eff1bf68ee33f3a99776d2ddc44d35861"
+    },
+    {
+      "path": ".github/workflows/tests.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9d0428286e5375fdf14f2222a50eb5ef7c4f980a"
+    },
+    {
+      "path": ".github/workflows/winget-cla.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "74462ef267717548d7f9e7558b22229ed79ece98"
+    },
+    {
+      "path": ".github/workflows/winget-submission.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a1f1392d9b05132ed2b8a905d80054940d1a1ad1"
+    },
+    {
+      "path": ".gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "674400d09b4f903109aa203c94ee95bdb1fadb9c"
+    },
+    {
+      "path": ".oxfmtrc.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a0e9b59625d85a790d2fd02cad7671707f3425ad"
+    },
+    {
+      "path": ".oxlintrc.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c97bc9b56f009785daeed1f8bf0a13e8df3143ee"
+    },
+    {
+      "path": ".vscode/launch.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7664c1f363afc48bbab2bf41ce751b5a8fced933"
+    },
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "671b0c74ef8869cec5240a6fb667747142adfd06"
+    },
+    {
+      "path": "assets/error.html",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "238b9c64587d01d9e8178fc22a85b153e11a02a4"
+    },
+    {
+      "path": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d055ec7786663d210c022815c3ffcb128044d7e0"
+    },
+    {
+      "path": "assets/generated/icons/mac/icon.icon/icon.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ccad6c87dc41fceaa83350c7702447ef5cc33005"
+    },
+    {
+      "path": "assets/generated/icons/png/1024x1024.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fde4b5e419eea7d5e73fac0e6e94111839d92f50"
+    },
+    {
+      "path": "assets/generated/icons/png/128x128.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8e6e95e7bb53c608f2ec2023982088e118432b04"
+    },
+    {
+      "path": "assets/generated/icons/png/16x16.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f72106c7f258abbd31b9b165ea74e56312a02d32"
+    },
+    {
+      "path": "assets/generated/icons/png/24x24.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1fb6816663a017610b047368b65ce79975de4631"
+    },
+    {
+      "path": "assets/generated/icons/png/256x256.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "11e6004f7452853da4a8231ab354470487c1a924"
+    },
+    {
+      "path": "assets/generated/icons/png/32x32.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "469dc31c9e3775607f27b2297cef4e165d414d0f"
+    },
+    {
+      "path": "assets/generated/icons/png/48x48.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "75b224010ad746458f486bf2b56cce0e7b362be3"
+    },
+    {
+      "path": "assets/generated/icons/png/512x512.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c7bf387c885360d4cf8b68bcc7589d970b262c67"
+    },
+    {
+      "path": "assets/generated/icons/png/64x64.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "44e14a2399d6e98673599101d28e93733643e6e1"
+    },
+    {
+      "path": "assets/generated/icons/win/icon.ico",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a4371e887a27c1b29571efd53ad5b8fd8ba9c0e2"
+    },
+    {
+      "path": "assets/icon.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b0e34b215ad3eef731713d228a9e411f438986da"
+    },
+    {
+      "path": "assets/icon.svg",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cbf6d7115696d27231bbcf06b54a0371c92beee0"
+    },
+    {
+      "path": "assets/mdui.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fbb8440802e76305e76cf9bb7796916100ea44a8"
+    },
+    {
+      "path": "assets/media-icons-black/next.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "714b536f32d8d89b05d49a1d68fc06793daf7210"
+    },
+    {
+      "path": "assets/media-icons-black/pause.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "37ecdc4e3941ca7d487dfb1e92a1981b0a0342c4"
+    },
+    {
+      "path": "assets/media-icons-black/play.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d86b863abc34d6c9cdfd12658226a2dddf029c3c"
+    },
+    {
+      "path": "assets/media-icons-black/previous.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c3106bcff1a2e47d387a42bdd8d22250c10150eb"
+    },
+    {
+      "path": "assets/media-icons-white/next.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4161bc22b13624759d8d9e8e2c0b8bf8a6d6fe64"
+    },
+    {
+      "path": "assets/media-icons-white/pause.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5ec0cbc388e78e955e8b63c320b71e68d5b14fb1"
+    },
+    {
+      "path": "assets/media-icons-white/play.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "265517bfb830602115177343ad0314281cc4beb0"
+    },
+    {
+      "path": "assets/media-icons-white/previous.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d5c1d216e011736e348dd210e25f5eb1714be601"
+    },
+    {
+      "path": "assets/tray-paused-white.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "20ff5cb711befcca7a4171ff5840d4b7e414863b"
+    },
+    {
+      "path": "assets/tray-paused.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d228604bb2fc29349d120d4b39459837e650844e"
+    },
+    {
+      "path": "assets/tray-white.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "abc2846b481e4c427edacc3cee9e6925d2bfbdba"
+    },
+    {
+      "path": "assets/tray.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c7c93ebb4fef695ed4167533fabbffed3a89a099"
+    },
+    {
+      "path": "changelog.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "99ad6038132e8afc34ed133ca1ad1dfbf95a31ee"
+    },
+    {
+      "path": "docs/api-mcp.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4d8202b93cd0124082e93e7a71de1f3016c67817"
+    },
+    {
+      "path": "docs/navigation-gestures.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "14b6e0b7210d0a35a82ac4cf8ae1f53fc1f16b20"
+    },
+    {
+      "path": "docs/revival-plan.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "00dea5c0250f37d8d7606e50bf78516a907c762e"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-25-mcp-notices.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "59c66fcf91d01755231bf05d40eaf0e6ddcd63b2"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-25-mcp-notices-design.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dff94ede9d288db48555d85b18b6a10c97a3da55"
+    },
+    {
+      "path": "electron-builder.yml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d5c119169a157eb216143af35101e34fda8e7455"
+    },
+    {
+      "path": "electron.vite.config.mts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ecea34e28fdd1fdef756208c43a07c009d687cff"
+    },
+    {
+      "path": "license",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "48cb1553cd2ce3e60cfa387c4f598420fe30d8df"
+    },
+    {
+      "path": "licenses/mcp/.gitattributes",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e1ea8b37e73cf3e98b294e679e9e912789e0e519"
+    },
+    {
+      "path": "licenses/mcp/README.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "275e84bc6af99264ae7edc6735862fd5d432c0b2"
+    },
+    {
+      "path": "licenses/mcp/binding.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "08abf11b0f12cc03b3e3a7c3f41dc94ff279a657"
+    },
+    {
+      "path": "licenses/mcp/notices/001-hono_node-server_2.0.10-6895190430d8.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5f84afaffca9d97354629d65996ae21c316782c0"
+    },
+    {
+      "path": "licenses/mcp/notices/002-modelcontextprotocol_sdk_1.32.0-5e13dbbc1d12.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3d48435454b105021b4f777c11b6b07d8d2ffea3"
+    },
+    {
+      "path": "licenses/mcp/notices/004-accepts_2.0.0-71f83c4c0621.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "06166077be4d1f620d89b9eb33c76d89e75857da"
+    },
+    {
+      "path": "licenses/mcp/notices/005-ajv_8.20.0-a05350a88e31.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "139162ad2c389a18d3d66e159a2821b2e40087fc"
+    },
+    {
+      "path": "licenses/mcp/notices/006-ajv-formats_3.0.1-9df3bb69929a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a3f8ba0278836d0d02b845aec548a21db114e984"
+    },
+    {
+      "path": "licenses/mcp/notices/007-body-parser_2.4.0-23d466b1b134.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "386b7b6946e47bc46f8138791049b4e6a7cef889"
+    },
+    {
+      "path": "licenses/mcp/notices/008-bytes_3.1.2-e3b44af06661.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "63e95a96338a608c218a7ef5805629878aaa951f"
+    },
+    {
+      "path": "licenses/mcp/notices/009-call-bind-apply-helpers_1.0.2-5e325595b4ea.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f82f38963b0d282b529f64def2bcd40be3a9a947"
+    },
+    {
+      "path": "licenses/mcp/notices/010-call-bound_1.0.4-5e325595b4ea.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f82f38963b0d282b529f64def2bcd40be3a9a947"
+    },
+    {
+      "path": "licenses/mcp/notices/011-content-disposition_2.0.1-bd47ce7b88c7.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "84441fbb5709262c2bfc9b5ff0166ad4f024a1b8"
+    },
+    {
+      "path": "licenses/mcp/notices/012-content-type_1.0.5-257aed989141.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "34b1a2de37216b60b749c23b6f894e51d701ecf0"
+    },
+    {
+      "path": "licenses/mcp/notices/013-content-type_2.1.0-257aed989141.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "34b1a2de37216b60b749c23b6f894e51d701ecf0"
+    },
+    {
+      "path": "licenses/mcp/notices/014-cookie_0.7.2-c02110eedc16.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "058b6b4efa3f45896ae691f2558a2a1aca05bebd"
+    },
+    {
+      "path": "licenses/mcp/notices/015-cookie-signature_1.2.2-0dd4e4733348.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a2671bf753dfdc9caafbbfd3fe4a1ef6dabf15a5"
+    },
+    {
+      "path": "licenses/mcp/notices/016-cors_2.8.6-1aa9a12863ee.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fd10c843f2bab584e53933b7d1fc445b9aef9bfc"
+    },
+    {
+      "path": "licenses/mcp/notices/017-cross-spawn_7.0.6-aaa78451b6fe.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8407b9a30f51b0da9eaac366bdde18d900e951ba"
+    },
+    {
+      "path": "licenses/mcp/notices/018-debug_4.4.3-3a61c6c96caf.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1a9820e262b26b60fe71a4dcd9bc9cfd0a01f26e"
+    },
+    {
+      "path": "licenses/mcp/notices/019-depd_2.0.0-bd134b41da59.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "248de7af2bd16cc7f2b4d8017bbeb9e7a0b2ccd6"
+    },
+    {
+      "path": "licenses/mcp/notices/020-dunder-proto_1.0.1-2b770a704c15.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "34995e79d1528aaceca7d38f323df52514ba7d0f"
+    },
+    {
+      "path": "licenses/mcp/notices/021-ee-first_1.1.1-965ef284f7f4.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a7ae8ee9b8a30ef2a73ff5a7a80adc3b1a845cae"
+    },
+    {
+      "path": "licenses/mcp/notices/022-encodeurl_2.0.0-7585ea7bba61.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8812229bc59b5f365549fb3c799b32a4d4acdabc"
+    },
+    {
+      "path": "licenses/mcp/notices/023-es-define-property_1.0.1-5e325595b4ea.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f82f38963b0d282b529f64def2bcd40be3a9a947"
+    },
+    {
+      "path": "licenses/mcp/notices/024-es-errors_1.3.0-5e325595b4ea.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f82f38963b0d282b529f64def2bcd40be3a9a947"
+    },
+    {
+      "path": "licenses/mcp/notices/025-es-object-atoms_1.1.2-5e325595b4ea.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f82f38963b0d282b529f64def2bcd40be3a9a947"
+    },
+    {
+      "path": "licenses/mcp/notices/026-escape-html_1.0.3-255aa557a1f5.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2e70de9717e715b4fc05c7f8bdc4e8d63a33b859"
+    },
+    {
+      "path": "licenses/mcp/notices/027-etag_1.8.1-a7996721249a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cab251c2b9a81318267600f68130faa3a290e5fd"
+    },
+    {
+      "path": "licenses/mcp/notices/028-eventsource_3.0.7-f683a72ffe6a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "505b0d90b58db0410e2965ed55f8ec03582e16ea"
+    },
+    {
+      "path": "licenses/mcp/notices/029-eventsource-parser_3.1.1-835eb611a233.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "747ce3cf546a561c493b341b418afca7166bf2d5"
+    },
+    {
+      "path": "licenses/mcp/notices/030-express_5.3.0-95a5762890e5.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "aa927e44e31d486f807634887662efa39256bf84"
+    },
+    {
+      "path": "licenses/mcp/notices/031-express-rate-limit_8.7.1-a752c164b458.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "aa171b02c3f14c223f32677811ccd68664cf4f24"
+    },
+    {
+      "path": "licenses/mcp/notices/032-fast-deep-equal_3.1.3-7bf9b2de73a6.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7f1543566f6abbbf75914db32651cf89919cabed"
+    },
+    {
+      "path": "licenses/mcp/notices/033-fast-uri_3.1.2-b010b0dfdfdb.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9c93c1c0e5c1861b77da95d4cfb96504768285bc"
+    },
+    {
+      "path": "licenses/mcp/notices/034-finalhandler_2.1.1-47dcccf62bf4.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "60221067c4d591554407b4700033aab9669a9b0e"
+    },
+    {
+      "path": "licenses/mcp/notices/035-forwarded_0.2.0-bd47ce7b88c7.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "84441fbb5709262c2bfc9b5ff0166ad4f024a1b8"
+    },
+    {
+      "path": "licenses/mcp/notices/036-fresh_2.0.0-a0ec0dab16b3.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1434ade75d1fc4faf25a6ac5daed813e12eaed28"
+    },
+    {
+      "path": "licenses/mcp/notices/037-function-bind_1.1.2-773e131a7684.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "62d6d237ff179b118746a64a34967f7ff4b5dff8"
+    },
+    {
+      "path": "licenses/mcp/notices/038-get-intrinsic_1.3.0-39c5ec504cf6.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "48f05d01d0acae75acada5bd42a3442d0699d067"
+    },
+    {
+      "path": "licenses/mcp/notices/039-get-proto_1.0.1-be46ce1e3b04.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "eeabd1c37ce03aeba427120b80997db32513f35f"
+    },
+    {
+      "path": "licenses/mcp/notices/040-gopd_1.2.0-d90bf0a089da.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6abfe1434ebd5c15c245b9f0a7c25e36b581df19"
+    },
+    {
+      "path": "licenses/mcp/notices/041-has-flag_4.0.0-48da2f39e100.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e7af2f77107d73046421ef56c4684cbfdd3c1e89"
+    },
+    {
+      "path": "licenses/mcp/notices/042-has-symbols_1.1.0-206c1adcf206.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "df31cbf3c064d00ba5f15a3bb13c957b598b96a1"
+    },
+    {
+      "path": "licenses/mcp/notices/043-hasown_2.0.4-bf9b0d665be2.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0314929078de8a733a0af9c8ba5bc00aca094cc9"
+    },
+    {
+      "path": "licenses/mcp/notices/044-hono_4.13.13-a6ab98e5c77b.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bd174facca69a827a3a5410fa09361da5493e024"
+    },
+    {
+      "path": "licenses/mcp/notices/045-http-errors_2.0.1-dcb94ff9b1e0.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "82af4df54b4ce9aad915485c4660a0abab727a07"
+    },
+    {
+      "path": "licenses/mcp/notices/046-iconv-lite_0.7.3-ac779f7314c7.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d518d8376af9faa47af875d83c8cdd51a11f9099"
+    },
+    {
+      "path": "licenses/mcp/notices/047-inherits_2.0.4-5ffe28e7ade7.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dea3013d6710ee273f49ac606a65d5211d480c88"
+    },
+    {
+      "path": "licenses/mcp/notices/048-ip-address_10.2.0-f8d791359a50.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ec79adb0c4020387142e3e82b9bdbb212af6a557"
+    },
+    {
+      "path": "licenses/mcp/notices/049-ipaddr.js_1.9.1-62568a2d1337.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f6b37b52dec6faa7f48b9d1be5da2ad9b883be2f"
+    },
+    {
+      "path": "licenses/mcp/notices/050-is-promise_4.0.0-44191656d296.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "27cc9f3771540a450dae91b1e04dd1383ff1a4d1"
+    },
+    {
+      "path": "licenses/mcp/notices/051-isexe_2.0.0-4ec3d4c66cd8.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "19129e315fe593965a2fdd50ec0d1253bcbd2ece"
+    },
+    {
+      "path": "licenses/mcp/notices/052-jose_6.2.12-8078b0829d6c.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d0ec038a85d95944b66fec1b44cbb1ade45919b7"
+    },
+    {
+      "path": "licenses/mcp/notices/053-json-schema-traverse_1.0.0-7bf9b2de73a6.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7f1543566f6abbbf75914db32651cf89919cabed"
+    },
+    {
+      "path": "licenses/mcp/notices/054-json-schema-typed_8.0.2-bbe87b573c12.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3f2aeb500a504ffef3f58cd74c9ee39e0625b305"
+    },
+    {
+      "path": "licenses/mcp/notices/055-math-intrinsics_1.1.0-2b770a704c15.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "34995e79d1528aaceca7d38f323df52514ba7d0f"
+    },
+    {
+      "path": "licenses/mcp/notices/056-media-typer_1.1.1-bd47ce7b88c7.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "84441fbb5709262c2bfc9b5ff0166ad4f024a1b8"
+    },
+    {
+      "path": "licenses/mcp/notices/057-merge-descriptors_2.0.0-70b126abc64d.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c509d4557c0d11a3f7ea08d5e4ff0c77ff91f4cf"
+    },
+    {
+      "path": "licenses/mcp/notices/058-mime-db_1.54.0-cc1dfd4dafa2.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0751cb10e94972be9a07b44cc261447bac726a7f"
+    },
+    {
+      "path": "licenses/mcp/notices/059-mime-types_3.0.2-71f83c4c0621.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "06166077be4d1f620d89b9eb33c76d89e75857da"
+    },
+    {
+      "path": "licenses/mcp/notices/060-ms_2.1.3-1662fae9b531.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fa5d39b6213f8a5e142b643575f99d9149cc71c6"
+    },
+    {
+      "path": "licenses/mcp/notices/061-negotiator_1.1.0-553d4d20029a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ea6b9e2e9ac251526c95df2dd995cf5f1e861854"
+    },
+    {
+      "path": "licenses/mcp/notices/062-object-assign_4.1.1-6fb9754611c2.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "654d0bfe943437d43242325b1fbcff5f400d84ee"
+    },
+    {
+      "path": "licenses/mcp/notices/063-object-inspect_1.13.4-bd40cc437e28.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ca64cc1e605205438cc1b04b215f6fc12ab3f039"
+    },
+    {
+      "path": "licenses/mcp/notices/064-on-finished_2.4.1-8089bcc08845.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5931fd23eab9dd3be559cd4bd81253df87a5297c"
+    },
+    {
+      "path": "licenses/mcp/notices/065-once_1.4.0-4ec3d4c66cd8.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "19129e315fe593965a2fdd50ec0d1253bcbd2ece"
+    },
+    {
+      "path": "licenses/mcp/notices/066-parseurl_1.3.3-11d017c3b9f1.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "27653d3db7e584321691af8f1bc30d49fe105d3e"
+    },
+    {
+      "path": "licenses/mcp/notices/067-path-key_3.1.1-48da2f39e100.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e7af2f77107d73046421ef56c4684cbfdd3c1e89"
+    },
+    {
+      "path": "licenses/mcp/notices/068-path-to-regexp_8.4.2-4eeb3271453a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "983fbe8aec3f4e2d4add592bb1083b00d7366f66"
+    },
+    {
+      "path": "licenses/mcp/notices/069-pkce-challenge_5.0.1-feb87a2e0c30.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8b23445f4a55ae5f9e38055dec94b27ef2b14150"
+    },
+    {
+      "path": "licenses/mcp/notices/071-proxy-addr_2.0.8-a7996721249a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cab251c2b9a81318267600f68130faa3a290e5fd"
+    },
+    {
+      "path": "licenses/mcp/notices/072-qs_6.16.1-e7dc37bf662d.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fecf6b6942d17bc7ae41a5e106dc98815c0db652"
+    },
+    {
+      "path": "licenses/mcp/notices/073-range-parser_1.3.0-f655e6291356.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "359995436311ca2c69c0d05c1b7ad389aa63e9b9"
+    },
+    {
+      "path": "licenses/mcp/notices/074-raw-body_3.0.2-37876d7de8bd.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1029a7a7c79e867208857f4830072b35229b8844"
+    },
+    {
+      "path": "licenses/mcp/notices/075-require-from-string_2.0.2-6ee0feb1f6ef.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1aeb74fd25e1715d8129a1babc8113f7c4deb7e3"
+    },
+    {
+      "path": "licenses/mcp/notices/076-router_2.2.0-d0bca4e51715.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "237e1b67d3b34c1ea0b860e578694cae98fc7903"
+    },
+    {
+      "path": "licenses/mcp/notices/077-safer-buffer_2.1.2-4bc935e71be1.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4fe9e6f10036e619c2407f08ead54802bbfbcbd1"
+    },
+    {
+      "path": "licenses/mcp/notices/078-send_1.2.1-25a328069fe7.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b6ea1c1fd44ff6f4af6a8e4e5d4793004b9e8524"
+    },
+    {
+      "path": "licenses/mcp/notices/079-serve-static_2.2.1-63b9a188d7d4.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cbe62e8e7f20b6aa70e4d138b1503837ae4e5f95"
+    },
+    {
+      "path": "licenses/mcp/notices/080-setprototypeof_1.2.0-76d6d1ea0c26.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "61afa2f18532ecd749469c7d9bdd15940a852f5f"
+    },
+    {
+      "path": "licenses/mcp/notices/081-shebang-command_2.0.0-69dee148a2cc.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "db6bc32cc7c44e86102035b2fb75ba8d05123f3f"
+    },
+    {
+      "path": "licenses/mcp/notices/082-shebang-regex_3.0.0-48da2f39e100.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e7af2f77107d73046421ef56c4684cbfdd3c1e89"
+    },
+    {
+      "path": "licenses/mcp/notices/083-side-channel_1.1.1-cfc3f455254c.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3900dd7e2ffe6d5205fde1cd3f890aa51ea36234"
+    },
+    {
+      "path": "licenses/mcp/notices/084-side-channel-list_1.0.1-5e325595b4ea.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f82f38963b0d282b529f64def2bcd40be3a9a947"
+    },
+    {
+      "path": "licenses/mcp/notices/085-side-channel-map_1.0.1-5e325595b4ea.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f82f38963b0d282b529f64def2bcd40be3a9a947"
+    },
+    {
+      "path": "licenses/mcp/notices/086-side-channel-weakmap_1.0.2-cfc3f455254c.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3900dd7e2ffe6d5205fde1cd3f890aa51ea36234"
+    },
+    {
+      "path": "licenses/mcp/notices/087-statuses_2.0.2-512cfa4d5e7a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "28a31618205d7dbeed5b966fe9d2c682bd9367f5"
+    },
+    {
+      "path": "licenses/mcp/notices/088-supports-color_7.2.0-48da2f39e100.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e7af2f77107d73046421ef56c4684cbfdd3c1e89"
+    },
+    {
+      "path": "licenses/mcp/notices/089-toidentifier_1.0.1-a832d679750e.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "de22d1597600c04a9a62ffa597463413baf741fb"
+    },
+    {
+      "path": "licenses/mcp/notices/090-type-is_2.1.0-23d466b1b134.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "386b7b6946e47bc46f8138791049b4e6a7cef889"
+    },
+    {
+      "path": "licenses/mcp/notices/091-unpipe_1.0.0-1a526fbe8d85.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "aed0138278a940d6e7b2d43903e04eee233b957e"
+    },
+    {
+      "path": "licenses/mcp/notices/092-vary_1.1.2-bd47ce7b88c7.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "84441fbb5709262c2bfc9b5ff0166ad4f024a1b8"
+    },
+    {
+      "path": "licenses/mcp/notices/093-which_2.0.2-4ec3d4c66cd8.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "19129e315fe593965a2fdd50ec0d1253bcbd2ece"
+    },
+    {
+      "path": "licenses/mcp/notices/094-wrappy_1.0.2-4ec3d4c66cd8.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "19129e315fe593965a2fdd50ec0d1253bcbd2ece"
+    },
+    {
+      "path": "licenses/mcp/notices/095-zod_4.4.3-3f1189b28e38.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c06579627b432d09779094cd0166b7f37fe51db8"
+    },
+    {
+      "path": "licenses/mcp/notices/096-zod-to-json-schema_3.25.2-80d3168ad2f7.txt",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "406daaf2d775f8a620662ea0dc5ed70e0f5668bf"
+    },
+    {
+      "path": "licenses/mcp/sources/body-parser-2.4.0.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6e879a46965661643388a28614511286105a5026"
+    },
+    {
+      "path": "licenses/mcp/sources/sdk-1.32.0.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6152a8e39ee5a86d37c088e70bffe2f6bb28df16"
+    },
+    {
+      "path": "package.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5b5558afb0645d3aa234eabe92dc1c73fe643e29"
+    },
+    {
+      "path": "patches/@ffmpeg.wasm__main@0.12.0.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "425bb9bf57570b28d448ffccdfa069feef7d68d6"
+    },
+    {
+      "path": "patches/@malept__flatpak-bundler@0.4.0.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c019fc34767d2d8a2ab0c589d2f3d94517cd5f42"
+    },
+    {
+      "path": "patches/@modelcontextprotocol__sdk@1.32.0.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "437fb1e5536a8494ae14bcb4f5ad58b8ea78287e"
+    },
+    {
+      "path": "patches/app-builder-lib@26.15.3.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c7c30f5a01296996efa5fb002ecbc24b0a0016d1"
+    },
+    {
+      "path": "patches/electron-is@3.0.0.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2b6e456f9f5fec14df4dce2c33a55e6f1a195107"
+    },
+    {
+      "path": "patches/kuromoji@0.1.2.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4c832e1e0915490c5244ae7d676ccbeb9f4f0a17"
+    },
+    {
+      "path": "patches/mdui@2.1.4.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ce81af3a1ae990659b97e5cf35361f47e317fadb"
+    },
+    {
+      "path": "patches/vudio@2.1.1.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "261d58c034805695c90800ee291d4167dada0532"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4f34f2f90c025001d807b9bfbe84367771f506af"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b1425fd2f965d73edbf593ed0c7cdf13a89f40ce"
+    },
+    {
+      "path": "renovate.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6bfcdacd5fbad0045de7c6da19e745ff92fc0b3d"
+    },
+    {
+      "path": "scripts/api-music-windows-private-root.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1b3077d6ffae810b5e3e99a46f3c10dbe1aca778"
+    },
+    {
+      "path": "scripts/ci-test-groups.node.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7c15c0a32d0f45a4b370b4ab9e31333d9eb69408"
+    },
+    {
+      "path": "scripts/collect-macos-node-crashes.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dbdab8bce41fd8d856b428ac70e1686d252a62ce"
+    },
+    {
+      "path": "scripts/collect-macos-node-crashes.node.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "30be27eac8bc0a171fe53922346a86475630722a"
+    },
+    {
+      "path": "scripts/linux-snap-shared-input.node.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "01c7c57ebf62e294ec329d11f0cf82662f3fad98"
+    },
+    {
+      "path": "scripts/mcp-notices.node.mjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "85f2e0c537121804777a34edcde5e2337013948e"
+    },
+    {
+      "path": "scripts/prepare-linux-tools.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1fe3d9d1b970c341c327d288f29fe8e285a24ac8"
+    },
+    {
+      "path": "scripts/prepare-linux-tools.node.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8df48eb03878fde6b319ed7f34d53a55f37ce3d6"
+    },
+    {
+      "path": "scripts/qualify-api-music-nonloopback.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "df208c97cd4f3a9eba365aeb81ff4279582c90f9"
+    },
+    {
+      "path": "scripts/qualify-api-music-nonloopback.node.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "39fab5f48b7847d3464ff9cfa414bb098d074099"
+    },
+    {
+      "path": "scripts/run-ci-tests.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "40c00117cc94bab7dec162e112e29fd99f4e325c"
+    },
+    {
+      "path": "scripts/verify-release.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1e45fc690ca36218ecc19ef767ece7606429f7d5"
+    },
+    {
+      "path": "scripts/verify-release.test.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b3712db9388e4c001a859b4e647378d1d5ee4d89"
+    },
+    {
+      "path": "src/config/adblocker-migration.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "23e5d87f0fe0d07d8e35468c988e98be53a50d4b"
+    },
+    {
+      "path": "src/config/defaults.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d8e556a265411c6520b1d1ccba4e3394adfcfa2b"
+    },
+    {
+      "path": "src/config/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c9f45f86cc9f59490abeb1719a03087bcf0d11d3"
+    },
+    {
+      "path": "src/config/plugins.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "83a3f5e7b59c5b90842b2a436817f21e9a3ef760"
+    },
+    {
+      "path": "src/config/store.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "db5ca8391bc8b9f65c7c47c32ba6eeb5ad17c729"
+    },
+    {
+      "path": "src/custom-electron-prompt.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "57a27dc14127e1c2261ccfc09d037078fb101b4c"
+    },
+    {
+      "path": "src/i18n/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e0a2fc5572d0199dd0a6da7fe321e0db7f034d99"
+    },
+    {
+      "path": "src/i18n/language-controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4b5842e19d55f3fca656b51553008c8cd165d89d"
+    },
+    {
+      "path": "src/i18n/resources/@types/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1de8ae32f4a08cf13a906bd5047d466f2b4009cd"
+    },
+    {
+      "path": "src/i18n/resources/af.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5218fc22b7c6dd64f1c64bd493cfd92512677e20"
+    },
+    {
+      "path": "src/i18n/resources/ar.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7eb0ef69fbe576d9238af6bfd4f880808ff57ba3"
+    },
+    {
+      "path": "src/i18n/resources/az.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e026c40aa1da7903e84762c4571815a28cf20b3b"
+    },
+    {
+      "path": "src/i18n/resources/be-Latn.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0967ef424bce6791893e9a57bb952f80fd536e93"
+    },
+    {
+      "path": "src/i18n/resources/be.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1553b5fa367b51d3b63dfe534bdddd9563201291"
+    },
+    {
+      "path": "src/i18n/resources/bg.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5f23d9f8902dc3de7e527229a2ef3f2846cb5a3e"
+    },
+    {
+      "path": "src/i18n/resources/bn.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e8d573af42db67ee5309288826d44d5ec5733f21"
+    },
+    {
+      "path": "src/i18n/resources/bs.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "22094bb01b86f5e56e5cbb0c3f2c8bd62b1e92de"
+    },
+    {
+      "path": "src/i18n/resources/ca.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a4ca31bb7ec0d1777aa3c74d91dfed3cf7959f6f"
+    },
+    {
+      "path": "src/i18n/resources/ckb.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6040326e8630bcea25f796b20c7c4eabeff3df38"
+    },
+    {
+      "path": "src/i18n/resources/cs.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8733aac089a536a50977016223abd1720d672bbb"
+    },
+    {
+      "path": "src/i18n/resources/da.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e5636652887f95f453f5551577e080ac10c431aa"
+    },
+    {
+      "path": "src/i18n/resources/de.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cac97bbce92360bc5ac49edfd209c7ebe3c39f81"
+    },
+    {
+      "path": "src/i18n/resources/el.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e5620ab97708b0cfc5cf981dc4600adbcffe36ca"
+    },
+    {
+      "path": "src/i18n/resources/en.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d1b6244be63b983ae76b3d708209e279aafe7702"
+    },
+    {
+      "path": "src/i18n/resources/es.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2cd855f5fad58bec6ea7a5fc3ee1a67e5a4d3251"
+    },
+    {
+      "path": "src/i18n/resources/et.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dd262c716d715c08e178ec2259a584ac875554cf"
+    },
+    {
+      "path": "src/i18n/resources/eu.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f6a8a0bc4cda74bdabed0127737a655840086e72"
+    },
+    {
+      "path": "src/i18n/resources/fa.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dd651e0c6283b2787f9560eb6aab0423f8c67bd1"
+    },
+    {
+      "path": "src/i18n/resources/fi.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d516dda7bc6da5ded70c45f0bbc322453b63a472"
+    },
+    {
+      "path": "src/i18n/resources/fil.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9d43d4ee5f9b9fc19a9d15f6a0e748bddacb0f53"
+    },
+    {
+      "path": "src/i18n/resources/fr.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4e86ec1856ef2a9d1a4ae5f3586f4c781d180dc6"
+    },
+    {
+      "path": "src/i18n/resources/gl.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e8487bfaeba19970e3f9069603e8ba0be7281a46"
+    },
+    {
+      "path": "src/i18n/resources/he.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "628536d620a659afb94e4a9364dd0b32f2536e53"
+    },
+    {
+      "path": "src/i18n/resources/hi.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5740b41c13686dd7ec7748b36985d0f8ac2c6131"
+    },
+    {
+      "path": "src/i18n/resources/hr.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fca26fcd4238a2482cae33c463efbb9b65d75296"
+    },
+    {
+      "path": "src/i18n/resources/hu.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "feed198530a7c395c5471abc4c40ca96cdc8bc8c"
+    },
+    {
+      "path": "src/i18n/resources/id.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c22275c6fa50b3512e6a81da519ebf2459951876"
+    },
+    {
+      "path": "src/i18n/resources/is.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c6916761cfcfe3456948914ca55def12edcc95a9"
+    },
+    {
+      "path": "src/i18n/resources/it.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "66afdfa7d49b904fd2ef335bdeca49b2387ed1d2"
+    },
+    {
+      "path": "src/i18n/resources/ja.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1917daf7cd40896b1e6db4f0cbe4390d3553768d"
+    },
+    {
+      "path": "src/i18n/resources/ka.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ce3a7c5e1ae9053350c8165c590cf4d6a7bd0485"
+    },
+    {
+      "path": "src/i18n/resources/km.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0967ef424bce6791893e9a57bb952f80fd536e93"
+    },
+    {
+      "path": "src/i18n/resources/kmr.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0967ef424bce6791893e9a57bb952f80fd536e93"
+    },
+    {
+      "path": "src/i18n/resources/kn.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3595158f1a324d55d1273f464cce0fec732572d1"
+    },
+    {
+      "path": "src/i18n/resources/ko.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "95c57a89fec66e7932163fe4ca2b175cfda2955e"
+    },
+    {
+      "path": "src/i18n/resources/lo.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a428fe2e34ed500e8fe8f875d3639649ba983e94"
+    },
+    {
+      "path": "src/i18n/resources/lt.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "93550156f0988826fb557259b9c7d3b19f0977f0"
+    },
+    {
+      "path": "src/i18n/resources/lv.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cb2bc408fb3e6dfabd4eca8928c830c60c2d9206"
+    },
+    {
+      "path": "src/i18n/resources/mk.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "93bff6ffbbc400665c40cd55c9e30be3e0887fad"
+    },
+    {
+      "path": "src/i18n/resources/ml.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d8282ec0ad848453d8d94f9cd615d23b8089f9f0"
+    },
+    {
+      "path": "src/i18n/resources/ms.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dcd28949b04d84014ea244a49c16c4b0a98c0530"
+    },
+    {
+      "path": "src/i18n/resources/nb.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2567e084a85db7c29794c3bc76a495115879f7e2"
+    },
+    {
+      "path": "src/i18n/resources/ne.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0f4bcfb13a8b4066a05bf1e40ef3b870196a4954"
+    },
+    {
+      "path": "src/i18n/resources/nl.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "914c815c6bbb577e46eb0e8f1a253b559e953ac0"
+    },
+    {
+      "path": "src/i18n/resources/pl.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "17e45df80dad61033a1a024a41fddd555ce648a5"
+    },
+    {
+      "path": "src/i18n/resources/pt-BR.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1df426e897a9b894a8c6846ed14ac15256a703f3"
+    },
+    {
+      "path": "src/i18n/resources/pt.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "558efa06a39b686678b052f723649f17b14edde6"
+    },
+    {
+      "path": "src/i18n/resources/qu.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ad5033f82d5da82713517c77d855ca6466b19061"
+    },
+    {
+      "path": "src/i18n/resources/ro.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7dd8aba182a6fd1f4a52cfc2373f46d8a8617156"
+    },
+    {
+      "path": "src/i18n/resources/ru.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f2820e55f1e3012727686dc91b82a0b5f893cd85"
+    },
+    {
+      "path": "src/i18n/resources/sah.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1b3681ae2921f33149e613a09938dcda073f429d"
+    },
+    {
+      "path": "src/i18n/resources/si.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4ed90d95a8e09ae012446912966f51457653d15c"
+    },
+    {
+      "path": "src/i18n/resources/sk.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f5d54ef1a10a85ecc3423b0907178d503b7d0f87"
+    },
+    {
+      "path": "src/i18n/resources/sl.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9aefe45a92d85c54dca277cc49e1186c94cef34e"
+    },
+    {
+      "path": "src/i18n/resources/sq.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b62267629fed397c15024445aa1083ac50b0b294"
+    },
+    {
+      "path": "src/i18n/resources/sr.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "434ef6e4daea04e7e1d13e2196fd96ea60d198aa"
+    },
+    {
+      "path": "src/i18n/resources/sv.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "abf5b7f20ee30ce707cf164650029719dc6eca4a"
+    },
+    {
+      "path": "src/i18n/resources/ta.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d0e3e5c019a8b24447fb1e04356f079fecec5eec"
+    },
+    {
+      "path": "src/i18n/resources/te.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7b872a8a15ac29d0b1d2f7ca351d842572f6905b"
+    },
+    {
+      "path": "src/i18n/resources/th.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "990341ce8b108332866d7ff273d3ead5d8fddcff"
+    },
+    {
+      "path": "src/i18n/resources/tr.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8431bb0f1a23f1d1ccff6a3a4492d7a85e5f0106"
+    },
+    {
+      "path": "src/i18n/resources/uk.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "112ec11c569c472125597bd7ee81938640d5e912"
+    },
+    {
+      "path": "src/i18n/resources/ur.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "76536374805aaf8edddb4aa757cd0d6333ed001d"
+    },
+    {
+      "path": "src/i18n/resources/vi.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "be4077357f9f1bfec96a0a57e230793d64003d96"
+    },
+    {
+      "path": "src/i18n/resources/zh-CN.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c46a6c22d300ab5f889c2d6856c1715532cc4e14"
+    },
+    {
+      "path": "src/i18n/resources/zh-TW.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "86e224ebe4d8cc0869acf858a9cbb295e911dcfa"
+    },
+    {
+      "path": "src/index.html",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cff175721b9bbe0d30acd836b0299b55597ab288"
+    },
+    {
+      "path": "src/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "be9ab4a79ada395c115c2c25d6936e0c2bbb808d"
+    },
+    {
+      "path": "src/loader/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "aca8c959b1da0a4cd175b39065e5b4bd7ed8e9d1"
+    },
+    {
+      "path": "src/loader/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fdb74155dac01a9c837bbb3019d2a3fc84e1f759"
+    },
+    {
+      "path": "src/loader/preload.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "51679e1422c5c438baa672af78915cf8b7bedadb"
+    },
+    {
+      "path": "src/loader/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5ba1c95e299c5672f4d99e2d2c7fc199f7f9abb9"
+    },
+    {
+      "path": "src/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0f31422017438197d86283df7063d43557243117"
+    },
+    {
+      "path": "src/music-player.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "670e02d444e119297d22da1632dcec99d5d93508"
+    },
+    {
+      "path": "src/navigation.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cf7e7e60680ecdbee28b951265d7f70ce96ccf5a"
+    },
+    {
+      "path": "src/pear-desktop.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b5ace4e1fe6c6a31d54d72eb5a4dbd1cc225d649"
+    },
+    {
+      "path": "src/plugins/adblocker/ad-speedup.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "380dce5ae2cf0e7a3f5c9fe309aad825d1d239f5"
+    },
+    {
+      "path": "src/plugins/adblocker/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a594d4e4c687139f7c2759e9fd798a801fcb74f3"
+    },
+    {
+      "path": "src/plugins/adblocker/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f38ab2ccd7235d91592c19b14b7509a916c19b41"
+    },
+    {
+      "path": "src/plugins/adblocker/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c384cd94956a0a69e8902298e80d1c3f0bfccefa"
+    },
+    {
+      "path": "src/plugins/album-actions/index.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6258625b97b5726d564bc3237b282c937788d7b3"
+    },
+    {
+      "path": "src/plugins/album-actions/templates/dislike-button.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b0b88b1dbc8712f1014fd3abc3810cdcff90b32c"
+    },
+    {
+      "path": "src/plugins/album-actions/templates/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f622132622882d848a2cdfcb7deea1f4b9ed9577"
+    },
+    {
+      "path": "src/plugins/album-actions/templates/like-button.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6c5091e904468b625c41cf9c6254b6cdbcb66753"
+    },
+    {
+      "path": "src/plugins/album-actions/templates/undislike-button.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "29a2b5afb7f9b56346b0fc315d7167428410312d"
+    },
+    {
+      "path": "src/plugins/album-actions/templates/unlike-button.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "76b52af5788ea5b2f037cc01e24807b8a64f9bf7"
+    },
+    {
+      "path": "src/plugins/album-color-theme/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1987cab54f290ed901b8606bab2a326a1baac223"
+    },
+    {
+      "path": "src/plugins/album-color-theme/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8674d17bb0c350a6c4467606f7ea74f437a7800c"
+    },
+    {
+      "path": "src/plugins/always-show-volume-slider/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7c5b302eea8e6d30792db139a96054b8b736ec6c"
+    },
+    {
+      "path": "src/plugins/always-show-volume-slider/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f2da431c219ccedc01ef8610296e7f2d1a97cc57"
+    },
+    {
+      "path": "src/plugins/ambient-mode/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0b837df983dc7eb299f22b119299cd19fc5675c3"
+    },
+    {
+      "path": "src/plugins/ambient-mode/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d8c72f4db68a452caf5ad0a996e816f11d047003"
+    },
+    {
+      "path": "src/plugins/ambient-mode/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9915dad748f5a883294a0b96abbad868ff44265d"
+    },
+    {
+      "path": "src/plugins/ambient-mode/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "befca0d3aa6382fe80d45c0cb0f325d968eb7f1b"
+    },
+    {
+      "path": "src/plugins/amuse/backend.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f6ba69ac744956e0f8d12739899e9be39d5aaa7a"
+    },
+    {
+      "path": "src/plugins/amuse/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f0e3f76602c2ed2bfb5b261b86d1749766372428"
+    },
+    {
+      "path": "src/plugins/amuse/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c597ea7287cbea69f7d0b37f386517c935a2e5ca"
+    },
+    {
+      "path": "src/plugins/api-server/backend/api-version.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ba1d38d499f5744fc10aa6e65a22a15061e479cc"
+    },
+    {
+      "path": "src/plugins/api-server/backend/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "aad1ca831efd06f50cc27de14daaec9789daa204"
+    },
+    {
+      "path": "src/plugins/api-server/backend/legacy-clock.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "60bd2dda02cbbec9241cc59df2e08e90493cdfde"
+    },
+    {
+      "path": "src/plugins/api-server/backend/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ce2730bbd8b09fd900bebaa85b4b29bea61c9406"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp-binding.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "45b130b76dd4810cebe8429fd6dd9516c557d5ae"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp-http-policy.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fda592e1265e4db4f7d7b8f85982ccf11cd6410b"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp-owner.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "40b7b530574585e3198ea336de0fae0c0666b2c4"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp-sessions.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a90d3072d35a572ebcb1a3ee97aaa08811cd3044"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp-tool-schemas.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0406869e82b998416ac4a81931a47b619591c685"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp-tools.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "99d13ba33c9b77b40b1776f2934466fc39889f81"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp-transport.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "30d9f4cf3802fd79dd325fae5b626a5ae34a1869"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp-write-tools.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "72242b77816b3672e8d826c406da6706c4057f1c"
+    },
+    {
+      "path": "src/plugins/api-server/backend/mcp.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "05b053f9cdb172eb5c0dd788b83d71497b9cee92"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-access.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "eb313baaf9aea2a019915ad4a9b4e0f7c02d801e"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-comments-web.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "eca9b6ac903bf3c29b46732358f1637e0b70aba2"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-grant-store.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "29b1927a6d9701edfb87884da1dc31112f258337"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-grants.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "84a9b9227033268139966387e8d65c7d6a4aee68"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-http-policy.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "613d9a5d62aaad3b668262272d9296645da67345"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-operations.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "edc02f4b1106ae9a346d067d75277a4bac0e9962"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-publication.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d6b59d6c82eaeb6338f90b57f35e42d4a1ffc933"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-read-result.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "865ad8ba66cf7f6f59a9af78ccfcc55d95a44f7a"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-service.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c76fbbf72dc89fc3fb0fc85430c1aab970d6cb0b"
+    },
+    {
+      "path": "src/plugins/api-server/backend/routes/auth.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9369e47f75111e5a6ea18b761ab9c27107a7a40d"
+    },
+    {
+      "path": "src/plugins/api-server/backend/routes/control.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "81b7f8ee626ce4652f6a92a058b9c426b4de3ae9"
+    },
+    {
+      "path": "src/plugins/api-server/backend/routes/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a2467098e88cf8d789018457666e6f4679721ac4"
+    },
+    {
+      "path": "src/plugins/api-server/backend/routes/music.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "466479901dfaaaf96d00907d15a6ac48d6c7861d"
+    },
+    {
+      "path": "src/plugins/api-server/backend/routes/websocket.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "df36c6774eee12f365859120fb068e3b709e909f"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/auth.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "536011b13a54b948252724cc124c97bf9d661c88"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/go-back.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "15472a4b1ec6e1516bd4ef5d132223589b12d38f"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/go-forward.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8d4d5836b7dbfa54cecd037e23a0089b2723f629"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8c8ecaab53ac21f35f5ac673b5c119ce42945ae8"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/music.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "45e661363a92b4230aaa113d9b1e004d9eee2f7a"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/queue.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a995667c10a63b9c19a638bc16c85a6b5b8ec999"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/search.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3f85477220bc4b5f7555f7eafb6607e12f338220"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/seek.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "161dde782a26acd4a4200886d0ac661b2a7df46f"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/set-fullscreen.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6c3185385091a21c4fa95ca0ca0ab1b5f9f618e2"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/set-volume.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "41effe9fad0871d62cce119b3b3ae2daa5c96f57"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/song-info.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "795ac7ffba6f54a94122bec864ed3b3eed94bfbf"
+    },
+    {
+      "path": "src/plugins/api-server/backend/scheme/switch-repeat.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d82c065f076fcf115d2d992acb741fc498111cd5"
+    },
+    {
+      "path": "src/plugins/api-server/backend/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b03c7999a183988ea8be49bf124525ec64f2fbcb"
+    },
+    {
+      "path": "src/plugins/api-server/backend/windows-private-path.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "72f149125311d35069716a6bdc21b945edb188e2"
+    },
+    {
+      "path": "src/plugins/api-server/config.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cb3d2bdce7f9c86736e2e20eb820afe5b7f0562f"
+    },
+    {
+      "path": "src/plugins/api-server/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dc04f8023b5762e8a272306c6f05561a0d2b6036"
+    },
+    {
+      "path": "src/plugins/api-server/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2c59263285ce3b218c3e24843c52e700865fcc36"
+    },
+    {
+      "path": "src/plugins/api-server/music-menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4833acbedf06cb0306c46704d54fd03bebcd8c91"
+    },
+    {
+      "path": "src/plugins/api-server/music-types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ebdf65bc50063b11457e1376e809904adfdf1286"
+    },
+    {
+      "path": "src/plugins/api-server/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e3a9b9ee756a41ca02cccde770c23b135ed06131"
+    },
+    {
+      "path": "src/plugins/audio-compressor.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f14b9315cd1553e2cb6f000bbebd39d9006effc2"
+    },
+    {
+      "path": "src/plugins/audio-compressor/track-gain.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bed1faee520b73577ac328613a62193b49439cac"
+    },
+    {
+      "path": "src/plugins/auth-proxy-adapter/backend/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fb6c9c45b7cf90fc5901e65d59f7418954893bce"
+    },
+    {
+      "path": "src/plugins/auth-proxy-adapter/backend/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e8a66d6d2ec5f2859cf5a93b5a50e97a14def845"
+    },
+    {
+      "path": "src/plugins/auth-proxy-adapter/config.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "025582db08c8f63da95bbd2abf9ff66d268ba298"
+    },
+    {
+      "path": "src/plugins/auth-proxy-adapter/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9f28f602529fc3858421dee505c224e573edc4d4"
+    },
+    {
+      "path": "src/plugins/auth-proxy-adapter/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "84d3f2bdaa17f6bd311b8001bf3110c856a060ea"
+    },
+    {
+      "path": "src/plugins/auto-acknowledge/controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "02fa4d63902d44749f7671374cbaf1eef817a189"
+    },
+    {
+      "path": "src/plugins/auto-acknowledge/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "30633e2202f509e1a4384dc3b476525749e8da90"
+    },
+    {
+      "path": "src/plugins/auto-acknowledge/matcher.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a835f8fcab1100101b31b65700fa598cd6ec8941"
+    },
+    {
+      "path": "src/plugins/blocklist/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "921583809d9869cdea2ab9188e3d9c9f3aac795c"
+    },
+    {
+      "path": "src/plugins/blocklist/matching.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7cd3e470894030e04b134912ff0e53e329ade358"
+    },
+    {
+      "path": "src/plugins/blocklist/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3e7278d9868a5af88b4f6bd835c299601bde6b98"
+    },
+    {
+      "path": "src/plugins/blocklist/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7ba8be4f72812f109c157958c0a6a7fb5fbd1d89"
+    },
+    {
+      "path": "src/plugins/blocklist/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d412680cc083aee8c21d320a6c5abe9c8a42a5bc"
+    },
+    {
+      "path": "src/plugins/blur-nav-bar/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b091084d4e300f605e9c24839bd21a4c106f6e5f"
+    },
+    {
+      "path": "src/plugins/blur-nav-bar/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e86272f9ef30f8fb2c3dd32a78d7eed1b172c10c"
+    },
+    {
+      "path": "src/plugins/bypass-age-restrictions/README.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "918a47805169834797fbf5460484b8d1df2b6bd1"
+    },
+    {
+      "path": "src/plugins/bypass-age-restrictions/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6d9dd08aa993b2facc2123f68e84c2b58deac3d8"
+    },
+    {
+      "path": "src/plugins/bypass-age-restrictions/vendor/LICENSE",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "33cf7c47f05e93382235ed717441e606cb057ae7"
+    },
+    {
+      "path": "src/plugins/bypass-age-restrictions/vendor/LOCAL.patch",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "170278584e70c1e3dcb9c9b1d8a8637fb3199b75"
+    },
+    {
+      "path": "src/plugins/bypass-age-restrictions/vendor/bypass.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "15ed3d2c16e6dc7158bc83728b585a81acb8165d"
+    },
+    {
+      "path": "src/plugins/bypass-age-restrictions/vendor/bypass.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d6593a47e7f6328ba6f88ff66f64faeeceb1893a"
+    },
+    {
+      "path": "src/plugins/bypass-age-restrictions/vendor/rebuild.py",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "793ed59aa5538206c573a8e97f046be4f19fe123"
+    },
+    {
+      "path": "src/plugins/captions-selector/back.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a40512e0d0bfd0fb05c83549b739496f48259da7"
+    },
+    {
+      "path": "src/plugins/captions-selector/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a72d7e752f129b7fc17c2eb416a273a6d381298e"
+    },
+    {
+      "path": "src/plugins/captions-selector/renderer.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b843f06310c1d65055cc6a90c31a38bfe468d7cd"
+    },
+    {
+      "path": "src/plugins/captions-selector/templates/captions-settings-template.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "73cb49c97f6090a486ebf666dd9bcc2a08522eef"
+    },
+    {
+      "path": "src/plugins/clock/index.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "171bfdd02011fa3e3880fb36a5dc0f9644a59fa0"
+    },
+    {
+      "path": "src/plugins/clock/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dc78561113db53ada83067d9500284e61e7d9768"
+    },
+    {
+      "path": "src/plugins/clock/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "823c29cdc4bf0245e89d8a9c0c51997029e552be"
+    },
+    {
+      "path": "src/plugins/compact-sidebar/dom.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "63406e4b00724492aac41d34635c6ea288e7bebb"
+    },
+    {
+      "path": "src/plugins/compact-sidebar/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "71dee7fe07b91d1408a3ff3b291a7fc731191244"
+    },
+    {
+      "path": "src/plugins/crossfade/fader.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9a40136c493a9519cf88b6fee1082094299c22e0"
+    },
+    {
+      "path": "src/plugins/crossfade/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1b2f85089c84a3a382a049e24dce5ef0b8b8c5a2"
+    },
+    {
+      "path": "src/plugins/crossfade/transition-audio.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1295e58d6156aad3749187804d745a5870f53425"
+    },
+    {
+      "path": "src/plugins/custom-output-device/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "89c51fd1e0db94482e39e76544641a9bbf341984"
+    },
+    {
+      "path": "src/plugins/custom-output-device/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1de8da56398f73fe1cf700d50eed7ab1bab61bef"
+    },
+    {
+      "path": "src/plugins/custom-output-device/routing.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "da13192d1fd51432286c4adc0a1afe58ddea45a0"
+    },
+    {
+      "path": "src/plugins/custom-output-device/session.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "487ffdb613986a6219de5bc8789f22956a1db21d"
+    },
+    {
+      "path": "src/plugins/disable-autoplay/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "51e15b5df6138861a1bf0ea90ad962b69ecf26b1"
+    },
+    {
+      "path": "src/plugins/discord/artist-artwork.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c22127db4b2c6957ea3a5e7f141d63be76fe0e2a"
+    },
+    {
+      "path": "src/plugins/discord/constants.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5618fd464af2a987b4056d12de8be0029db85eca"
+    },
+    {
+      "path": "src/plugins/discord/discord-service.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2313fbd2701aff489eae6a28706984b9fc4ee346"
+    },
+    {
+      "path": "src/plugins/discord/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f7447e08c1f1a5932f1a7f68daa0ae9de9da011c"
+    },
+    {
+      "path": "src/plugins/discord/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7615a642ad1ca53cec78008ca47d97e098e94b6a"
+    },
+    {
+      "path": "src/plugins/discord/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c31c7a31c1b33ca9641501ca9e36f18c75bf5a91"
+    },
+    {
+      "path": "src/plugins/discord/timer-manager.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5adbd6686af29b1317c73bcdf4d94ad459266f9d"
+    },
+    {
+      "path": "src/plugins/discord/utils.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3b5f9071f4579fe6ea25bd10465b61c5f10d5997"
+    },
+    {
+      "path": "src/plugins/dismiss-multidevice-popup/controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "70608ec7b2015cd6c6382e2fbcb19d3438bbdd81"
+    },
+    {
+      "path": "src/plugins/dismiss-multidevice-popup/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "98b96165fcb7b7d85ff87f8427ad0cfb4e1d49a9"
+    },
+    {
+      "path": "src/plugins/do-not-track/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d812a1c1121380606e6222b14b29e4a1e75ece69"
+    },
+    {
+      "path": "src/plugins/do-not-track/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c4f0cc040076ad2398ff885ba732d710bbd59a32"
+    },
+    {
+      "path": "src/plugins/do-not-track/types/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "74b7c20be09c130e1d7c698e1fad186c79b1cfe5"
+    },
+    {
+      "path": "src/plugins/downloader/audio.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "10f02ff282357ce1dc8f2bb66c2196cbceb11130"
+    },
+    {
+      "path": "src/plugins/downloader/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "72acce0d2b84e77d8ea18838c6ae7edf318ae306"
+    },
+    {
+      "path": "src/plugins/downloader/library.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ea256404a5a07dd83f8377d9e095994cdaa1209e"
+    },
+    {
+      "path": "src/plugins/downloader/main/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ee12a8ce9da8f149bbb6d441f77ea74a75790562"
+    },
+    {
+      "path": "src/plugins/downloader/main/initialization.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "062eafb65e15c445f78fd34679dd87508a06caa8"
+    },
+    {
+      "path": "src/plugins/downloader/main/utils.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4c5157eeb807c5d3a4bfd8860dcb89bd41b6a815"
+    },
+    {
+      "path": "src/plugins/downloader/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6db4cc7423d17b13fb26d094f7b5058661b72169"
+    },
+    {
+      "path": "src/plugins/downloader/renderer.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8ac20bf9c8804514a5731e0d4af21728bc48a812"
+    },
+    {
+      "path": "src/plugins/downloader/settings.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e681e73db93444c2d7a36cf2400e5fabf3ed1df9"
+    },
+    {
+      "path": "src/plugins/downloader/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e3d56dc248cf8ce9ab3a13cc306799b1f4b08849"
+    },
+    {
+      "path": "src/plugins/downloader/templates/download.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a1a1e71bf3e460dede4658db25f5bda262db657c"
+    },
+    {
+      "path": "src/plugins/downloader/transfer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "53f480ac01349a529bae63f54aca72a703b27cdf"
+    },
+    {
+      "path": "src/plugins/downloader/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0c5cc36b249afd6159e8411dfc35a32cd39c7759"
+    },
+    {
+      "path": "src/plugins/equalizer/config.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0ecf68804c863eb3cf945b96297b2c526e1c79d2"
+    },
+    {
+      "path": "src/plugins/equalizer/controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bf23851518218b290a1ede7500fc0490d388bfc6"
+    },
+    {
+      "path": "src/plugins/equalizer/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c4909f45bbc1fa7f6d91771c979b1c52f5b64118"
+    },
+    {
+      "path": "src/plugins/equalizer/panel.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "da696f12eff338671d2e38729e3863332129d58c"
+    },
+    {
+      "path": "src/plugins/equalizer/presets.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5e2afc46ea91657f37dcb2620f9b91d8040f738f"
+    },
+    {
+      "path": "src/plugins/equalizer/response-view.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "647a7e68ce5dd106ddce29191cf468dfcff600be"
+    },
+    {
+      "path": "src/plugins/equalizer/response.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "372aef31e1c4af4a79f60d69d802afa5ddbba045"
+    },
+    {
+      "path": "src/plugins/equalizer/stock-presets.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d8b2314b8061b68b37eb0ab7aeaa9ec86359952f"
+    },
+    {
+      "path": "src/plugins/equalizer/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1e9a72f65c50309231586d9b25e6f8ca0a30b013"
+    },
+    {
+      "path": "src/plugins/exponential-volume/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "78ca04c7e970c293a5c1af64a62824f100e4fadb"
+    },
+    {
+      "path": "src/plugins/force-shuffle/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1784735e6af3245479cf2e4a47323152fb61a414"
+    },
+    {
+      "path": "src/plugins/fullscreen-auto-hide/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2127a9a77503764d71239ac8371f8dd785bab6df"
+    },
+    {
+      "path": "src/plugins/fullscreen-auto-hide/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "98b2d2e264d5d00cdbcfebcacc53038105da2928"
+    },
+    {
+      "path": "src/plugins/in-app-menu/constants.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ad159c5b62e28f4a0e18518b6aa954928d0fc9e3"
+    },
+    {
+      "path": "src/plugins/in-app-menu/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f72a8186bb21600b80230d7c04227f4798f7c23f"
+    },
+    {
+      "path": "src/plugins/in-app-menu/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a4c6e2104a12b89bfcba4655decc197872a53398"
+    },
+    {
+      "path": "src/plugins/in-app-menu/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b0d46ef5e693b17ab50a54d6b33db605c8f1e626"
+    },
+    {
+      "path": "src/plugins/in-app-menu/renderer.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7cbbedfe2b9bf9c853ee51324d75356043d98023"
+    },
+    {
+      "path": "src/plugins/in-app-menu/renderer/IconButton.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "88520cd2868aaf19a5c8d1d5d8078832778556fe"
+    },
+    {
+      "path": "src/plugins/in-app-menu/renderer/MenuButton.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a38e5a7d560d368494ed39ef97d60bc5dca84fd2"
+    },
+    {
+      "path": "src/plugins/in-app-menu/renderer/Panel.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3ed3ccff3a4d5e026e1aba2f10a3c016bf8044bd"
+    },
+    {
+      "path": "src/plugins/in-app-menu/renderer/PanelItem.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "638c1237fe32ea7f07535342ead137867d5daa58"
+    },
+    {
+      "path": "src/plugins/in-app-menu/renderer/TitleBar.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bf1ff56b247eb3865f303ee3def2b1e68d5cebf1"
+    },
+    {
+      "path": "src/plugins/in-app-menu/renderer/WindowController.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "088ed35fcd6431d415c3fecf409a5e9e592e1bd9"
+    },
+    {
+      "path": "src/plugins/in-app-menu/titlebar.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "abb3135ea5e6239188519da6d381a6435286eee3"
+    },
+    {
+      "path": "src/plugins/lumiastream/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c10890bd43309de0ae76f82305c432dccc0300ba"
+    },
+    {
+      "path": "src/plugins/music-together/connection.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ea3f8c83e908d34378fd653fa01e65cde2060b1f"
+    },
+    {
+      "path": "src/plugins/music-together/element.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "035a9b54d8cbf6cbd53ff9d2763cfec66a93da66"
+    },
+    {
+      "path": "src/plugins/music-together/icons/connect.svg",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "374bebf8d9a3b4b43256dba1a5352172f103b55a"
+    },
+    {
+      "path": "src/plugins/music-together/icons/key.svg",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cfa71c8bb5c808ba42e2053fb5d7895992cc1a8c"
+    },
+    {
+      "path": "src/plugins/music-together/icons/music-cast.svg",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e0e075ad92e6c9c593a1aaead6b17564b0025ff4"
+    },
+    {
+      "path": "src/plugins/music-together/icons/off.svg",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9505e203a8480f0bb8292919396ad98f6c32e8db"
+    },
+    {
+      "path": "src/plugins/music-together/icons/tune.svg",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fb50c38003440a5365bb05960b62533f3f53fa1a"
+    },
+    {
+      "path": "src/plugins/music-together/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a18e6379c5ed7b1758d9719caafc9005b983e1fe"
+    },
+    {
+      "path": "src/plugins/music-together/queue/client.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a7de11e28378d2c34bac6369ea6746c872e92241"
+    },
+    {
+      "path": "src/plugins/music-together/queue/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cadd6a98fc3b15207abbfe4ffa32db102d0fbb04"
+    },
+    {
+      "path": "src/plugins/music-together/queue/queue.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a653995bf3838f0814f1f9f3200d6dad32a2894c"
+    },
+    {
+      "path": "src/plugins/music-together/queue/sha1hash.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "48d09d1fc036d617d823d4d77d61e659b8b099d3"
+    },
+    {
+      "path": "src/plugins/music-together/queue/song.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e7fa220f968e7e4393da38e1e9b99198a3c6498b"
+    },
+    {
+      "path": "src/plugins/music-together/queue/utils.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f11fcfea916910199f7ca423373bfab6e0c850ab"
+    },
+    {
+      "path": "src/plugins/music-together/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "81cb30d144c25b1498298ff29f0977f91bbc50ae"
+    },
+    {
+      "path": "src/plugins/music-together/templates/item.html",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1c5a43d7fa0dc89e300d3cc4e7f3d585a011e827"
+    },
+    {
+      "path": "src/plugins/music-together/templates/popup.html",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "792b6b00aec5a281ee50708df870a4f9c8eaaa41"
+    },
+    {
+      "path": "src/plugins/music-together/templates/setting.html",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "105f6df432c85af83015559fcbe2df8408dccbbe"
+    },
+    {
+      "path": "src/plugins/music-together/templates/status.html",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ae6d61fbb71fd8da026582423081cf4a41cc9c8f"
+    },
+    {
+      "path": "src/plugins/music-together/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "08c5812ad3e0e937f86656f7a1281c935943d755"
+    },
+    {
+      "path": "src/plugins/music-together/ui/guest.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "47ab3942a88ae1e7f5af07e69e5ccad065a0d6c0"
+    },
+    {
+      "path": "src/plugins/music-together/ui/host.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6e6d01a17f62851eac931fdea79827f36a1284ef"
+    },
+    {
+      "path": "src/plugins/music-together/ui/setting.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0e355ad4dd32b8a621ab48cd0ff457bb6badc1b0"
+    },
+    {
+      "path": "src/plugins/music-together/ui/status.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3500fa800bc0d7da828bd83c317dfcd7eba89981"
+    },
+    {
+      "path": "src/plugins/navigation/gestures.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "55e3d25f72a182a67531e083eb99167c918f01dc"
+    },
+    {
+      "path": "src/plugins/navigation/index.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "96c4a873579f3f565913384bcda7e0c8454a74b5"
+    },
+    {
+      "path": "src/plugins/navigation/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "075ee6b4beeb4dc57ffdd79c89fbb8a4382896ad"
+    },
+    {
+      "path": "src/plugins/no-google-login/dom.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0ef0310d75e6acb0832efe19b19142ba7407c98e"
+    },
+    {
+      "path": "src/plugins/no-google-login/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9d0e6a05b48692860d713397cd0662206844654e"
+    },
+    {
+      "path": "src/plugins/notifications/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "68fe37a4205c3845c9225e0e9114f75cf4e43c1d"
+    },
+    {
+      "path": "src/plugins/notifications/interactive.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fb2352bddf436958384bfec03d3e5d7af44f3147"
+    },
+    {
+      "path": "src/plugins/notifications/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7301cfa22472cc7ef4495bab012bb7a4885fe940"
+    },
+    {
+      "path": "src/plugins/notifications/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8e02ee6b1e2d197d0bf7a8cdcaeac92b111086ce"
+    },
+    {
+      "path": "src/plugins/notifications/rating-feedback-main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fd6f0013883856094550ac2a85d74b49978bbb3c"
+    },
+    {
+      "path": "src/plugins/notifications/rating-feedback-renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "01a7a12cb642ff1cbcacbcffe6cd44579afef473"
+    },
+    {
+      "path": "src/plugins/notifications/utils.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9db91a24ca61c306a8087364b08862e22a97d3be"
+    },
+    {
+      "path": "src/plugins/performance-improvement/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d613960e6af9d8bb51cfb28a41365fe0c1353f0b"
+    },
+    {
+      "path": "src/plugins/performance-improvement/scripts/cpu-tamer/cpu-tamer-by-animationframe.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8b2e07357dc8cf90daeab408237921c46a251c1c"
+    },
+    {
+      "path": "src/plugins/performance-improvement/scripts/cpu-tamer/cpu-tamer-by-animationframe.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "68de6f6b7a21769204958ecee78323c189b6a55e"
+    },
+    {
+      "path": "src/plugins/performance-improvement/scripts/cpu-tamer/cpu-tamer-by-dom-mutation.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2d5da8cc48fb9500865fa1518aeaceaafe4e727a"
+    },
+    {
+      "path": "src/plugins/performance-improvement/scripts/cpu-tamer/cpu-tamer-by-dom-mutation.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3291b61e32bf65dd179b6b4b99ab474d9aa6a0a1"
+    },
+    {
+      "path": "src/plugins/performance-improvement/scripts/cpu-tamer/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e2be37c5feec2a7e342eb329358fcf279ab220fa"
+    },
+    {
+      "path": "src/plugins/performance-improvement/scripts/rm3/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fb527c156e12d8d3e0d872cb150aee379992b8aa"
+    },
+    {
+      "path": "src/plugins/performance-improvement/scripts/rm3/rm3.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9a1ae61c0d6cd99b1d572bd637a67c762afdfe8f"
+    },
+    {
+      "path": "src/plugins/performance-improvement/scripts/rm3/rm3.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2deb9f149b6be267df640d4aee33ce974a7f9075"
+    },
+    {
+      "path": "src/plugins/picture-in-picture/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8a21662152fecce9dbf39d124de44c58d8fc09ab"
+    },
+    {
+      "path": "src/plugins/picture-in-picture/keyboardevent-from-electron-accelerator.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "67af6f5192c4666b64819d68598c8bee128a74c2"
+    },
+    {
+      "path": "src/plugins/picture-in-picture/keyboardevents-areequal.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ac219b1fb50f3361f110d72d5b957dde33790451"
+    },
+    {
+      "path": "src/plugins/picture-in-picture/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e04129f49bdafe5ca5fe681218e8c9a35a7c8579"
+    },
+    {
+      "path": "src/plugins/picture-in-picture/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "72252e75b12b9b10e63efa2c2fde5ae432bdd949"
+    },
+    {
+      "path": "src/plugins/picture-in-picture/renderer.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "badbbf10fe53de7411b091817f71a01728676649"
+    },
+    {
+      "path": "src/plugins/picture-in-picture/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ab79307f8c3479ac3fecc8fbb8d5a03776c5cf3e"
+    },
+    {
+      "path": "src/plugins/picture-in-picture/templates/picture-in-picture-button.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a6aad2cdaf6b3eaab41edce2401ffe63e9ba2905"
+    },
+    {
+      "path": "src/plugins/playback-speed/components/slider.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c1bedb6d987deaf59949376fb415dd22a48a36ad"
+    },
+    {
+      "path": "src/plugins/playback-speed/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "759a18881a2d1f10981a48b07bade126caaeecea"
+    },
+    {
+      "path": "src/plugins/playback-speed/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "605a930552a70aa3e2786b2199b3a59715fff13f"
+    },
+    {
+      "path": "src/plugins/playback-speed/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f4c0d712f562e66e3cc32e7610973d61a1f81cc6"
+    },
+    {
+      "path": "src/plugins/playback-speed/renderer.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fe389b90ed2d766296ebebcf7ea57f016bbb5a5a"
+    },
+    {
+      "path": "src/plugins/player-actions/config-writes.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e19c38c9a297f548da4372ae77b203f1b0563772"
+    },
+    {
+      "path": "src/plugins/player-actions/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "33007df3103c61abc6ade6ac3f4fda0ad7aac01c"
+    },
+    {
+      "path": "src/plugins/player-actions/section-repeat/controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fb97b201957a9f6b24424e014352c115ad670b02"
+    },
+    {
+      "path": "src/plugins/player-actions/section-repeat/engine.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "89ab10469b135f0cbc4055f6ee5cf9211a42c7b0"
+    },
+    {
+      "path": "src/plugins/player-actions/section-repeat/saved.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "43a2c597f12ceba9d4d370732a45513d5c0dccda"
+    },
+    {
+      "path": "src/plugins/player-actions/section-repeat/section.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6c4f726dc096b2abf29c11d10d5899679c0feb27"
+    },
+    {
+      "path": "src/plugins/player-actions/slowed-reverb/audio-graph.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e18d4f3d2bbc506d570617477f2af4346f5dc336"
+    },
+    {
+      "path": "src/plugins/player-actions/slowed-reverb/controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cfacc74ed5838cd0981396d2cacf49f0c47647c3"
+    },
+    {
+      "path": "src/plugins/player-actions/slowed-reverb/engine.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0f464bf805132186810282a3e013371acc3aba5c"
+    },
+    {
+      "path": "src/plugins/player-actions/slowed-reverb/panel.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7091cf24957a1a574c5e59d5215f13219ae9af36"
+    },
+    {
+      "path": "src/plugins/player-actions/slowed-reverb/worklet.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "71ee1596242d8d1601bef89006e6257db6c65ec7"
+    },
+    {
+      "path": "src/plugins/playlist-search/controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ddf1bcc30c696de1544261256e0464eba95f5651"
+    },
+    {
+      "path": "src/plugins/playlist-search/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "70012ba19c50a31b7caf1f60a1b548be10f3f9ca"
+    },
+    {
+      "path": "src/plugins/playlist-search/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "138ce46d122830ec9e2da50f169e854c5e2e0413"
+    },
+    {
+      "path": "src/plugins/precise-volume/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4de59b70da03bf5b4b8ec41bfabfeaaa71f9dac7"
+    },
+    {
+      "path": "src/plugins/precise-volume/override.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "32ddf6f0ab0538f7f81087eef21773fa9163b56d"
+    },
+    {
+      "path": "src/plugins/precise-volume/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "112f588ebbc6df1aec3d3e01fdef4491ebb42833"
+    },
+    {
+      "path": "src/plugins/precise-volume/volume-hud.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6b6f19569658d51c79976fd8741311c45ae21c62"
+    },
+    {
+      "path": "src/plugins/quality-changer/index.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "df6090e735ef2eab81bbe0751f896276dd163304"
+    },
+    {
+      "path": "src/plugins/quality-changer/templates/quality-setting-button.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1f52152c1cfcf0669a2f4b89ed429af56a85ca8d"
+    },
+    {
+      "path": "src/plugins/resume-shuffle/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d4f2f596a74df2d65dcf88c82b1ad4bcda8d52d9"
+    },
+    {
+      "path": "src/plugins/scrobbler/config.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2b8ae557e6f19d95979cf9027ed492bcf723b011"
+    },
+    {
+      "path": "src/plugins/scrobbler/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a0adc90b6f8339e8a5d9154f7b626854f392d7e6"
+    },
+    {
+      "path": "src/plugins/scrobbler/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9cfe0ace5103a074462048a87e611313b0639ef0"
+    },
+    {
+      "path": "src/plugins/scrobbler/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "08459e1a5b603f668fb97ca874ea7887e3b0311a"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/base.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c392a490bffc4c5f4acbd2a6526838cfacde8fcf"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/compatible.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0140df10f61efbd1a65a65ae81084e6820a825c0"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/lastfm.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0c154050d292c88e4e1ac070e8cdd9eb812970f3"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/librefm.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "be90249bc85122641fe43578857a371f3612259e"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/listenbrainz.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e6a70b497001763486d328b25e06e81efe35a5d2"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/metadata.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5a46a845771a2713c2c1715b91ea2d8f901f9d1f"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/musicbrainz.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "836421720cab68dc10af4974a1b385c2a30df464"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/regex-filters.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1b6b71dc1f8881274a166ff57f88275a42c84fe4"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/ws-auth-window.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b3f1cfeec98bc70f3305c5d96998146a157df049"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/ws-auth.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "105967c72e4557bd26e3cac0f305b03008797f7d"
+    },
+    {
+      "path": "src/plugins/scrobbler/services/ws-client.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c9a4777b10c1bb6b5e4cf05ec386959f1085724d"
+    },
+    {
+      "path": "src/plugins/shortcuts/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "27bdb945c9e5bdfa1618f7bc547e4f7f77a73ddb"
+    },
+    {
+      "path": "src/plugins/shortcuts/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bb0300e22501da62fde3499570acd62f9f4f9bd2"
+    },
+    {
+      "path": "src/plugins/shortcuts/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f200620dbab8984e310f639496ed10c023c60138"
+    },
+    {
+      "path": "src/plugins/shortcuts/mpris.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "064a1187283ef45845e54400d7a412cfe7f7c6aa"
+    },
+    {
+      "path": "src/plugins/shortcuts/play-pause-gesture.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2a6dbb64c141cf77eed23dadabaaf0e4e996013b"
+    },
+    {
+      "path": "src/plugins/skip-disliked-songs/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "407d37ca56835f4958af2c49fe778bce443cfa95"
+    },
+    {
+      "path": "src/plugins/skip-live-songs/config.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1f9d8bd24ea57bd281d6cd8c6c79725ea1d7d119"
+    },
+    {
+      "path": "src/plugins/skip-live-songs/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "263fb138e6fe696c106d1bc2b703a39400d7a0ea"
+    },
+    {
+      "path": "src/plugins/skip-live-songs/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7797b873c2210a5e1c9806bc15c08b02f4e37fec"
+    },
+    {
+      "path": "src/plugins/skip-live-songs/patterns.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "47c2d45c8ffbc3dc5d202895f21467acc4c37f03"
+    },
+    {
+      "path": "src/plugins/skip-silences/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3b02c92c6e6c905817c7be7992c8089210dca7f8"
+    },
+    {
+      "path": "src/plugins/skip-silences/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e25c3b86c38858662cc502d76f37c23bcc5e3491"
+    },
+    {
+      "path": "src/plugins/sponsorblock/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6d759939f2bcc9d5dc425f57b5929955dfcf3f9a"
+    },
+    {
+      "path": "src/plugins/sponsorblock/segments.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0023e9dc24cd039fca730fe4c17b2e6cf62e3e78"
+    },
+    {
+      "path": "src/plugins/sponsorblock/tests/segments.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3b8f0d3e99fca1b99b959537cf8fa6d711b5372b"
+    },
+    {
+      "path": "src/plugins/sponsorblock/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5c18f3d8c179db532fa05eb4f01bff42ebf3a98f"
+    },
+    {
+      "path": "src/plugins/statusbar-lyrics/backend.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "344c617e3058c5a340d82b48e4a2a010b3e976b0"
+    },
+    {
+      "path": "src/plugins/statusbar-lyrics/config.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ad604816530c95ee57908ffc75d256a244db91db"
+    },
+    {
+      "path": "src/plugins/statusbar-lyrics/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "73e11e09fb3dca3a0d81ff4429c59216ed258c87"
+    },
+    {
+      "path": "src/plugins/statusbar-lyrics/line.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1766d95fd537a65a201890e8007b45622da1e0c9"
+    },
+    {
+      "path": "src/plugins/statusbar-lyrics/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0ff26889676e8230b22b5511f57b24a89f25fe37"
+    },
+    {
+      "path": "src/plugins/statusbar-lyrics/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "21c574a82599185861b190d18edc7a529036c15c"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/backend.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8f3d7d37069c5faff315548a8057d510a52c7422"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1958e9e48da8d61a48f30957e48ac0004b190059"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9a19c88d893030c7b0e42babfb85a1b5853aa6f1"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/parsers/lrc.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c4c4964cea49a7425766204c41087a933158d4e7"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/parsers/lrc.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "19fbc29ac1344eccef96af916485ac608c089c39"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/parsers/lyricsfile.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "abc717b9d44ef14ee9a6a144f906ad6cc42712c4"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/LRCLib.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4dde3b4bc8240c8ed2e20c3145bb9a33745f1bae"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/LyricsGenius.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d37d989ae65087288401301c0ac438639728a7b4"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/Megalobiz.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "76bd3aa99776cf3df2d073c5f4c35d7768ea5cbf"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/MusixMatch.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bc11074b8af781e1c479ec05395babcf5be18945"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/NetEase.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "457fbe30a21281271e1b4f44bc1552b7934e847a"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/YTMusic.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9ab2d65d89cb98627cb3f3e4e6472ffd28a8a4d6"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b7a9fe06c72f4432a2e2a2d996d0be1ab53cce3d"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/lrclib-matching.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7c9bc355b7ce0351549ae9f6d355354ac955ddd2"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/musixmatch-matching.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f49222d1802103967a7dd780e16694c654c5900c"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/netease-backend.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d2298c611815c49a6cbf6723a1e34ba1ec47f245"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/providers/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "175ec42bdabc76825991bf40f40b87f25118946d"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/components/ErrorDisplay.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a1fdc386e92f99bf936954898a7056299c6d437a"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/components/LoadingKaomoji.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f16a5dd95e01e2a875bf395318b1d9e989109819"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/components/LyricsPicker.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "04c954195cb02a5cc6ba0367143d8dbd32cfbc6b"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/components/NotFoundKaomoji.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "177a1e7a3048aae96d781a0bfd197540fd1feaa5"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/components/PlainLyrics.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5c792400c5b4e1a0a5fa3ca4a4fbc68f6ccae9dc"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/components/SyncedLine.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5bdf3d9c24d41fb84290a2d69b8db27bdf443e4f"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/components/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "af966d3ba443fbcdfcceb61a732f7c6085d90242"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b6d43a4725041476c702ab3364d8e33b53979abe"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/reactive-root.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4da6f4c1ebcaa99f53ba54640d7caf162acdb795"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/renderer.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0b3689b0f7533e299e6c51f52c6488c89668dd16"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/scroll-motion.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a6a536f46dd083bfee85467433670f5f171930b0"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/store.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "529e1f6b069076f37e8f698ec8450912a687323e"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/utils.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "480edeb5683debad0844d524c23706c55636b1a4"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/renderer/word-timing.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2e38e8bac9b37a00e62953ca97dad908b4f3453f"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dcb775ccadd78ac2208cdb1a8be283a888377094"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/tools.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8e44d9bc12bf41861d1f00a4e69b2fece4c71c00"
+    },
+    {
+      "path": "src/plugins/synced-lyrics/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "92480f9a83db57723a678583ec3dbc8460a14e3d"
+    },
+    {
+      "path": "src/plugins/taskbar-mediacontrol/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "82fd4755a6609947b525c9c64e566de6de175927"
+    },
+    {
+      "path": "src/plugins/taskbar-progress/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e0e91f40c4eba3fecb41daa59eb5a9330bcbbc15"
+    },
+    {
+      "path": "src/plugins/taskbar-progress/linux.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f0ec48a4b81b0b5761f205d650464795a561ee73"
+    },
+    {
+      "path": "src/plugins/taskbar-progress/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5a1ad00bc84ae77f4e8818ac887695de90e20610"
+    },
+    {
+      "path": "src/plugins/toast-autoclose/controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "898fe7c55e8e8faf93b38d64cc49ee7eebdb3412"
+    },
+    {
+      "path": "src/plugins/toast-autoclose/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "74376f4ca7ca1f5660aeff469a4bec24d5e4e195"
+    },
+    {
+      "path": "src/plugins/touchbar/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f80e4aae8a1612a901b518c0f690f4840e57f187"
+    },
+    {
+      "path": "src/plugins/transparent-player/backend.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "41a262f01e8601375ed5f24c486eed5e35edab84"
+    },
+    {
+      "path": "src/plugins/transparent-player/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e593bb857ef0af7a5b367eb285c1bdb071e358d5"
+    },
+    {
+      "path": "src/plugins/transparent-player/menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "caf7f335321435df392cf4c01a6a049bbd8c6ec4"
+    },
+    {
+      "path": "src/plugins/transparent-player/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "064e95932d57335063f3ecd8ed6b2e2cfc20b449"
+    },
+    {
+      "path": "src/plugins/transparent-player/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7446f693b813e97c4d44656392aec0c6f9b86229"
+    },
+    {
+      "path": "src/plugins/tuna-obs/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "63d072df81e9c676710133d1b344c7b94c53abaf"
+    },
+    {
+      "path": "src/plugins/unobtrusive-player/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "eef258cb7fb5ecf971e4d17a795c3be5eaa03a4a"
+    },
+    {
+      "path": "src/plugins/unobtrusive-player/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d462641833b36f3f314b29caeadb929f59eddf69"
+    },
+    {
+      "path": "src/plugins/utils/common/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fcb073fefcd6bebc8afd726f830e66828ebc5e90"
+    },
+    {
+      "path": "src/plugins/utils/common/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ec6b659bef153084e542c658c3dee2d9dfc30994"
+    },
+    {
+      "path": "src/plugins/utils/main/css.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7a2da6e65ae1502928edf8e0e5be04ad217fc231"
+    },
+    {
+      "path": "src/plugins/utils/main/fetch.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b36eaf3d9a009237f6005dd812a4e1a1d3cd2d59"
+    },
+    {
+      "path": "src/plugins/utils/main/fs.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5d406c6b7a1c58540cf1ea58acd70aa24becfb4a"
+    },
+    {
+      "path": "src/plugins/utils/main/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "11c064fb19422648f50841056882e31a6f87f687"
+    },
+    {
+      "path": "src/plugins/utils/main/types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "988b9a72021f2d0e4cf9aa9219dbac486fba1db3"
+    },
+    {
+      "path": "src/plugins/utils/renderer/check.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "563c054bd8f61d1324249215650b6bdc3414514a"
+    },
+    {
+      "path": "src/plugins/utils/renderer/dialog.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b7f7f8a8f808f01a3ba7b293f44936fd5bc846c6"
+    },
+    {
+      "path": "src/plugins/utils/renderer/html.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4f13ced782bee161d9350652bb4b4a8014cc810a"
+    },
+    {
+      "path": "src/plugins/utils/renderer/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f7bfdd142bf98101c014cb98c911dc64256567c5"
+    },
+    {
+      "path": "src/plugins/utils/renderer/playback-filter.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "862bc6356a7eb02000012e85d33021b9c4a9f035"
+    },
+    {
+      "path": "src/plugins/utils/renderer/playback-pitch-owner.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9b8502279c3826e495fa69dc2d4cb25a556e78b0"
+    },
+    {
+      "path": "src/plugins/utils/renderer/playback-rate-owner.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d6bd4e0109f09c1c9fc4618437017e78cdb65fde"
+    },
+    {
+      "path": "src/plugins/utils/renderer/player-panel.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bba545b633be29b10b478d8525a3dc422bd4c826"
+    },
+    {
+      "path": "src/plugins/utils/renderer/player-panel.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8e0f56891d6e57df329633d39ac442378ae99c2e"
+    },
+    {
+      "path": "src/plugins/video-toggle/button-switcher.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7ecf3f041085a98ab40bf82bd6b137de6efdbc2f"
+    },
+    {
+      "path": "src/plugins/video-toggle/force-hide.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "77d61892a6581c69c110717ad5e2eb84af713bbe"
+    },
+    {
+      "path": "src/plugins/video-toggle/index.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6d9b4eaf6af88f4f877ecdbe2a85e75f327d8f6c"
+    },
+    {
+      "path": "src/plugins/video-toggle/templates/video-switch-button.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d03db187a62c11aa5fa8e1c3bf1d0adf52c9d5fe"
+    },
+    {
+      "path": "src/plugins/visualizer/butterchurn.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dfdf6517f2ba96d04bd76506a49dd12d3cb434af"
+    },
+    {
+      "path": "src/plugins/visualizer/empty-player.css",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d7d112d8764de2344c1de294098808c2694d42a8"
+    },
+    {
+      "path": "src/plugins/visualizer/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a1bfd8bcd41be9fda28953fe2e5b7616333fc2dc"
+    },
+    {
+      "path": "src/plugins/visualizer/visualizers/butterchurn.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1f9d257bca53aff8580a40491d7c45696cdcf071"
+    },
+    {
+      "path": "src/plugins/visualizer/visualizers/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2b3deb1b1c2eeea32ab04ca7ab7121a1bd140484"
+    },
+    {
+      "path": "src/plugins/visualizer/visualizers/visualizer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "94ee2420b201a92ac8fdcc2c28dcde69c7e26b18"
+    },
+    {
+      "path": "src/plugins/visualizer/visualizers/vudio.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2c4e34aee830831a313feb48b120faab7ea12f3e"
+    },
+    {
+      "path": "src/plugins/visualizer/visualizers/wave.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c95f38fe00ba01e541e2926cf683d59e00f96886"
+    },
+    {
+      "path": "src/plugins/visualizer/vudio.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "090a8833a6bccec8aeb5b8b09141e223849c7c39"
+    },
+    {
+      "path": "src/preload.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d8f4d522b21cfa62e4d83927ab60c5ba8b6d6598"
+    },
+    {
+      "path": "src/providers/app-controls.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d2abaddf87c577a0f382abb51ac9814a631bfdaf"
+    },
+    {
+      "path": "src/providers/blocker-backend.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "526dae0e8233209de42447a2a59fe862280b831a"
+    },
+    {
+      "path": "src/providers/blocker-documents.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8f53e3af0f4541dd35afe71290b1ccb05d486d0f"
+    },
+    {
+      "path": "src/providers/blocker-ownership.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "10a6154c88dab67a142de3017444b66953726dab"
+    },
+    {
+      "path": "src/providers/blocker-player.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "eaa86afcf0f7f4443ffa9a29c50026f383b2d270"
+    },
+    {
+      "path": "src/providers/blocker-preload.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8d3a24cb516e8b38d0a713240efbbe65f9b16138"
+    },
+    {
+      "path": "src/providers/blocker-scene-controller.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c66e81226a10a2f14c42013ff500b7b469fe0f92"
+    },
+    {
+      "path": "src/providers/blocker-scene-main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "794f19eb0901b24b12f3dfc87a897bdf7d886adb"
+    },
+    {
+      "path": "src/providers/blocker-scene-preload.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f0267b595580fc17cfcb947bf87f786bd79c85d0"
+    },
+    {
+      "path": "src/providers/blocker-scene-renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a99656f3935c290ab6cb3cdbb1dc450404dea3a0"
+    },
+    {
+      "path": "src/providers/blocker-scoped-session.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5e78af8f9dfd2ef56418666c37fbc32994d61b47"
+    },
+    {
+      "path": "src/providers/blocker-session.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "53f19df5590dbcad2b3dcd10cde4208b808d0e32"
+    },
+    {
+      "path": "src/providers/decorators.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "98394f77974ee81fde79d675d4585acd92bc1326"
+    },
+    {
+      "path": "src/providers/dom-elements.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "df43f25a044f0843e906d9aa5981161f1ff3ce84"
+    },
+    {
+      "path": "src/providers/extracted-data.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0de24b5604b39f32512fd656ba0af2ea212fcfda"
+    },
+    {
+      "path": "src/providers/legacy-clock-renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9e586c7ba0274cf7c344c19dcb24baea869b7d2b"
+    },
+    {
+      "path": "src/providers/mcp-notices-window.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4e703456771e20abb59d7e6c462146baac62860c"
+    },
+    {
+      "path": "src/providers/mcp-notices.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0b346778c0f9a415abb8f90b0f2caefa6363d79a"
+    },
+    {
+      "path": "src/providers/music-actions.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "37e87a9227a9dc21f5367a71dd6399246457eed4"
+    },
+    {
+      "path": "src/providers/music-catalog.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cba44fdeb2b5584e968585c3286bb96d384bf539"
+    },
+    {
+      "path": "src/providers/music-comments.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8df7a09cb770c26f42465b0580032fad6233b2ac"
+    },
+    {
+      "path": "src/providers/music-metadata.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3b448e8e428cf02f2ffe72fd2cbd819eeefd2d2b"
+    },
+    {
+      "path": "src/providers/music-navigation.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "84b2278e0ac6bc8a204846a8ccd723245007a5cc"
+    },
+    {
+      "path": "src/providers/music-queue.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "97d74f9f51259af18024aed15bd191ab1ddc6728"
+    },
+    {
+      "path": "src/providers/music-renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "227a2c5839720a0839a93da527da8ed28e1fc718"
+    },
+    {
+      "path": "src/providers/music-request.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a22c59dcb0398645d72afd710716bafd7d7a1371"
+    },
+    {
+      "path": "src/providers/playback-owner.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2355c6506ce4af7f82f50b629fbee6eff024b12e"
+    },
+    {
+      "path": "src/providers/prompt-options.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5296a77ca9bf366ab49884ba10d9ced96e344d9f"
+    },
+    {
+      "path": "src/providers/protocol-handler.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "655f4e820a5578b624ae8c8a458bbee83a3a85b8"
+    },
+    {
+      "path": "src/providers/queue-playlist-renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fb16d4a5e72716d25bc5e8a2e4464750137869be"
+    },
+    {
+      "path": "src/providers/queue-playlist-request.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d21b00b9e11eb6d47d6af09c56e9f2fe8a58832e"
+    },
+    {
+      "path": "src/providers/queue-playlist.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a29d585beb61b3befddd8e6068403ecec023dd8e"
+    },
+    {
+      "path": "src/providers/renderer-audio.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "54b84b84dd76ba4735ba622a18e406f575381bbc"
+    },
+    {
+      "path": "src/providers/repeat-preference.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4557c6b365f6f4f36bd6b330daab724e80c36e43"
+    },
+    {
+      "path": "src/providers/share-links.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3fb810b3288383102a74d59cbae8131dca7a3aad"
+    },
+    {
+      "path": "src/providers/song-controls.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fe17a5c1a34271aa385dc2f299b84ae68335b585"
+    },
+    {
+      "path": "src/providers/song-info-front.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2d609b765f987e62c82bb2b95f1b11f109d582ce"
+    },
+    {
+      "path": "src/providers/song-info.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c2ddff2e5b4a22c0679198518025343adad08016"
+    },
+    {
+      "path": "src/providers/window-visibility.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f9b1f3463cf89800c9b5c498199ff5219e4b265b"
+    },
+    {
+      "path": "src/renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "68199d34a46f8f22cd203b6a9d278b88ea61b90d"
+    },
+    {
+      "path": "src/reset.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "46d24e7e41fe3736d670e2b4eac3b9581e703ad3"
+    },
+    {
+      "path": "src/solit.tsx",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bcfaf398f248dfb22bdf2f11418e1319d9bbcbe3"
+    },
+    {
+      "path": "src/tray.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f25c139d3392a97b4c41f39c275f810162f08187"
+    },
+    {
+      "path": "src/ts-declarations/kuroshiro-analyzer-kuromoji.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "36e19c6fffe87c2a2b900c4406278d0ac6adcfe3"
+    },
+    {
+      "path": "src/ts-declarations/kuroshiro.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "49507a328ad41fa2d29fc5ad6176f6553c99758b"
+    },
+    {
+      "path": "src/types/blocker-scene.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "075c4b18b346ade0c747287ceeb178639b00fa08"
+    },
+    {
+      "path": "src/types/contexts.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2fd0e8d41f4f8314679f55ce630e91d1ea455e4d"
+    },
+    {
+      "path": "src/types/datahost-get-state.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "791c2299b99a272a0213bd15071cc1a2ad519ebb"
+    },
+    {
+      "path": "src/types/get-player-response.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "522414ca89cf15c8c4116eb3b7dd8e45848c14e7"
+    },
+    {
+      "path": "src/types/icons.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "38288b37df767421e34b4114ca1bd35ee9f00628"
+    },
+    {
+      "path": "src/types/media-icons.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2617ee3f01cc5d8ef81f5275aa592cd47eeeed25"
+    },
+    {
+      "path": "src/types/music-player-app-element.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d967832b4189fd46807a9e4649e90f7f1ae5f354"
+    },
+    {
+      "path": "src/types/music-player-desktop-internal.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c46093b01eb3b4b8a7d06f33b825fc5d7ff979e6"
+    },
+    {
+      "path": "src/types/music-player.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "aca5e01270ce2c4fc4e7d2c6bd08ef06b10bbc7b"
+    },
+    {
+      "path": "src/types/player-api-events.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b228d22e19861d72b3174fce91bd42b4493e68a9"
+    },
+    {
+      "path": "src/types/plugins.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "608a55d6557cae888e81d0a947f9d8bb828f3a56"
+    },
+    {
+      "path": "src/types/queue.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "67c9f8f657c9246daec5e76e4c0ae3595f200fbc"
+    },
+    {
+      "path": "src/types/search-box-element.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6fd3318efebcf5e409bbbd6ee8ab1c64529586d7"
+    },
+    {
+      "path": "src/types/video-data-changed.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dcdc1c3e5d6a205f053c7a1a95c6a4b267d00978"
+    },
+    {
+      "path": "src/types/video-details.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "97ab3fc3fb3100614525e0f11c8be70db567d017"
+    },
+    {
+      "path": "src/utils/custom-element.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fd3a5cf1d4ac590de64cb9770da460af978343f8"
+    },
+    {
+      "path": "src/utils/global-shortcut-owner.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8351c7ed62b6491d0b018e821adb55bab9b11ff8"
+    },
+    {
+      "path": "src/utils/index.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dc0fba451a2d984829f347455077eaeda170b6d7"
+    },
+    {
+      "path": "src/utils/share-url.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5e5d475d6c974734249e5335234ed4e2626f2490"
+    },
+    {
+      "path": "src/utils/shuffle-action-owner.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "520a394ff2fa722879465714208f026636b18f2d"
+    },
+    {
+      "path": "src/utils/testing.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2d997dad1a1936f70232a92878175d1ecd4232dd"
+    },
+    {
+      "path": "src/utils/trusted-types.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2f4a148da1e26fde6577990ee7fe723d2e10267d"
+    },
+    {
+      "path": "src/utils/type-utils.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "36f281b488fe30a32401df6f8b097358cc6af3d7"
+    },
+    {
+      "path": "src/utils/wait-for-element.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3f84d4c77fc96a85d62920eee3f3f344304876b6"
+    },
+    {
+      "path": "src/virtual-module.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fcd6f71e429983e982766bb0570a5cc284ef8158"
+    },
+    {
+      "path": "src/yt-web-components.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "37bc24284c0747056c3d6b31e9d4cf71b54c5de5"
+    },
+    {
+      "path": "tests/adblocker-cosmetics.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d1cfa16ccedc59e630b030d62cf1bb7a2b9083f0"
+    },
+    {
+      "path": "tests/adblocker-document-race.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "24a35a922850bff40681c9d37dfd763f10e65071"
+    },
+    {
+      "path": "tests/adblocker-paused-seek.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ad24b7306e9983e499524a622a0a577388f032fb"
+    },
+    {
+      "path": "tests/adblocker-playback-cancellation.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fca3c81e49f75c11b1fdbf1390bf9386d84d3840"
+    },
+    {
+      "path": "tests/adblocker-playback-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "32e36ab4820a514e1dc86786f1a6a538cd911217"
+    },
+    {
+      "path": "tests/adblocker-playback-semantic-settle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4d5d70aae5fa44ab94f0b601e512a658b2786829"
+    },
+    {
+      "path": "tests/adblocker-playback.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "55f10992eef423961d7772b59c0c76b49524b6f3"
+    },
+    {
+      "path": "tests/adblocker-scene-ipc.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fb1c9f59ad48e488faeeddbf82b0f3064ee5d4e9"
+    },
+    {
+      "path": "tests/adblocker-session.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6d0006560436238c9d57748ae21faab976b5affd"
+    },
+    {
+      "path": "tests/adblocker.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5133c54d4d3209f21a0cbd315028d96258adaf8d"
+    },
+    {
+      "path": "tests/ambient-canvas.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d84792ecfbe72d57572b161ea3801ad1251aa06f"
+    },
+    {
+      "path": "tests/ambient-owned-renderer.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5b5ea542bde1f60da6b0f2150a60ce10928ca01b"
+    },
+    {
+      "path": "tests/ambient-start-cancellation.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8c6d0e0e988ad73a3bbf892af1b0ee5b97f10245"
+    },
+    {
+      "path": "tests/api-legacy-clock-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bb7ce7de8b9215e1cfa00c89e30eb2ddd5e3e3a8"
+    },
+    {
+      "path": "tests/api-legacy-clock.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9395f5b7d08f53d5f8f6c865897890eb47edee26"
+    },
+    {
+      "path": "tests/api-mcp-json-cleanup.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6c4bffa5cc684a0e2e4f73d5c88f1694e670d380"
+    },
+    {
+      "path": "tests/api-mcp-mutations.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5d7dff8a1d57f2cdd8ccd689b3919940ea3eda45"
+    },
+    {
+      "path": "tests/api-mcp-sdk-security.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1eb1bb181288bf63ca7ba7b496b6b70cbeefa186"
+    },
+    {
+      "path": "tests/api-mcp-tools.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "698a1a2819c19133c91b5a307f56daa03763575d"
+    },
+    {
+      "path": "tests/api-mcp-transport.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "192591623f84d39cd195d6ee538de2113eaf6d46"
+    },
+    {
+      "path": "tests/api-music-access-reads.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4bac22bb5d3d329a3c0a30cfc72a7d41e581afda"
+    },
+    {
+      "path": "tests/api-music-access-receipts.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a2eace7426a07b5f7634793cfca471431b3f8116"
+    },
+    {
+      "path": "tests/api-music-access.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9f7f1a222c3871ff7ed39e6c0b4d095e6cd845c1"
+    },
+    {
+      "path": "tests/api-music-actions-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5b40a3cf49457acc975d8b83ca95250240adece7"
+    },
+    {
+      "path": "tests/api-music-actions.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6d1785657b2f862ea63c1120940718e654071f91"
+    },
+    {
+      "path": "tests/api-music-catalog.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e38aa363b457227e2d06495abfd8f707bc79ab7c"
+    },
+    {
+      "path": "tests/api-music-collections-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f308524f83c818c8460408659cd4ed5239fee726"
+    },
+    {
+      "path": "tests/api-music-collections.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6501a13398b907aa06d2dac12da42909565c4ff6"
+    },
+    {
+      "path": "tests/api-music-comments-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "af9dc578a1c386bb2e8cbbc0e5357e3e9cc00b69"
+    },
+    {
+      "path": "tests/api-music-comments.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7aaec92ed54e411a519ca56dff2cb04a8dcb688a"
+    },
+    {
+      "path": "tests/api-music-grant-lifetime.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "46247ecd994cca4c20422a806356f030e6742253"
+    },
+    {
+      "path": "tests/api-music-grants.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c4a537073bfa8e7d4df0e11ba7b2a7c36c5d1412"
+    },
+    {
+      "path": "tests/api-music-http-availability.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b0a9f1d891d3e770c6a950c86238de0f7deab900"
+    },
+    {
+      "path": "tests/api-music-http-listener.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0ad9dee7c342594aff36a0b859ff7b1af9a90eeb"
+    },
+    {
+      "path": "tests/api-music-http-policy.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3c7adb453cdd519bb508558e9e62ae558c705da6"
+    },
+    {
+      "path": "tests/api-music-http.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b73cf2c77277fd781705274ffb6b1667ef6252a6"
+    },
+    {
+      "path": "tests/api-music-mcp-budget.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f3d6d5fe9d9abaf935fbc6604b6b81ad3cb72b3b"
+    },
+    {
+      "path": "tests/api-music-menu-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "eb3ae186b3abef294954bc4e54bb4e645927955e"
+    },
+    {
+      "path": "tests/api-music-menu.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0520c28a07b85de25c3ffc6781422b2816825ecb"
+    },
+    {
+      "path": "tests/api-music-metadata-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c81abb272db54bf1cf3c1c6ddb6b65c760f00299"
+    },
+    {
+      "path": "tests/api-music-metadata.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a21a3b3ed3db7ca04ad74738932a31a7ac8a9a93"
+    },
+    {
+      "path": "tests/api-music-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8a9bc61ac691cfa621180f11a952f715d4004381"
+    },
+    {
+      "path": "tests/api-music-navigation-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3b64bd31f5b7e976a89a4e2ccc283b86e1009e3f"
+    },
+    {
+      "path": "tests/api-music-navigation.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "50e23589c38ccba57c6ad66fd15969650b58c83f"
+    },
+    {
+      "path": "tests/api-music-queue-actions-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4a2be71c2d93205abba2fc9156913b2236d63e4c"
+    },
+    {
+      "path": "tests/api-music-queue-actions.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3ba9e1456b87aa9bce54e317b9911b4857173bed"
+    },
+    {
+      "path": "tests/api-music-queue-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ad817382ffc1bc34066a19d74b5c48442b756e6e"
+    },
+    {
+      "path": "tests/api-music-queue.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ee844de94129ab3908904ddd7836289e496491bc"
+    },
+    {
+      "path": "tests/api-music-remote-http.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c7a5f350648d174d444f8cb015e623863ae53bb2"
+    },
+    {
+      "path": "tests/api-music-renderer.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "713b9dcffd4a40c247c0c95c98b1b289d033d292"
+    },
+    {
+      "path": "tests/api-music-request.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "671efaefde0dcaf18365d84f648e9611d8543fc9"
+    },
+    {
+      "path": "tests/api-music-scheme.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e3e149df68288c49e8eb7aa13aa3b88db449c4b1"
+    },
+    {
+      "path": "tests/api-music-service.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "62f18eb1668c561f6a003661728923773627908a"
+    },
+    {
+      "path": "tests/api-repeat-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2d97b19341f4ff5ba1119dabd60ed4082ec25e26"
+    },
+    {
+      "path": "tests/api-server-config.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "18800fe14baf04806057d634055f78089dcaa41c"
+    },
+    {
+      "path": "tests/api-song-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8c40afae7b2030a961c02ec7871644487dc746cb"
+    },
+    {
+      "path": "tests/api-volume-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d429de13855dfd5d04b2e5ed71a864604f4b0661"
+    },
+    {
+      "path": "tests/api-volume-write.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c6386ef6676fda20d9ac322361bdf19499068e13"
+    },
+    {
+      "path": "tests/audio-compressor-native-oracle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "42c20f4e1d599c900039f96ce4a8c93c33f40598"
+    },
+    {
+      "path": "tests/audio-compressor-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "923e131109671cf36ed233edf78ada5ad1f98f84"
+    },
+    {
+      "path": "tests/audio-compressor.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b4cd8e40319b5b01b2bd5434cb9f6015d8c84c4d"
+    },
+    {
+      "path": "tests/auto-acknowledge.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "029da0c332bb451511aeaecacd8c9a47abf3e56d"
+    },
+    {
+      "path": "tests/blocklist-menu.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "dd44ea8ede6ed595300569f6ad21b64b9a28278b"
+    },
+    {
+      "path": "tests/bypass-age-restrictions.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "21abfe94f1c9d1f0285c5085678fe9c00f3fd448"
+    },
+    {
+      "path": "tests/compact-sidebar.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "358989da887e872d49705eb4bb160071e51a4b49"
+    },
+    {
+      "path": "tests/crossfade-routing.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "59d2b1be9e5a51c496e804d91de066e1d87dac00"
+    },
+    {
+      "path": "tests/crossfade-speed-cancellation.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "125447001b6e76756fa1ba96c6af48584962c74d"
+    },
+    {
+      "path": "tests/deferred-pinyin.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7866d68dfaef135611264abc7c7813cd24ae6cd8"
+    },
+    {
+      "path": "tests/discord-artist-artwork.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cf22762d569539eafc359935e73e238c0d938b1a"
+    },
+    {
+      "path": "tests/downloader-audio-upgrade.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "02634b4c018daac4046c156397a96b740f332131"
+    },
+    {
+      "path": "tests/downloader-background-errors.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0f2b91efd9c0058caeac03350a7806bd48bedace"
+    },
+    {
+      "path": "tests/downloader-config-roundtrip.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "44d20549eed9d1286df0a399c36d6f5f93da2a02"
+    },
+    {
+      "path": "tests/downloader-ffmpeg-disposal.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "607be87c4d032aac1f3acbb396d6d85ce0a3c935"
+    },
+    {
+      "path": "tests/downloader-ffmpeg-exit-status.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "094d269995819d294260357bb42230efda2b9698"
+    },
+    {
+      "path": "tests/downloader-fixture-policy.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0a0a638ba3cc14327f0551e177e7e912d864ff09"
+    },
+    {
+      "path": "tests/downloader-library-scan-lookup.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0f80438f322409ef9f9ab5e312a04a9702712143"
+    },
+    {
+      "path": "tests/downloader-library.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b0fc6cc91dd796b47315effaf6d758fb9b5f2569"
+    },
+    {
+      "path": "tests/downloader-real-ffmpeg.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d5632528691336f5db496188e23f95b6e638d9c4"
+    },
+    {
+      "path": "tests/downloader-settings.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b1cf55f7961abe637db4aa5cf56bf0d8537cd6b4"
+    },
+    {
+      "path": "tests/downloader-small-fixes.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "994ef234d6f7d65a1ee03a3c916f86108687ee22"
+    },
+    {
+      "path": "tests/downloader-source-formats.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ebe60195b1ed1f0e2c580f689deedf1616dd3925"
+    },
+    {
+      "path": "tests/electron-startup-exit-sequencing.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5d5f56e3596e3764f495441cfaa888541946eea4"
+    },
+    {
+      "path": "tests/electron-startup-observer.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8e35f047f4259e4aeb07ca4f0edd515ca4fb76bb"
+    },
+    {
+      "path": "tests/electron-startup-process.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8c3f0627d972cbc04f88847a3fa00caae6fb391c"
+    },
+    {
+      "path": "tests/electron-startup-protocol-cleanup.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "25d2d0a05d1ca31a8852465064c482ea29f29851"
+    },
+    {
+      "path": "tests/electron-startup-protocol-isolation.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d513b3cfab26b92bef8bd0146af460e44dfc6f00"
+    },
+    {
+      "path": "tests/equalizer-audio.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4c8e375b54ca4f1c38f1e8e5a9f5de60ebd0def8"
+    },
+    {
+      "path": "tests/equalizer-auto-preamp.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "60f59683a0715bcfb9d3ffdb365f4bd638a1006c"
+    },
+    {
+      "path": "tests/equalizer-config.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "894b38581ab4a3800c40eca8db96dc587f554276"
+    },
+    {
+      "path": "tests/equalizer-external-apply.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "02a23a6c3f5b252301a9749bcdab83604c5ae697"
+    },
+    {
+      "path": "tests/equalizer-layout.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c659367cb285e264f3eec627cf063bd2e4c6e518"
+    },
+    {
+      "path": "tests/equalizer-points.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "91e2598e522a781840c39bcdca611161be7bc07b"
+    },
+    {
+      "path": "tests/equalizer-reverb-volume.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a126457703d6d3864442403981d77de98e6a09a1"
+    },
+    {
+      "path": "tests/equalizer-safety.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "34fea4e6b739fd48bd131f9d048878af90d20e96"
+    },
+    {
+      "path": "tests/equalizer-stock-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8036c9503f76df53b30aee3589d968039b11db64"
+    },
+    {
+      "path": "tests/equalizer-stock-presets.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "233cfd559dfe7546bcf4db5ba987a940a5376a13"
+    },
+    {
+      "path": "tests/equalizer-volume.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1b9c5ca4e0af8ebb7da8ff9ccee2f914a48c57fd"
+    },
+    {
+      "path": "tests/filter-playback.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "42d8f46392c3cb43f55bd06c1d75945ab1b16619"
+    },
+    {
+      "path": "tests/filter-review-regressions.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "51f7385843bae59f081a462bdd2045152d3334fa"
+    },
+    {
+      "path": "tests/fixtures/api-music-http-tls/cert.pem",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b76f01e209787965f733cae41c0bc984a014b5f2"
+    },
+    {
+      "path": "tests/fixtures/api-music-http-tls/key.pem",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4240dc926a10dad609b4d3cb019412ed03465a2f"
+    },
+    {
+      "path": "tests/fixtures/equalizer-stock-presets.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "71581a758a593cd55a0472663b451f6e744cf1ab"
+    },
+    {
+      "path": "tests/fixtures/hono-handshake-cleanup.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f62661489375ac3afc342475e2c0070ac2ee3274"
+    },
+    {
+      "path": "tests/force-shuffle-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8538da74c9b04ae6c902333de8a6c5986fc671d9"
+    },
+    {
+      "path": "tests/force-shuffle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4c754b18c2376347bf86cfd7b25d9ce5364c1eff"
+    },
+    {
+      "path": "tests/fullscreen-auto-hide.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "869ba235e71bb110c47e1bc020c62d45835bb836"
+    },
+    {
+      "path": "tests/helpers/api-headless-menu-boundary.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "edc92eb37951104b84dcc4d3d7319d9d3a2595f7"
+    },
+    {
+      "path": "tests/helpers/api-legacy-clock.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2575b83f61f600bef495ff63602103c66852ae03"
+    },
+    {
+      "path": "tests/helpers/api-music-http.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4f1a46bac78980831f704c61956f79d1469527d9"
+    },
+    {
+      "path": "tests/helpers/api-music-menu-lifecycle.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0f395e61cf31afe934ce2f307e5615fefacda8d4"
+    },
+    {
+      "path": "tests/helpers/api-music-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d45330d5ede4da3c1e95e6f929e2552f8d93f294"
+    },
+    {
+      "path": "tests/helpers/api-music-remote-http.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e1035a4884fa6f3fe6097aac759fdd0e8ecf3889"
+    },
+    {
+      "path": "tests/helpers/api-music-renderer.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fc0fa556a060aba2f90799e67a3ef5bc8e5753be"
+    },
+    {
+      "path": "tests/helpers/api-music-request.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1adb0b1a7840995aa4ea1be024998568841e8442"
+    },
+    {
+      "path": "tests/helpers/api-music-service.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e9b2fbe435b25665173959540c3e6fa3e87dff0e"
+    },
+    {
+      "path": "tests/helpers/api-music-source.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5631095cdabbe9c0ae8e2d3119d5691d455dab0c"
+    },
+    {
+      "path": "tests/helpers/compressor-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8be1c4df8747d72187680a7837a30668046e9b7e"
+    },
+    {
+      "path": "tests/helpers/discord-artist-artwork.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5735d05d547a7b39009441957e42a32cdfad95c1"
+    },
+    {
+      "path": "tests/helpers/downloader-config-paths.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c6cdbe43e4b37b806986f8104b039ba68767ed28"
+    },
+    {
+      "path": "tests/helpers/downloader-ffmpeg-disposal.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2d6c0ba67d9eff188b01080e2edeff0a3d55e767"
+    },
+    {
+      "path": "tests/helpers/downloader-ffmpeg-electron-main.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "45d07d3912e9fd4d6eafa162bf1209915e193686"
+    },
+    {
+      "path": "tests/helpers/downloader-fixture-policy.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9ff6a054d14efc8648c22bc6af3ad4aada6efea4"
+    },
+    {
+      "path": "tests/helpers/downloader-real-ffmpeg.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "43923a5bd1af8e69229b6b52b505a07e48878087"
+    },
+    {
+      "path": "tests/helpers/downloader-small-fixture.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1d18d97d19ac716933ec1abc854d2b2117e11646"
+    },
+    {
+      "path": "tests/helpers/electron-startup-observer.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5665c6cd591f5ca5114b8fa509da94a7aa2ff54d"
+    },
+    {
+      "path": "tests/helpers/electron-startup.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ef9bd35d5885e94a6b5d80115f294e28eabc78e1"
+    },
+    {
+      "path": "tests/helpers/equalizer-bundle.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1ff09ca3072390df52182a0cd66f681c888b031e"
+    },
+    {
+      "path": "tests/helpers/equalizer-config-paths.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "48b58045895ce106c5835e306911ae58dd58ba0e"
+    },
+    {
+      "path": "tests/helpers/filter-bundle.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8a56921fe0c1d216cdd08c476aeba254d8f99909"
+    },
+    {
+      "path": "tests/helpers/force-shuffle-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a05356d2bc1323af92e5e5e7ad83aad1cbbbb4bf"
+    },
+    {
+      "path": "tests/helpers/force-shuffle.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3e24c83794311b026e20453c8877ac0dc8eb880b"
+    },
+    {
+      "path": "tests/helpers/i18n-built-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5f30ac61ce59a433d0478f4109f663577445e60a"
+    },
+    {
+      "path": "tests/helpers/i18n-menu-fixture.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7a026168c8dfbeea7c5f687da6f7f661b064ca77"
+    },
+    {
+      "path": "tests/helpers/i18n-source-fragments.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "195f1f2692e8eafb023c414348835a1edaac3174"
+    },
+    {
+      "path": "tests/helpers/lrclib-provider.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "076982c54d7e57e55a5e8e0836aeb274d072b70f"
+    },
+    {
+      "path": "tests/helpers/music-catalog-fixtures.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "256cc5a81b78683d323a0c9288eb6ebd61e2d5cd"
+    },
+    {
+      "path": "tests/helpers/nonstudio-application-menu.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "096921a8870f1737fa985458e7eb5f981b60163c"
+    },
+    {
+      "path": "tests/helpers/playback-pitch-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0ba0f85e1f9ed813f85f43308dbe90e60532974a"
+    },
+    {
+      "path": "tests/helpers/player-actions-fixture.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f55b7edbcecf8a8b343f08d39b0b8abf182fcea5"
+    },
+    {
+      "path": "tests/helpers/playlist-api-fixture.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b56dfbe5a327ee160bd3866cadd4514efc096860"
+    },
+    {
+      "path": "tests/helpers/playlist-provider-source.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ac904d7745c1679bd92c93879b34c159324c4840"
+    },
+    {
+      "path": "tests/helpers/playlist-renderer-fixture.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6d5d60d35d6d1571c61aca678dfe29f62e1cc2cf"
+    },
+    {
+      "path": "tests/helpers/playlist-request-fixture.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d7ae7533176fa25fd5737f3082990b905b3ae9af"
+    },
+    {
+      "path": "tests/helpers/rating-feedback-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "86d16762adc1dcb3fc0897c446131d74fa5a2413"
+    },
+    {
+      "path": "tests/helpers/rating-feedback-source.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6c5cd87a2e3e0a5a93f397f3299753b78b623490"
+    },
+    {
+      "path": "tests/helpers/resume-shuffle.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b5301315509b5e9e70886642006e178721c097d6"
+    },
+    {
+      "path": "tests/helpers/scrobbler-auth-native-diagnostics.node.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5a0a0db5f22b2946722c5808cabe9e596f0c17ca"
+    },
+    {
+      "path": "tests/helpers/scrobbler-auth-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "20f6a6b051abfcbc1c83593d4cb16982df9800d4"
+    },
+    {
+      "path": "tests/helpers/scrobbler-integration-bundle.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3b701460445ec3a45b18dcc9a9d01e451246ea2b"
+    },
+    {
+      "path": "tests/helpers/scrobbler-integration-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1012b01679dac34520dfae155cfd260e290f7f06"
+    },
+    {
+      "path": "tests/helpers/shortcut-rating-native.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4a650a911cc90b0aed7e200afe7e6f4f0a1b66e2"
+    },
+    {
+      "path": "tests/helpers/shortcut-rating-source.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4aaf2d44916a49524626f5d239ab55cce05b06e9"
+    },
+    {
+      "path": "tests/helpers/supervise-ffmpeg.cjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0ba483d6087277b3febfd886db6afa683f7e92cc"
+    },
+    {
+      "path": "tests/helpers/taskbar-progress-source.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ea0668de02ecaeac2f8515e8748108e9053733d3"
+    },
+    {
+      "path": "tests/helpers/video-eye-toggle.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c5c9a07ed3b27005bf6963dc5fdef4ab11281ab8"
+    },
+    {
+      "path": "tests/hono-handshake-cleanup.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bcd944e1c05ce2c86fb57cb1555ee6ab7d09dd68"
+    },
+    {
+      "path": "tests/i18n-built-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6f8eec0d28a322d9608fe2368d73682fde832eac"
+    },
+    {
+      "path": "tests/i18n-importer.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9d9be67491a022c4be177b121a0e611de5819646"
+    },
+    {
+      "path": "tests/i18n-language-controller.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ec3fb1252da1093f231bb5b03b159c349dbf4fe2"
+    },
+    {
+      "path": "tests/i18n-menu-lifetime.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d65f87a56656558ed6a1fb0ededc6c1cda5f06ce"
+    },
+    {
+      "path": "tests/i18n-startup-lifetime.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9dee7b45e08bd3b5eb3cd5c35aef6faeae2b222d"
+    },
+    {
+      "path": "tests/in-app-menu-performance.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "903394b4759cc3b1a7bd84091e998809621a4a85"
+    },
+    {
+      "path": "tests/index.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b77c2b92b8914e0c3967740b7dda38eb6a93c4a8"
+    },
+    {
+      "path": "tests/ipc-subscribe.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fe775ed33a71e55134f7ee5d702efee06cd9aaf5"
+    },
+    {
+      "path": "tests/korean-romanization.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "88620f8208226a03f3b69f82b2201502a976bdde"
+    },
+    {
+      "path": "tests/lrclib-provider.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fe3380adcc3c50bbd0e4cc4045a3be456d96b8c8"
+    },
+    {
+      "path": "tests/lyrics-export-backend.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a6fc4fb5a295a3c15916f251a424eedfd617b1e3"
+    },
+    {
+      "path": "tests/lyrics-request-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6b63bec8f0ff2f8154cd03f1594521496e898903"
+    },
+    {
+      "path": "tests/lyrics-romanization-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e1eab3c22d72aac584308805c59db6dda2090f6b"
+    },
+    {
+      "path": "tests/lyrics-scroll-motion.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "909fa7ffcc5b40dabe064ec792dcedba42d33357"
+    },
+    {
+      "path": "tests/lyrics-tools-menu.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "82641c9bc227f3391d39eb783edca9b474816bff"
+    },
+    {
+      "path": "tests/lyrics-tools.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f743b2b885735d77914b99344295f450529d6303"
+    },
+    {
+      "path": "tests/lyrics-word-parser.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "969391ed77482605acfd4f3c89eddb33701f9253"
+    },
+    {
+      "path": "tests/lyrics-word-rendering.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "226a24873eb32fd7b4c0b45a38483c67e9168b91"
+    },
+    {
+      "path": "tests/mcp-notices-window.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2393589098cc393edc21d5c74407cda7e69744ed"
+    },
+    {
+      "path": "tests/musixmatch-provider.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a5e9884235729ce75191913b36738fb89ddceb3c"
+    },
+    {
+      "path": "tests/navigation-gestures.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3c9494867d4ae02952ff58b5e1083d23814c058a"
+    },
+    {
+      "path": "tests/navigation-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "11af44ba22622cf637c5edb4e880d8b2db15b31f"
+    },
+    {
+      "path": "tests/netease-provider.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e8b6a9a29796041b853b981f7f3a8487a886717c"
+    },
+    {
+      "path": "tests/no-google-login.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "be2cba0336a69c7add9712fa053150b0b62789c1"
+    },
+    {
+      "path": "tests/nonstudio-application-menu.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "40d6b9114cde5bc968260d6bc3a9598b7deaca16"
+    },
+    {
+      "path": "tests/nonstudio-categories.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "49ebbbdbd05c96a688e2d8be8d8ab774789dab51"
+    },
+    {
+      "path": "tests/nonstudio-menu.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1449e56bb5200aa59d034b9cdf392fc5b5093eff"
+    },
+    {
+      "path": "tests/output-device-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c910770f38e0f52851642e9fa75abf4ae67b25eb"
+    },
+    {
+      "path": "tests/playback-pitch-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "5a348f24da83c138704f00ba21d7f8f5eb4173a5"
+    },
+    {
+      "path": "tests/playback-pitch-policy.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7a1d5b7baee352e6494c886191114344a5fbd65c"
+    },
+    {
+      "path": "tests/playback-speed-shortcuts.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "48107590a9732e657713667af94723dfece9f73c"
+    },
+    {
+      "path": "tests/playback-speed-slider.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "630076d660f7b81095014f91b502ee35968ebc37"
+    },
+    {
+      "path": "tests/player-actions-ambient.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "09f95fdb37f0873ee4a02cc3ad88dba056bd8f7d"
+    },
+    {
+      "path": "tests/player-actions-audio.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7a65f29d3ec0955cfa9e8e459fda09a4e262de27"
+    },
+    {
+      "path": "tests/player-actions-engagement.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1fc4042fed3e4b8eeabcf1d09b89a82d4e4b9d02"
+    },
+    {
+      "path": "tests/player-actions-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b712765f84c098d6267d1c4e20c84e111ae8e0d7"
+    },
+    {
+      "path": "tests/player-actions-panel.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8d445c4e3031ed19a98cb7b576ff59678ed0ef36"
+    },
+    {
+      "path": "tests/player-actions-range.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "93794e642b6a55fc8b7f8fbee503458a771dc1fe"
+    },
+    {
+      "path": "tests/player-actions-rate.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d297f215b898a7325dbbfc3d9a6a60f7dc681bb4"
+    },
+    {
+      "path": "tests/player-actions-reverb-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e2c8decca862e62cb57d5cb2b3cebb1a1b7f6a63"
+    },
+    {
+      "path": "tests/player-actions-reverb-tone.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c872d58839d3014701ed023e989dde44c543a42a"
+    },
+    {
+      "path": "tests/player-actions-saved.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "eb9fe35471837d2aded9fb43645c49366b86a907"
+    },
+    {
+      "path": "tests/player-actions-section-controller.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1d9ed45e71a0c3eb33f52f96ed98ae053f4bf9a8"
+    },
+    {
+      "path": "tests/playlist-queue-api.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2776a92e3efa0a1ca6f6a4337c97bee1f7ce050d"
+    },
+    {
+      "path": "tests/playlist-queue-entry.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "75c7ac53b25444aabec3a4a91d3b2e3c09fc9c84"
+    },
+    {
+      "path": "tests/playlist-queue-renderer.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cf20c15102e9696013150f135c9eb1be68c5690d"
+    },
+    {
+      "path": "tests/playlist-queue-request.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "792eea91aa760ec3a423db9ced78f4536ad93afa"
+    },
+    {
+      "path": "tests/playlist-queue.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4261e5033757b8ea27e4a3ec466d22b517b59e5b"
+    },
+    {
+      "path": "tests/playlist-search.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cac9da7e63f75f41cedbdf816b0b5ec6fcca5348"
+    },
+    {
+      "path": "tests/plugin-api-ready.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "26f3be6e1707401a753ab8aed16bb50da9dfd6b6"
+    },
+    {
+      "path": "tests/plugin-dialog-escape.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "32873a092bdc37e6bd6c77e5997ffbf084cc3233"
+    },
+    {
+      "path": "tests/popup-controls.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e2d396a49a6f15660f5e85208973d9c72192033c"
+    },
+    {
+      "path": "tests/precise-volume-compat.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fadd4238c93b8d6b65209b04250badd7a3fbabb1"
+    },
+    {
+      "path": "tests/rating-feedback-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1db8d7df78a7bf1fba37f3d0b946b9f74dbfc6c0"
+    },
+    {
+      "path": "tests/rating-feedback.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9b0feffd42cecff9bff522c685625f1bea7c9857"
+    },
+    {
+      "path": "tests/renderer-lifecycle.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "da6ce04e85f0b757b3db972a8b060d8843b0013f"
+    },
+    {
+      "path": "tests/repeat-preference.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "eec30a4e308c411950476baf5aa0679d3f0903b7"
+    },
+    {
+      "path": "tests/resume-shuffle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a31d91389fd48631dc7af475823b92e34cf32951"
+    },
+    {
+      "path": "tests/scrobbler-auth-window-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "a8a8d206c0891792979b5ffb4736b592d48925ce"
+    },
+    {
+      "path": "tests/scrobbler-integration-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c48dc4008e9958ba729992a3aa3fd277469de00a"
+    },
+    {
+      "path": "tests/scrobbler-integration.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "800351889a64c41a41b60f63dfb8a9692b41827f"
+    },
+    {
+      "path": "tests/scrobbler-musicbrainz.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8cd32a792d097e1de6c7dd05b542e69793ebe6a1"
+    },
+    {
+      "path": "tests/scrobbler-regex-filters.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "79492da206306410dfe992146daac32a9a12cd56"
+    },
+    {
+      "path": "tests/scrobbler-ws-auth.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9921e318564392a37d3f5bad4b2d2f69e9d61ed8"
+    },
+    {
+      "path": "tests/scrobbler-ws-client.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "bfc850870a487e424cd39dceb22027edd510e1f4"
+    },
+    {
+      "path": "tests/seek-shortcuts-menu.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "b456f35837ecdfca10c6b557293d65b33bee2c0e"
+    },
+    {
+      "path": "tests/seek-shortcuts.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9431e3360281cd9b878b3d6f07ef80e13f2f8567"
+    },
+    {
+      "path": "tests/share-links.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6de23e6b0aaeb21f8c5aeccdcd798b3eacd8d388"
+    },
+    {
+      "path": "tests/shortcuts-4581.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8878fce3bc972507501300f1b44b4bbe2f83a45b"
+    },
+    {
+      "path": "tests/shortcuts-rating-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "04ba218b9dd8323837b473bf2f88576ff9c01fbf"
+    },
+    {
+      "path": "tests/shortcuts-volume-fixture-contract.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e9caa3419f6fc73fc0e94db223985a4f83900a0c"
+    },
+    {
+      "path": "tests/skip-disliked-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8ebc257c1767964733a3da3e3b4a057a826dc87b"
+    },
+    {
+      "path": "tests/song-info-provenance-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3f54896da0d554176c8f74a63216ffe481a5b158"
+    },
+    {
+      "path": "tests/song-info-provenance.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9bf6c014096fbdfb986a88d1baf2dffedf76c5c7"
+    },
+    {
+      "path": "tests/sponsorblock-lifecycle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9fe47314a140cd8ef44fd05d279d76b02d191391"
+    },
+    {
+      "path": "tests/statusbar-lyrics.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "230a13d15d6ce6b35fabc203c01be5b3ecabf957"
+    },
+    {
+      "path": "tests/synced-lyrics-cache-lru.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8778961c5992ee527982a0829567ef4b710b6bd2"
+    },
+    {
+      "path": "tests/taskbar-progress.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e8b18b44c0be5380517915192827bd72edc8116c"
+    },
+    {
+      "path": "tests/types/api-mcp-read-encoder.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d0b94632d0c96269992bb03e08c0da5283fd3140"
+    },
+    {
+      "path": "tests/types/api-mcp-write-encoder.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "fdb72b7fd7c45c0f1113d5c833ce2bd19f133395"
+    },
+    {
+      "path": "tests/upstream-amuse.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "89b31c3bc7b4f9a25ad72be2af3b8d8909fe6efa"
+    },
+    {
+      "path": "tests/upstream-display-and-keys.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "d78a370d0e040c8fd8cd5edc9343d36be7611429"
+    },
+    {
+      "path": "tests/video-eye-toggle.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3bb652abde380b0d0139109bae180bca5f29199c"
+    },
+    {
+      "path": "tests/visualizer-context-boundary.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e52de315085f8bd5229b7c25c508005d74b702ed"
+    },
+    {
+      "path": "tests/visualizer-owned-lifetime.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c58c05eadb66093e9071496d5838a070419898ab"
+    },
+    {
+      "path": "tests/window-startup-visibility-native.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "6cb95371c3893537b0c8dbbb83417b1b15cb4f3e"
+    },
+    {
+      "path": "tests/window-startup-visibility.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "4df5535c3048978c9f152e0d00c70df8af6708bb"
+    },
+    {
+      "path": "tests/ytmusic-direct-cache.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f480e1ff8c202177b5f1b91160a9e6c9910a8f2c"
+    },
+    {
+      "path": "tests/ytmusic-direct-lyrics.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c84b1363d2c3481866935e0e4f459ecb10b61af9"
+    },
+    {
+      "path": "tests/ytmusic-direct-menu.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "7a302d61286252e84ac8aea3c2cb934ee83f397d"
+    },
+    {
+      "path": "tools/eslint-core-plugin.mjs",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "cedcf7e4a0b3aefbd4362b75b514485c586ae543"
+    },
+    {
+      "path": "tsconfig.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ab6e24fb4ca540572ec4565de34c30a90674e2ca"
+    },
+    {
+      "path": "tsconfig.test.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e3414144b26be11677fe020b91e9f9a6756d4c8e"
+    },
+    {
+      "path": "vite-plugins/i18n-importer.mts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e53ca67f057c19fb45db046f6337c3576253006a"
+    },
+    {
+      "path": "vite-plugins/mcp-notices.mts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "c9f4aa67f0e1313775fbdd26aa7a38a48739e19d"
+    },
+    {
+      "path": "vite-plugins/plugin-importer.mts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "85978aaf9c28306831a2e6db9d632b5d43b039b1"
+    },
+    {
+      "path": "vite-plugins/plugin-loader.mts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e9c3f36e948949e23797cd3c8ae7c6b6cc03123b"
+    },
+    {
+      "path": "web/screenshot.png",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "865090fce7b83681f1f2986c34803ac1bd48fe22"
+    }
+  ],
+  "selected14BytePins": [
+    {
+      "path": "tests/helpers/api-music-remote-http.ts",
+      "sha256": "11c1202bfb75f026a5378ab8eaddd7fc8c733c5048bd3faf38dd4eeb8f48801d",
+      "blob": "e1035a4884fa6f3fe6097aac759fdd0e8ecf3889"
+    },
+    {
+      "path": "tests/api-music-remote-http.test.ts",
+      "sha256": "7739a27521a2440491f9a7bd4e8d639c2114ba769a3e77fa220b2627c57036ae",
+      "blob": "c7a5f350648d174d444f8cb015e623863ae53bb2"
+    },
+    {
+      "path": "tests/helpers/api-music-source.ts",
+      "sha256": "1259cc8bc727e4a03d98313f0c6a2eb7d1d2315b1f66a2eff83345ae8a1ee5a3",
+      "blob": "5631095cdabbe9c0ae8e2d3119d5691d455dab0c"
+    },
+    {
+      "path": "tests/helpers/api-music-request.ts",
+      "sha256": "b2cc911c4a81a27c9c42906a1ddd02060c1a36a32bafed4e1c8cbd175f34e4d7",
+      "blob": "1adb0b1a7840995aa4ea1be024998568841e8442"
+    },
+    {
+      "path": "src/plugins/api-server/menu.ts",
+      "sha256": "d8b5e82a9f965b61c5dbe1d83c3868569e8c3621806da624bef7a3657c0a94d6",
+      "blob": "2c59263285ce3b218c3e24843c52e700865fcc36"
+    },
+    {
+      "path": "src/plugins/api-server/music-menu.ts",
+      "sha256": "38da0f1ca22eb2a254631115893ca093602a126aac22a2c9a9121568f8366ae8",
+      "blob": "4833acbedf06cb0306c46704d54fd03bebcd8c91"
+    },
+    {
+      "path": "src/plugins/api-server/config.ts",
+      "sha256": "0c6ad87228978242c6d06c72185f7e391d268a024adeccafbee21bb5cc3839ad",
+      "blob": "cb3d2bdce7f9c86736e2e20eb820afe5b7f0562f"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-http-policy.ts",
+      "sha256": "2ae9b7f3228a366fb163e3056167a29d902a75ece143e46853e74938fc731c8a",
+      "blob": "613d9a5d62aaad3b668262272d9296645da67345"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-service.ts",
+      "sha256": "b44eba263732657323b1c6fb87b22c7b63b6a5e665c85686421f8ba58b36b0d9",
+      "blob": "c76fbbf72dc89fc3fb0fc85430c1aab970d6cb0b"
+    },
+    {
+      "path": "src/plugins/api-server/backend/music-grant-store.ts",
+      "sha256": "3fcc6349c85bd1ab37a53d3af5b8f9aad59ff4b26589cba19760179dab898a4f",
+      "blob": "29b1927a6d9701edfb87884da1dc31112f258337"
+    },
+    {
+      "path": "src/plugins/api-server/backend/routes/music.ts",
+      "sha256": "82ba835cfb0ed1338ece95f8c69203677f691d1158fbcdc5d7d82e45bf1e9a68",
+      "blob": "466479901dfaaaf96d00907d15a6ac48d6c7861d"
+    },
+    {
+      "path": "src/providers/music-request.ts",
+      "sha256": "2bd091f74f28af88ef46b587b7e8668c13faeb0ee90fe42cb4a3fd0bdfd7b043",
+      "blob": "a22c59dcb0398645d72afd710716bafd7d7a1371"
+    },
+    {
+      "path": "package.json",
+      "sha256": "5abad56df6cb88c0e3f5750db206b66029d1764bcef3472ab8d94f2cdbefa677",
+      "blob": "5b5558afb0645d3aa234eabe92dc1c73fe643e29"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "3ed6dfde1bf9f12bab158c790176223bc275afb27eee8aa377b62f79ea3d745c",
+      "blob": "4f34f2f90c025001d807b9bfbe84367771f506af"
+    }
+  ],
+  "accepted3ScriptPins": [
+    {
+      "path": "scripts/qualify-api-music-nonloopback.cjs",
+      "sha256": "356e72553e52435d332c2ec73309466abaad6f7df278371dbf47a22232843d34"
+    },
+    {
+      "path": "scripts/qualify-api-music-nonloopback.node.cjs",
+      "sha256": "84d79b466ae9a1e5c4a4835727821dc38363dc105c4693c3d67058a215fd612a"
+    },
+    {
+      "path": "scripts/api-music-windows-private-root.cjs",
+      "sha256": "bf2678ce2c026d64af2c171c25c2714f052a416586afed58524651dcc78eb777"
+    }
+  ],
+  "fixtureGitIDsOnly": [
+    {
+      "path": "tests/fixtures/api-music-http-tls/cert.pem",
+      "blob": "b76f01e209787965f733cae41c0bc984a014b5f2",
+      "contentNotRead": true
+    },
+    {
+      "path": "tests/fixtures/api-music-http-tls/key.pem",
+      "blob": "4240dc926a10dad609b4d3cb019412ed03465a2f",
+      "contentNotRead": true
+    }
+  ],
+  "runnerManifestCountPlanned": 946,
+  "exactStaticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
+  "runtimeMeasurements": null
+}
