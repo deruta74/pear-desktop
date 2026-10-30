@@ -53,6 +53,8 @@ interface FixtureState {
   pendingDialogs: { reject: (error: Error) => void }[];
   lastFormat?: { type: string };
   mediaBytes?: number;
+  mediaStatus?: number | string;
+  mediaNetworkError?: boolean;
   mediaData?: Uint8Array;
   publishCalls?: number;
   ffmpegErrors?: { exitCode?: number; message: string }[];
@@ -160,16 +162,16 @@ export const app={getPath:()=>${JSON.stringify(downloads)},setBadgeCount(value){
 export const dialog={showMessageBox:async(_window,options)=>{state.dialogs.push(options);if(state.dialogMode==='defer')return new Promise((_resolve,reject)=>state.pendingDialogs.push({reject}));return {response:0};}};
 export class Notification extends EventEmitter {static isSupported(){return false;}show(){}close(){}}
 export const nativeImage={createFromBuffer:()=>({isEmpty:()=>true,getSize:()=>({width:0,height:0})})};
-export const net={fetch:async(input,init)=>{const url=String(input.url??input);state.network.push({url,init});if(state.networkMode==='defer')return new Promise((_resolve,reject)=>{const signal=init?.signal??input.signal;const abort=()=>reject(new DOMException('Owned request aborted','AbortError'));if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});});if(url.includes('/media?')&&state.rangedMedia){const count=state.network.filter(row=>row.url.includes('/media?')).length-1;if(count===state.rangeFailureAt)throw Error('Owned intermediate range failure');const [start,end]=new URL(url).searchParams.get('range').split('-').map(Number);const bytes=new Uint8Array(Math.min(end,state.sourceLength-1)-start+1);for(let i=0;i<bytes.length;i++)bytes[i]=(start+i)%251;return new Response(bytes);}if(url.includes("/media?")&&state.mediaData)return new Response(state.mediaData);return new Response(new Uint8Array(url.includes('/media?')?(state.mediaBytes??3):1));}};
+export const net={fetch:async(input,init)=>{const url=String(input.url??input);state.network.push({url,init});if(state.networkMode==='defer')return new Promise((_resolve,reject)=>{const signal=init?.signal??input.signal;const abort=()=>reject(new DOMException('Owned request aborted','AbortError'));if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});});if(url.includes('/media?')&&state.mediaNetworkError)throw Error('private-network-token https://private.invalid/signed?token=private-network-token',{cause:Error('private-cookie-sentinel')});if(url.includes('/media?')&&state.mediaStatus!==undefined){const response=new Response('private-body-sentinel',{status:403,statusText:'private-status-text',headers:{'set-cookie':'private-cookie-sentinel','x-private':'private-header-sentinel'}});Object.defineProperties(response,{status:{value:state.mediaStatus},url:{value:'https://private.invalid/signed?token=private-url-sentinel'}});return response;}if(url.includes('/media?')&&state.rangedMedia){const count=state.network.filter(row=>row.url.includes('/media?')).length-1;if(count===state.rangeFailureAt)throw Error('Owned intermediate range failure');const [start,end]=new URL(url).searchParams.get('range').split('-').map(Number);const bytes=new Uint8Array(Math.min(end,state.sourceLength-1)-start+1);for(let i=0;i<bytes.length;i++)bytes[i]=(start+i)%251;return new Response(bytes);}if(url.includes("/media?")&&state.mediaData)return new Response(state.mediaData);return new Response(new Uint8Array(url.includes('/media?')?(state.mediaBytes??3):1));}};
 `;
   const youtube = `
 import {state} from 'electron';
-import {FormatUtils as actualFormatUtils} from 'owned-real-sdk';
+import {FormatUtils as actualFormatUtils, Utils as actualUtils} from 'owned-real-sdk';
 export const FormatUtils={download:(options,...args)=>{state.lastFormat=options;return actualFormatUtils.download(options,...args);}};
 export const Platform={shim:{}};export class UniversalCache{};
 class MusicResponsiveListItem {constructor(id){this.id=id;this.title='Track '+id;this.author={name:'Fixture artist'};}}
 export const YTNodes={MusicResponsiveListItem};
-export const Utils={streamToIterable:async function*(stream){const reader=stream.getReader();try{while(true){const chunk=await reader.read();if(chunk.done)return;yield chunk.value;}}finally{reader.releaseLock();}}};
+export const Utils={InnertubeError:actualUtils.InnertubeError,streamToIterable:async function*(stream){const reader=stream.getReader();try{while(true){const chunk=await reader.read();if(chunk.done)return;yield chunk.value;}}finally{reader.releaseLock();}}};
 const playlist=(page)=>({header:state.album?undefined:{title:{text:'Fixture playlist'}},page:{contents_memo:{get:()=>[null,null,{as:()=>({title:{text:'Fixture album'}})}]}},items:(state.pages[page]??[]).map(id=>new MusicResponsiveListItem(id)),has_continuation:page+1<state.pages.length,getContinuation:async()=>{state.continuations++;return playlist(page+1);}});
 const makeInfo=(id,options,muxed=false)=>{const format={itag:muxed?18:140,mime_type:muxed?'video/mp4; codecs="avc1.42001E, mp4a.40.2"':'audio/mp4; codecs="mp4a.40.2"',has_audio:true,has_video:muxed,is_original:true,bitrate:muxed?3000000:128000,content_length:state.sourceLength===null?undefined:(state.sourceLength??3),decipher:async()=> 'https://fixture.test/media?x=1'};return {basic_info:{id,title:'Track '+id,author:'Fixture artist',duration:30,thumbnail:[{url:'https://fixture.test/cover.png'}]},playability_status:{status:'OK'},streaming_data:{formats:[],adaptive_formats:[format]},actions:{session:{http:{fetch_function:options.fetch}}},cpn:'fixture',page:[{video_details:{is_live:!!state.live}}]};};
 const client=(options,index)=>({options,session:{context:{client:{visitorData:state.visitor?'fixture-visitor':undefined}}},getBasicInfo:async(id,args)=>{state.basicInfoCalls??=[];state.basicInfoCalls.push({id,client:args.client});return makeInfo(id,options,true);},music:{getPlaylist:async()=>playlist(0),getInfo:async(id)=>{state.infoCalls.push({id,cookie:options.cookie,index});if(state.infoMode==='reject')throw Error(state.mediaError);if(state.infoMode==='defer')return new Promise((_resolve,reject)=>state.pendingInfo.push({reject}));const info=makeInfo(id,options);if(state.loginRequired)info.playability_status.status='LOGIN_REQUIRED';return info;}}});
@@ -293,7 +295,7 @@ export const BG={Challenge:{create:async()=>({program:'owned-program',globalName
             };
           if (policy.isMain(id))
             return {
-              code: `import {state as __state} from 'electron';const console={error:(v)=>__state.logs.push(String(v)),warn:(v,...rest)=>__state.logs.push([v,...rest].map(String).join(' ')),trace:(v)=>__state.logs.push(String(v)),info:()=>{},log:()=>{}};\n${code}\nexport {resolvePreset};`,
+              code: `import {state as __state} from 'electron';import {inspect as __inspect} from 'node:util';const console={error:(v)=>__state.logs.push(String(v)),warn:(v,...rest)=>__state.logs.push([v,...rest].map(String).join(' ')),trace:(v)=>__state.logs.push(__inspect(v,{depth:10})),info:()=>{},log:()=>{}};\n${code}\nexport {resolvePreset};`,
               map: null,
             };
           return undefined;
