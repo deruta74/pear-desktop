@@ -1,8 +1,8 @@
 {
   "exactStaticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
-  "observedLocallyUTC": "2026-11-02T09:20:40Z",
-  "head": "8fc592e49cb6d98b5c2d7f0b666917865aaf387c",
-  "tree": "190e276ed48030638ef096ca00f0f4787662b2bf",
+  "observedLocallyUTC": "2026-11-02T15:21:45Z",
+  "head": "c62697f6fde3a7a017b211ff47c28270d3ff6e45",
+  "tree": "29d7bb719d2c1fc0fc8236726610933beeec5485",
   "trackedCount": 990,
   "entries": [
     {
@@ -2415,13 +2415,13 @@
       "path": "src/plugins/downloader/settings.tsx",
       "mode": "100644",
       "type": "blob",
-      "blob": "e681e73db93444c2d7a36cf2400e5fabf3ed1df9"
+      "blob": "28cbf5e5d7b051af1744ba424915a5b7004f2cc5"
     },
     {
       "path": "src/plugins/downloader/style.css",
       "mode": "100644",
       "type": "blob",
-      "blob": "e3d56dc248cf8ce9ab3a13cc306799b1f4b08849"
+      "blob": "04168be96147b3141380c2851b2c76d47be9c88e"
     },
     {
       "path": "src/plugins/downloader/templates/download.tsx",
@@ -2493,7 +2493,7 @@
       "path": "src/plugins/equalizer/style.css",
       "mode": "100644",
       "type": "blob",
-      "blob": "1e9a72f65c50309231586d9b25e6f8ca0a30b013"
+      "blob": "6b417341e2f7e8bd3e5eb0c579ce075ac0b42c93"
     },
     {
       "path": "src/plugins/exponential-volume/index.ts",
@@ -3453,7 +3453,7 @@
       "path": "src/plugins/synced-lyrics/renderer/renderer.tsx",
       "mode": "100644",
       "type": "blob",
-      "blob": "0b3689b0f7533e299e6c51f52c6488c89668dd16"
+      "blob": "f01f950b40a25b11c7cfb9d601d62b280267e0c1"
     },
     {
       "path": "src/plugins/synced-lyrics/renderer/scroll-motion.ts",
@@ -3483,7 +3483,7 @@
       "path": "src/plugins/synced-lyrics/style.css",
       "mode": "100644",
       "type": "blob",
-      "blob": "4f6297f57c998b5bb0be03efd4e43d17adafbf28"
+      "blob": "42ed53e35f07694268425d3595557aee003123e1"
     },
     {
       "path": "src/plugins/synced-lyrics/tools.ts",
