@@ -1,8 +1,8 @@
 {
   "exactStaticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
-  "observedLocallyUTC": "2026-11-02T18:40:00Z",
-  "head": "8a6a64f6b4950e54d6225b557b3417fb3fed6051",
-  "tree": "c70c27ef7ed213a7a3d1c96f42ffc85c2669890e",
+  "observedLocallyUTC": "2026-11-02T20:28:33.989Z",
+  "head": "7f6e09d688ee5338f513caa64fd79eb542f819bc",
+  "tree": "c8687b606a9f3cb300edc07459bc04a5da03ec65",
   "trackedCount": 995,
   "entries": [
     {
@@ -3411,7 +3411,7 @@
       "path": "src/plugins/synced-lyrics/renderer/components/LyricsPicker.tsx",
       "mode": "100644",
       "type": "blob",
-      "blob": "04c954195cb02a5cc6ba0367143d8dbd32cfbc6b"
+      "blob": "ac615346ca0f756967ae66df24d3ed738f98adf4"
     },
     {
       "path": "src/plugins/synced-lyrics/renderer/components/NotFoundKaomoji.tsx",
@@ -3483,7 +3483,7 @@
       "path": "src/plugins/synced-lyrics/style.css",
       "mode": "100644",
       "type": "blob",
-      "blob": "42ed53e35f07694268425d3595557aee003123e1"
+      "blob": "9f1c65fbedd11ab61b850a4d253d7bf0ffad043b"
     },
     {
       "path": "src/plugins/synced-lyrics/tools.ts",

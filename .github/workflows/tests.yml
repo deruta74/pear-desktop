@@ -1,7 +1,7 @@
 # Target route in selected diagnostic carrier: .github/workflows/tests.yml
 # Historical registered ID 376634247 must be freshly resolved by Root.
 # SOURCE PROPOSAL ONLY. Helper/policy exist; unknown tool pins reject.
-# 8a6a64f6b4950e54d6225b557b3417fb3fed6051/995/994 are proposed source references; Root must refresh stable release-source pins.
+# 7f6e09d688ee5338f513caa64fd79eb542f819bc/995/994 are proposed source references; Root must refresh stable release-source pins.
 # Root must select/review/seal the actual carrier and explicitly replace if:false.
 # No Windows/C6 paths. This workflow must not be merged into product.
 name: Proposed current POSIX API qualification r2
@@ -63,7 +63,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         timeout-minutes: 1
         with:
-          ref: 8a6a64f6b4950e54d6225b557b3417fb3fed6051
+          ref: 7f6e09d688ee5338f513caa64fd79eb542f819bc
           path: qualified-source
           persist-credentials: false
           fetch-depth: 1
