@@ -1,9 +1,9 @@
 {
   "exactStaticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
-  "observedLocallyUTC": "2026-11-02T15:21:45Z",
-  "head": "c62697f6fde3a7a017b211ff47c28270d3ff6e45",
-  "tree": "29d7bb719d2c1fc0fc8236726610933beeec5485",
-  "trackedCount": 990,
+  "observedLocallyUTC": "2026-11-02T18:40:00Z",
+  "head": "8a6a64f6b4950e54d6225b557b3417fb3fed6051",
+  "tree": "c70c27ef7ed213a7a3d1c96f42ffc85c2669890e",
+  "trackedCount": 995,
   "entries": [
     {
       "path": ".devcontainer/devcontainer.json",
@@ -1443,7 +1443,7 @@
       "path": "src/i18n/resources/ru.json",
       "mode": "100644",
       "type": "blob",
-      "blob": "316fe5fdf92459c7c22525d8fd8ab5de34b9bfca"
+      "blob": "c51d9d00222a26049ac117cff3185b015fc3a345"
     },
     {
       "path": "src/i18n/resources/sah.json",
@@ -2073,7 +2073,7 @@
       "path": "src/plugins/blocklist/index.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "6ec5525a90d625291a7a761e0f05af7a828c8164"
+      "blob": "274e84f3928e8385497729e553684914c6b9a0c3"
     },
     {
       "path": "src/plugins/blocklist/matching.ts",
@@ -2379,13 +2379,13 @@
       "path": "src/plugins/downloader/library.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "ea256404a5a07dd83f8377d9e095994cdaa1209e"
+      "blob": "33c166aa51bfc777f9f8f2f3f0c3b645ae8961b9"
     },
     {
       "path": "src/plugins/downloader/main/index.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "3b90346c4f7e0277c5e98f3f2e8ecf8bea0b2cdf"
+      "blob": "f96b98a008e71cdaea873ab46e8ce1e327e3f723"
     },
     {
       "path": "src/plugins/downloader/main/initialization.ts",
@@ -2457,7 +2457,7 @@
       "path": "src/plugins/equalizer/index.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "c4909f45bbc1fa7f6d91771c979b1c52f5b64118"
+      "blob": "450c22161748f7b231e584906a9b74b624b0916e"
     },
     {
       "path": "src/plugins/equalizer/panel.ts",
@@ -2937,7 +2937,7 @@
       "path": "src/plugins/playback-speed/menu.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "f4c0d712f562e66e3cc32e7610973d61a1f81cc6"
+      "blob": "eca1a309ea3f278bf0ca6f9fdc6f65c2c8bedf54"
     },
     {
       "path": "src/plugins/playback-speed/renderer.tsx",
@@ -3045,7 +3045,7 @@
       "path": "src/plugins/precise-volume/renderer.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "112f588ebbc6df1aec3d3e01fdef4491ebb42833"
+      "blob": "a02baf97718dfc2ab829d87a93ff45b80bc9532d"
     },
     {
       "path": "src/plugins/precise-volume/volume-hud.css",
@@ -3093,7 +3093,7 @@
       "path": "src/plugins/scrobbler/menu.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "08459e1a5b603f668fb97ca874ea7887e3b0311a"
+      "blob": "d87aae49e0678cdbd9c669f7e0f75b60fbf4f658"
     },
     {
       "path": "src/plugins/scrobbler/services/base.ts",
@@ -3177,7 +3177,7 @@
       "path": "src/plugins/shortcuts/menu.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "f200620dbab8984e310f639496ed10c023c60138"
+      "blob": "c48793aeaa7a703a6121360f53ead01eb121e6ac"
     },
     {
       "path": "src/plugins/shortcuts/mpris.ts",
@@ -3237,7 +3237,7 @@
       "path": "src/plugins/sponsorblock/index.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "6d759939f2bcc9d5dc425f57b5929955dfcf3f9a"
+      "blob": "33e254b69a69c818aee3a5657a7be00f6a61c2fd"
     },
     {
       "path": "src/plugins/sponsorblock/segments.ts",
@@ -4704,6 +4704,18 @@
       "blob": "0a0a638ba3cc14327f0551e177e7e912d864ff09"
     },
     {
+      "path": "tests/downloader-legacy-filename.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "db63502adcb63f694b7eaad70062c9011fb4ee06"
+    },
+    {
+      "path": "tests/downloader-library-publication.test.js",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "e333f43edd1c64e2d5bf4846668629b02e1f5b4a"
+    },
+    {
       "path": "tests/downloader-library-scan-lookup.test.js",
       "mode": "100644",
       "type": "blob",
@@ -4806,6 +4818,12 @@
       "blob": "c659367cb285e264f3eec627cf063bd2e4c6e518"
     },
     {
+      "path": "tests/equalizer-menu.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "54e32868dc43949cfd8cfebeba78dc3728f5334a"
+    },
+    {
       "path": "tests/equalizer-points.test.ts",
       "mode": "100644",
       "type": "blob",
@@ -4836,6 +4854,12 @@
       "blob": "233cfd559dfe7546bcf4db5ba987a940a5376a13"
     },
     {
+      "path": "tests/equalizer-volume-shortcut.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "9abdc63f35cad5e4507cfd2c34585ce05ffe96e8"
+    },
+    {
       "path": "tests/equalizer-volume.test.ts",
       "mode": "100644",
       "type": "blob",
@@ -4851,7 +4875,7 @@
       "path": "tests/filter-review-regressions.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "51f7385843bae59f081a462bdd2045152d3334fa"
+      "blob": "0ed83a3e9d786db6e166867f5a54ef47a070cca6"
     },
     {
       "path": "tests/fixtures/api-music-http-tls/cert.pem",
@@ -5025,7 +5049,7 @@
       "path": "tests/helpers/downloader-small-fixture.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "45e6b499909a3d14db3d727808b66c46d801c13d"
+      "blob": "eeba838f3f15ebdb851f4fefb6955184555668ba"
     },
     {
       "path": "tests/helpers/electron-startup-observer.cjs",
@@ -5487,7 +5511,7 @@
       "path": "tests/playback-speed-shortcuts.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "48107590a9732e657713667af94723dfece9f73c"
+      "blob": "206cb024a5cf042c66c754b8c75ee768468d1f04"
     },
     {
       "path": "tests/playback-speed-slider.test.ts",
@@ -5715,7 +5739,7 @@
       "path": "tests/scrobbler-integration.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "800351889a64c41a41b60f63dfb8a9692b41827f"
+      "blob": "a0ebb6bd107a63da91710cc04d18da266e9a4fa3"
     },
     {
       "path": "tests/scrobbler-musicbrainz.test.ts",
@@ -5763,7 +5787,7 @@
       "path": "tests/shortcuts-4581.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "8878fce3bc972507501300f1b44b4bbe2f83a45b"
+      "blob": "79b03f91e80f7c01c7d121bff74316d4a44bb5a8"
     },
     {
       "path": "tests/shortcuts-rating-native.test.ts",
@@ -5799,7 +5823,13 @@
       "path": "tests/sponsorblock-lifecycle.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "9fe47314a140cd8ef44fd05d279d76b02d191391"
+      "blob": "d6945ba405a17da49de4a1b2c6a9cdb5a15c2853"
+    },
+    {
+      "path": "tests/sponsorblock-song-info-binding.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0b1be8a0a1781d6f7706e1a8e9ac89e898455777"
     },
     {
       "path": "tests/statusbar-lyrics.test.ts",
@@ -6044,6 +6074,6 @@
       "contentNotRead": true
     }
   ],
-  "runnerManifestCountPlanned": 989,
+  "runnerManifestCountPlanned": 994,
   "runtimeMeasurements": null
 }
