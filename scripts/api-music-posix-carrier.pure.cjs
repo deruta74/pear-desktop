@@ -33,7 +33,7 @@ AOveGqUoZt6AFvlBriuHZcxTOJ3AHOvtCiW8vsk3HlF9ciAwCK/0H1s0bQjnHtT+
 04jhQNRNHZZ2gdF2X9zhXfkt
 -----END CERTIFICATE-----
 `);
-function fixture() {
+function fixture(platform = 'linux') {
   const files = new Map(), modes = new Map(), dirs = new Set(['/carrier', '/source', '/runner/temp']);
   const effects = [], calls = [], timers = [];
   const put = (p, b, mode = 0o644) => { files.set(p, Buffer.isBuffer(b) ? b : Buffer.from(b)); modes.set(p, mode); };
@@ -62,6 +62,7 @@ function fixture() {
   put('/carrier/scripts/api-music-posix-carrier.cjs', 'helper'); put('/carrier/.github/workflows/tests.yml', 'workflow');
   put('/tools/node/bin/node', 'node'); put('/tools/pnpm/bin/pnpm.cjs', 'pnpm'); put('/tools/pnpm/package.json', '{"version":"11.28.6"}');
   dirs.add('/tools/pnpm'); dirs.add('/tools/pnpm/bin');
+  const selectedRow = policy.platforms.find((r) => r.platform === platform);
   const env = {GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REPOSITORY: 'deruta74/pear-desktop',
     GITHUB_SHA: C, GITHUB_WORKFLOW_SHA: C, GITHUB_REF: 'refs/heads/qa/api-posix-carrier-source-oct28',
     GITHUB_WORKFLOW_REF: 'deruta74/pear-desktop/.github/workflows/tests.yml@refs/heads/qa/api-posix-carrier-source-oct28',
@@ -69,9 +70,9 @@ function fixture() {
     EXPECTED_REF: 'refs/heads/qa/api-posix-carrier-source-oct28', EXPECTED_REGISTERED_WORKFLOW_ID: '42',
     EXPECTED_WORKFLOW_SHA256: hash(Buffer.from('workflow')), EXPECTED_HELPER_SHA256: hash(Buffer.from('helper')),
     EXPECTED_POLICY_SHA256: hash(files.get('/carrier/scripts/api-music-posix-policy.json')),
-    PEAR_SOURCE_ROOT: '/source', RUNNER_TEMP: '/runner/temp', GITHUB_ENV: '/runner/env', ImageOS: row.imageOS, ImageVersion: row.imageVersion,
+    PEAR_SOURCE_ROOT: '/source', RUNNER_TEMP: '/runner/temp', GITHUB_ENV: '/runner/env', ImageOS: selectedRow.imageOS, ImageVersion: selectedRow.imageVersion,
     PATH: '/untrusted', NODE_OPTIONS: '--import=private', NODE_TLS_REJECT_UNAUTHORIZED: '0', GH_TOKEN: 'private'};
-  const runtime = {platform: 'linux', arch: 'x64', version: 'v24.22.0', execPath: '/tools/node/bin/node', uid: 501, cwd: '/carrier', sourceRoot: '/source'};
+  const runtime = {platform, arch: selectedRow.arch, version: 'v24.22.0', execPath: '/tools/node/bin/node', uid: 501, cwd: '/carrier', sourceRoot: '/source'};
   let plan;
   const io = {path, hash, blob, runtime, qualifier, now: () => 0, signalSource: new EventEmitter(),
     read: async (p, max = Infinity) => { effects.push(['read', p]); if (!files.has(p)) throw Object.assign(Error('missing'), {code: 'ENOENT'}); const b = files.get(p); if (b.length > max) throw Error('FILE_UNPROVEN'); return b; },
@@ -94,7 +95,7 @@ function fixture() {
     },
     api: async (route) => {
       effects.push(['api', route]);
-      if (route.endsWith('/jobs?per_page=100')) return {total_count: 1, jobs: [{id: 91, run_id: 71, run_attempt: 2, head_sha: C, name: 'current-posix-api-linux', status: 'in_progress'}]};
+      if (route.endsWith('/jobs?per_page=100')) return {total_count: 1, jobs: [{id: 91, run_id: 71, run_attempt: 2, head_sha: C, name: 'current-posix-api-' + platform, status: 'in_progress'}]};
       return {id: 71, run_attempt: 2, workflow_id: 42, head_sha: C, repository: {full_name: 'deruta74/pear-desktop'}};
     },
     setTimeout: (fn, ms) => { const t = {fn, ms, active: true}; timers.push(t); return t; }, clearTimeout: (t) => { if (t) t.active = false; },
@@ -274,6 +275,180 @@ test('maximal success and failure artifacts remain compact, allowlisted and with
   }
   console.log(JSON.stringify({maximalSuccessBytes:counts[0],maximalFailureBytes:counts[1],cap:8192}));
 });
+
+// Fixed admitted-host budget calibration: every effect remains in the finite fixture.
+async function until(predicate) {
+  for (let i = 0; i < 25000 && !predicate(); i++) await Promise.resolve();
+  assert.ok(predicate(), 'finite fixture reached the expected boundary');
+}
+function inventoryObserver(f) {
+  const records = []; let active = false;
+  f.io.observeInventory = (line) => { const v = JSON.parse(line); records.push(v); active = v.event === 'BEGIN'; };
+  return {records, active: () => active};
+}
+const hostBudgets = [['linux', 60000, 5000], ['darwin', 120000, 20000]];
+test('admitted fixed inventory budgets share the traversal clock and watchdog without environment overrides', async () => {
+  for (const [platform, ms] of hostBudgets) for (const elapsed of new Set([60000, 60001, ms, ms + 1])) {
+    const f = fixture(platform); await through(f, 'prepare'); const observation = inventoryObserver(f);
+    f.env.PEAR_POSIX_INVENTORY_MS = '999999'; f.env.PEAR_POSIX_REMOVAL_MS = '999999';
+    let sampled = false;
+    f.io.now = () => observation.active() ? (sampled ? elapsed : (sampled = true, 0)) : 0;
+    if (elapsed > ms) await failure(() => api.handle('install', f.io, f.env), 'DEPENDENCY_UNPROVEN');
+    else await api.handle('install', f.io, f.env);
+    assert.equal(f.timers.filter((t) => t.ms === ms).length, platform === 'linux' ? 3 : 1);
+    assert.equal(f.timers.filter((t) => t.ms === 60000).length, platform === 'linux' ? 3 : 2, 'pnpm closure stays at 60s');
+    assert.equal(f.timers.some((t) => t.active), false);
+    assert.equal(observation.records.length, 2);
+    assert.equal(observation.records[1].success, elapsed <= ms);
+    assert.equal(observation.records[1].operation, elapsed <= ms ? 'COMPLETE' : 'CLOCK');
+    assert.equal(observation.records[1].elapsedMs, Math.min(elapsed, ms + 1));
+  }
+});
+test('each admitted inventory watchdog stays finite and late traversal cannot add or revise emitted observations', async () => {
+  for (const [platform, ms] of hostBudgets) {
+    const f = fixture(platform); await through(f, 'prepare'); const observation = inventoryObserver(f);
+    const readdir = f.io.readdir; let complete;
+    f.io.readdir = (p) => observation.active() ? new Promise((resolve) => { complete = () => resolve([]); }) : readdir(p);
+    const pending = api.handle('install', f.io, f.env);
+    await until(() => complete && f.timers.some((t) => t.active && [60000, 120000].includes(t.ms)));
+    const timer = f.timers.find((t) => t.active && [60000, 120000].includes(t.ms)); timer.fn();
+    await failure(() => pending, 'DEPENDENCY_UNPROVEN');
+    assert.equal(timer.ms, ms); assert.equal(timer.active, false);
+    const before = JSON.stringify(observation.records); assert.equal(observation.records.length, 2);
+    assert.equal(observation.records[1].operation, 'WALL_TIMEOUT'); assert.equal(observation.records[1].success, false);
+    complete(); for (let i = 0; i < 100; i++) await Promise.resolve();
+    assert.equal(JSON.stringify(observation.records), before);
+    assert.equal(JSON.parse(f.files.get(f.env.PEAR_POSIX_PRIVATE_ROOT + '/state.json')).failed, true);
+  }
+});
+test('Darwin diagnostic elapsed samples retain their truthful interval and saturate at the fixed upper bound', async () => {
+  for (const [platform, ms] of hostBudgets) {
+    const f = fixture(platform); await through(f, 'prepare'); const observation = inventoryObserver(f); let sampled = false;
+    f.io.now = () => observation.active() ? (sampled ? ms + 5000 : (sampled = true, 0)) : 0;
+    await failure(() => api.handle('install', f.io, f.env), 'DEPENDENCY_UNPROVEN');
+    assert.equal(observation.records[1].elapsedMs, ms + 1);
+    assert.equal(observation.records[1].operation, 'CLOCK');
+    assert.deepEqual(Object.keys(observation.records[1]), ['tag','event','success','operation','root','kind','member','entries','files','bytes','largestFile','elapsedMs']);
+    assert.ok(Buffer.byteLength(JSON.stringify(observation.records[1])) < 1024);
+  }
+});
+test('inventory timer setup and clear errors plus actual I/O rejection preserve fail-closed diagnostics', async () => {
+  for (const [platform] of hostBudgets) for (const fault of ['TIMER_SETUP', 'TIMER_CLEAR', 'READDIR_IO', 'CLOCK_IO']) {
+    const f = fixture(platform); await through(f, 'prepare'); const observation = inventoryObserver(f);
+    const set = f.io.setTimeout, clear = f.io.clearTimeout, readdir = f.io.readdir;
+    f.io.setTimeout = (...args) => { if (observation.active() && fault === 'TIMER_SETUP') throw Error('DEPENDENCY_UNPROVEN'); return set(...args); };
+    f.io.clearTimeout = (...args) => { clear(...args); if (observation.active() && fault === 'TIMER_CLEAR') throw Error('DEPENDENCY_UNPROVEN'); };
+    f.io.readdir = (...args) => { if (observation.active() && fault === 'READDIR_IO') throw Error('DEPENDENCY_UNPROVEN'); return readdir(...args); };
+    f.io.now = () => { if (observation.active() && fault === 'CLOCK_IO') throw Error('DEPENDENCY_UNPROVEN'); return 0; };
+    await failure(() => api.handle('install', f.io, f.env), 'DEPENDENCY_UNPROVEN');
+    assert.equal(observation.records.length, 2); assert.equal(observation.records[1].success, false);
+    assert.equal(observation.records[1].operation, fault);
+    await api.handle('cleanup', f.io, f.env);
+    const result = JSON.parse(f.files.get('/carrier/api-music-posix-safe/result.json'));
+    assert.equal(result.status, 'UNPROVEN'); assert.equal(result.adoptableCells, 0); assert.equal(result.processAbsence, 'UNPROVEN');
+  }
+});
+test('fixed inventory budgets preserve canonical digest, membership and exact resource limits', async () => {
+  for (const [, ms] of hostBudgets) {
+    const f = fixture(); f.dirs.add('/deps'); f.dirs.add('/store'); f.put('/store/a', 'a');
+    const stats = f.io.stat; f.io.stat = (p) => p === '/deps/link' ? {kind:'symlink',size:0} : stats(p);
+    f.io.realpath = async (p) => p === '/deps/link' ? '/store/a' : p;
+    f.io.readdir = async (p) => p === '/deps' ? ['link'] : p === '/store' ? ['a'] : [];
+    const limits = {entries:250000,file:536870912,total:8589934592,ms};
+    const result = await api.measureTree({dependencies:'/deps',store:'/store'}, limits, f.io);
+    assert.deepEqual(result, {entries:2,files:1,bytes:1,sha256:hash(Buffer.from(JSON.stringify([
+      ['dependencies/link','symlink','store/a'],['store/a','file',hash(Buffer.from('a'))]])))});
+    for (const fault of ['foreign', 'canonical', 'names', 'kind', 'file', 'bytes', 'entries', 'length']) {
+      const g = fixture(); g.dirs.add('/deps'); g.dirs.add('/store'); g.put('/store/a', 'a');
+      const stat = g.io.stat, read = g.io.read;
+      g.io.readdir = async (p) => p === '/store' ? (fault === 'names' ? ['../escape'] : fault === 'entries' ? Array(250001).fill('a') : ['a']) : [];
+      g.io.realpath = async (p) => p === '/store/a' && ['foreign','canonical'].includes(fault) ? (fault === 'foreign' ? '/outside/a' : '/store/b') : p;
+      g.io.stat = (p) => p === '/store/a' && ['kind','file','bytes'].includes(fault) ?
+        {kind:fault === 'kind' ? 'other' : 'file',size:fault === 'file' ? 536870913 : 536870912} : stat(p);
+      if (fault === 'bytes') { // A preceding canonical file consumes the exact total; the next byte must reject before reading.
+        g.io.readdir = async (p) => p === '/store' ? Array.from({length:17},(_,i)=>String(i).padStart(2,'0')) : [];
+        g.io.stat = async (p) => p.startsWith('/store/') ? {kind:'file',size:536870912} : stat(p);
+        g.io.read = async (p) => p.startsWith('/store/') ? {length:536870912} : read(p);
+        g.io.hash = (b) => typeof b.length === 'number' && b.length === 536870912 ? 'a'.repeat(64) : hash(b);
+      }
+      if (fault === 'length') g.io.read = async (p, max) => p === '/store/a' ? Buffer.from('') : read(p,max);
+      await failure(() => api.measureTree({dependencies:'/deps',store:'/store'}, limits, g.io), 'DEPENDENCY_UNPROVEN');
+    }
+  }
+});
+test('admitted outer removal uses fixed host deadlines and emits only after completion or rejection', async () => {
+  for (const [platform,, ms] of hostBudgets) for (const fault of ['complete','reject','throw']) {
+    const f = fixture(platform); await through(f, 'qualify'); let settle;
+    if (fault === 'throw') f.io.rm = () => { throw Error('private'); };
+    else f.io.rm = () => new Promise((resolve, reject) => { settle = () => fault === 'complete' ? resolve() : reject(Error('private')); });
+    const pending = api.handle('cleanup', f.io, f.env);
+    if (fault !== 'throw') {
+      await until(() => settle && f.timers.some((t) => t.active));
+      const timer = f.timers.find((t) => t.active); assert.equal(timer.ms, ms);
+      assert.equal(f.files.has('/carrier/api-music-posix-safe/result.json'), false); settle();
+    }
+    await pending;
+    const result = JSON.parse(f.files.get('/carrier/api-music-posix-safe/result.json'));
+    assert.equal(result.cleanup.furtherOuterDeletion, fault === 'complete' ? 'COMPLETED' : 'UNPROVEN');
+    assert.equal(result.adoptableCells, fault === 'complete' ? 2 : 0); assert.equal(result.processAbsence, 'UNPROVEN');
+    assert.equal(f.timers.some((t) => t.active), false);
+  }
+});
+test('admitted outer removal timeout artifacts stay immutable after late resolve or reject', async () => {
+  for (const [platform,, ms] of hostBudgets) for (const outcome of ['resolve','reject']) {
+    const f = fixture(platform); await through(f, 'qualify'); let settle;
+    f.io.rm = () => new Promise((resolve,reject) => { settle = () => outcome === 'resolve' ? resolve() : reject(Error('private')); });
+    const pending = api.handle('cleanup', f.io, f.env);
+    await until(() => settle && f.timers.some((t) => t.active));
+    const timer = f.timers.find((t) => t.active); timer.fn(); await pending; assert.equal(timer.ms, ms);
+    const before = f.files.get('/carrier/api-music-posix-safe/result.json').toString(); const result = JSON.parse(before);
+    assert.equal(result.cleanup.furtherOuterDeletion, 'UNKNOWN_AFTER_TIMEOUT'); assert.equal(result.adoptableCells, 0);
+    settle(); for (let i = 0; i < 100; i++) await Promise.resolve();
+    assert.equal(f.files.get('/carrier/api-music-posix-safe/result.json').toString(), before);
+    assert.equal(timer.active, false); assert.equal(result.processAbsence, 'UNPROVEN');
+  }
+});
+test('outer removal timer setup is unproven and timer clear failure withholds the safe artifact', async () => {
+  for (const [platform,, ms] of hostBudgets) for (const fault of ['setup','clear']) {
+    const f = fixture(platform); await through(f, 'qualify'); const set = f.io.setTimeout, clear = f.io.clearTimeout; let actualMs;
+    f.io.rm = () => new Promise(() => {});
+    f.io.setTimeout = (fn, actual) => { actualMs = actual; if (fault === 'setup') throw Error('timer setup'); return set(fn,actual); };
+    f.io.clearTimeout = (timer) => { clear(timer); if (fault === 'clear') throw Error('timer clear'); };
+    const pending = api.handle('cleanup', f.io, f.env);
+    if (fault === 'setup') {
+      await pending; assert.equal(actualMs,ms); const result = JSON.parse(f.files.get('/carrier/api-music-posix-safe/result.json'));
+      assert.equal(result.cleanup.furtherOuterDeletion,'UNPROVEN'); assert.equal(result.adoptableCells,0);
+    } else {
+      await until(() => f.timers.some((t) => t.active));
+      const timer = f.timers.find((t) => t.active); assert.equal(timer.ms,ms); timer.fn();
+      await assert.rejects(() => pending, /timer clear/); assert.equal(f.files.has('/carrier/api-music-posix-safe/result.json'),false);
+    }
+  }
+});
+test('both finite inventory budgets keep the exact reserved project reference exception', async () => {
+  for (const [,ms] of hostBudgets) for (const fault of ['none','foreign','kind','nearby']) {
+    const f = fixture(), sourceRoot = '/qualified-source'; f.dirs.add('/deps'); f.dirs.add('/store');
+    const reference = '/store/v11/projects/' + hash(Buffer.from(sourceRoot)).slice(0,32);
+    const file = fault === 'nearby' ? reference + 'x' : reference;
+    f.io.readdir = async (p) => p === '/store' ? ['v11'] : p === '/store/v11' ? ['projects'] : p === '/store/v11/projects' ? [path.basename(file)] : [];
+    f.io.stat = async (p) => ({kind:p === file ? (fault === 'kind' ? 'file' : 'symlink') : 'directory',size:0});
+    f.io.realpath = async (p) => p === file ? (fault === 'foreign' ? '/foreign/source' : sourceRoot) : p;
+    const measure = () => api.measureTree({dependencies:'/deps',store:'/store'},{entries:250000,file:536870912,total:8589934592,ms},f.io,{sourceRoot});
+    if (fault === 'none') {
+      const result = await measure(); assert.equal(result.entries,3); assert.equal(result.files,0); assert.equal(result.bytes,0);
+      assert.equal(result.sha256,hash(Buffer.from(JSON.stringify([['store/v11/projects/' + path.basename(reference),'project-reference','qualified-source']]))));
+    } else await failure(measure,'DEPENDENCY_UNPROVEN');
+  }
+});
+test('Darwin cleanup retains active and hold withholding without invoking removal', async () => {
+  for (const gate of ['active','hold']) {
+    const f = fixture('darwin'); await through(f, 'install'); const p = f.env.PEAR_POSIX_PRIVATE_ROOT + '/state.json';
+    const state = JSON.parse(f.files.get(p)); state[gate] = gate === 'active' ? 'qualifier' : true; f.put(p, JSON.stringify(state),0o600);
+    await api.handle('cleanup', f.io, f.env); const result = JSON.parse(f.files.get('/carrier/api-music-posix-safe/result.json'));
+    assert.equal(f.effects.some((r) => r[0] === 'rm'), false); assert.equal(result.cleanup.furtherOuterDeletion,'WITHHELD'); assert.equal(result.adoptableCells,0);
+  }
+});
+
 (async () => {
   let passed = 0;
   for (const [name, fn] of tests) { try { await fn(); passed++; console.log('PASS ' + name); } catch (e) { console.log('FAIL ' + name + ': ' + e.message); } }

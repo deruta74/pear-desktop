@@ -768,6 +768,8 @@ const CERT = '597b4509e1ad0c12b69402bc0cff55bcb3f28603dea13a36623eb38891d109a3';
 const LEAF = 'fb6e906aa7015cfe4194ac90bd771a3b4f4d2eecef8ba4614b079a59138f35b1';
 const SOURCE_LIMIT = 16 * 1024 * 1024;
 const DEPENDENCY_LIMITS = {entries: 250000, file: 512 * 1024 * 1024, total: 8 * 1024 ** 3, ms: 60000};
+// Selected only from the already admitted row; no environment or workflow override.
+const PLATFORM_BUDGETS = {linux:{inventoryMs:60000,removalMs:5000},darwin:{inventoryMs:120000,removalMs:20000}};
 const number = (v) => Number.isSafeInteger(v) && v > 0;
 const absolute = (v) => typeof v === 'string' && v.startsWith('/') && v.length <= 1024 && !/[\x00-\x1f]/.test(v);
 const inside = (root, p) => p === root || p.startsWith(root + '/');
@@ -809,7 +811,7 @@ function formatInventoryObservation(event, probe, success) {
     operation:member(probe.operation,['START','COMPLETE','CLOCK','CLOCK_IO','STAT_IO','REALPATH_IO','ROOT_MEMBERSHIP','CANONICAL_MATCH','READDIR_IO','DIRECTORY_NAMES',
       'ENTRY_LIMIT','NODE_KIND','FILE_SIZE','TOTAL_BYTES','READ_IO','READ_LENGTH','DIGEST_IO','WALL_TIMEOUT','TIMER_SETUP','TIMER_CLEAR']),
     root:member(probe.root,['DEPENDENCIES','STORE']),kind:member(probe.kind,['file','directory','symlink','other']),member:typeof probe.member==='boolean'?probe.member:null,
-    entries:count(probe.entries,250001),files:count(probe.files,250000),bytes:count(probe.bytes,8589934592),largestFile:count(probe.largestFile,536870913),elapsedMs:count(probe.elapsedMs,60001)})+'\n';
+    entries:count(probe.entries,250001),files:count(probe.files,250000),bytes:count(probe.bytes,8589934592),largestFile:count(probe.largestFile,536870913),elapsedMs:count(probe.elapsedMs,probe.elapsedMax===120001?120001:60001)})+'\n';
 }
 function observeInventory(io, event, probe, success) {
   try { if (io.observeInventory) io.observeInventory(formatInventoryObservation(event,probe,success)); } catch {}
@@ -921,7 +923,7 @@ async function nodePins(ctx, io) {
 }
 async function measureTree(roots, limits, io, project) {
   // Only the installed dependencies/store inventory emits these two records.
-  const probe=keys(roots,['dependencies','store'])?{operation:'START',root:'UNKNOWN',kind:'UNKNOWN',member:null,entries:0,files:0,bytes:0,largestFile:0,elapsedMs:0}:null;
+  const probe=keys(roots,['dependencies','store'])?{operation:'START',root:'UNKNOWN',kind:'UNKNOWN',member:null,entries:0,files:0,bytes:0,largestFile:0,elapsedMs:0,elapsedMax:limits.ms+1}:null;
   const reference=probe && keys(project,['sourceRoot']) && absolute(project.sourceRoot)?{path:io.path.join(roots.store,'v11','projects',io.hash(Buffer.from(project.sourceRoot)).slice(0,32)),target:project.sourceRoot}:null;
   if (probe) observeInventory(io,'BEGIN',probe,null);
   let timer, boundary;
@@ -1106,9 +1108,9 @@ function innerCleanup(state) {
   if (CHILD_ORIGINS.has(inner.reason) || inner.reason === 'CLEANUP_FAILED' || inner.reason === 'ADMISSION_WRITE_FAILED') return {innerAttempt:'ATTEMPTED',innerEffects:'UNKNOWN'};
   return {innerAttempt:'UNKNOWN',innerEffects:'UNKNOWN'};
 }
-async function removeBounded(root,io) {
+async function removeBounded(root,io,ms) {
   let timer, timedOut=false;
-  try { await Promise.race([io.rm(root),new Promise((_,reject) => { timer=io.setTimeout(() => {timedOut=true;reject(Error('CLEANUP_FAILED'));},5000); })]); return 'COMPLETED'; }
+  try { await Promise.race([io.rm(root),new Promise((_,reject) => { timer=io.setTimeout(() => {timedOut=true;reject(Error('CLEANUP_FAILED'));},ms); })]); return 'COMPLETED'; }
   catch { return timedOut?'UNKNOWN_AFTER_TIMEOUT':'UNPROVEN'; }
   finally { io.clearTimeout(timer); }
 }
@@ -1132,7 +1134,7 @@ function finalResult(ctx,state,e,cleanup) {
 }
 async function handle(command,io,e) {
   guard(command,io.runtime); // Before any injected effect, also enforced before real imports by main.
-  const ctx = await bind(command,io,e), p = io.path;
+  const ctx = await bind(command,io,e), p = io.path, budget = PLATFORM_BUDGETS[ctx.row.platform];
   if (command === 'bind-source') return;
   if (command === 'prepare') {
     await nodePins(ctx,io);
@@ -1157,7 +1159,7 @@ async function handle(command,io,e) {
   const save = () => stateFile.write(JSON.stringify(state));
   if (command === 'cleanup') {
     const cleanup = {...innerCleanup(state),furtherOuterDeletion:'WITHHELD'};
-    if (!state.active && !state.hold) cleanup.furtherOuterDeletion = await removeBounded(root,io);
+    if (!state.active && !state.hold) cleanup.furtherOuterDeletion = await removeBounded(root,io,budget.removalMs);
     const result = finalResult(ctx,state,e,cleanup), safe = p.join(ctx.cwd,'api-music-posix-safe');
     await io.mkdir(safe,{mode:0o700});
     if (await io.realpath(safe) !== safe) fail('OWNERSHIP_UNPROVEN');
@@ -1176,7 +1178,7 @@ async function handle(command,io,e) {
       await io.write(p.join(root,'logs/install.stdout'),child.stdout,{flag:'wx',mode:0o600}); await io.write(p.join(root,'logs/install.stderr'),child.stderr,{flag:'wx',mode:0o600});
       if (!child.normal) fail('DEPENDENCY_UNPROVEN');
       sameImage(ctx,e);ledger.stage='TOOL_PINS'; await toolPins(ctx,io,true,root);
-      state.inventory=await measureTree({dependencies:p.join(ctx.sourceRoot,'node_modules'),store:p.join(root,'store')},DEPENDENCY_LIMITS,io,{sourceRoot:ctx.sourceRoot});
+      state.inventory=await measureTree({dependencies:p.join(ctx.sourceRoot,'node_modules'),store:p.join(root,'store')},{...DEPENDENCY_LIMITS,ms:budget.inventoryMs},io,{sourceRoot:ctx.sourceRoot});
       const after=await measureSource(ctx,io); if (after.completeSHA256!==state.source.completeSHA256) fail('SOURCE_UNPROVEN');
       state.phase='installed'; await save(); return;
     }
