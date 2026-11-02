@@ -1,8 +1,8 @@
 {
   "exactStaticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
-  "observedLocallyUTC": "2026-11-02T01:48:07Z",
-  "head": "bdbcca851d47c88bafa5466631cb03e7facf4eed",
-  "tree": "b5ba801b412d1a7d7fedc8abc5cff2b7fb80b0dd",
+  "observedLocallyUTC": "2026-11-02T09:20:40Z",
+  "head": "8fc592e49cb6d98b5c2d7f0b666917865aaf387c",
+  "tree": "190e276ed48030638ef096ca00f0f4787662b2bf",
   "trackedCount": 990,
   "entries": [
     {
@@ -3483,7 +3483,7 @@
       "path": "src/plugins/synced-lyrics/style.css",
       "mode": "100644",
       "type": "blob",
-      "blob": "dcb775ccadd78ac2208cdb1a8be283a888377094"
+      "blob": "4f6297f57c998b5bb0be03efd4e43d17adafbf28"
     },
     {
       "path": "src/plugins/synced-lyrics/tools.ts",
@@ -5379,7 +5379,7 @@
       "path": "tests/lyrics-word-rendering.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "7bb29a1cf9a6d7d51c200425ce9eb2b10445bb6c"
+      "blob": "8c379c81dcb9cf6f3745d52f0a1047085985dfad"
     },
     {
       "path": "tests/mcp-notices-window.test.ts",
