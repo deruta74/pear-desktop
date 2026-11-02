@@ -1,8 +1,8 @@
 {
   "exactStaticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
-  "observedLocallyUTC": "2026-11-02T00:32:20.303829+00:00",
-  "head": "2c616656045bdf2dc0e81b755bc4710a69afcb89",
-  "tree": "16d83cfce900c078de29c9682393dd8ae886f2a9",
+  "observedLocallyUTC": "2026-11-02T01:48:07Z",
+  "head": "bdbcca851d47c88bafa5466631cb03e7facf4eed",
+  "tree": "b5ba801b412d1a7d7fedc8abc5cff2b7fb80b0dd",
   "trackedCount": 990,
   "entries": [
     {
@@ -1749,7 +1749,7 @@
       "path": "src/plugins/api-server/backend/main.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "ce2730bbd8b09fd900bebaa85b4b29bea61c9406"
+      "blob": "ffe53181cf18cc7fcea5b412034e8b2b5bcf9cca"
     },
     {
       "path": "src/plugins/api-server/backend/mcp-binding.ts",
@@ -4413,7 +4413,7 @@
       "path": "tests/api-music-http-listener.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "0ad9dee7c342594aff36a0b859ff7b1af9a90eeb"
+      "blob": "82a0e77dee98abd8cf5770b4b595224a03354af8"
     },
     {
       "path": "tests/api-music-http-policy.test.ts",
