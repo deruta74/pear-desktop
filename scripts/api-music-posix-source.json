@@ -1,9 +1,9 @@
 {
   "exactStaticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
-  "observedLocallyUTC": "2026-11-02T20:28:33.989Z",
-  "head": "7f6e09d688ee5338f513caa64fd79eb542f819bc",
-  "tree": "c8687b606a9f3cb300edc07459bc04a5da03ec65",
-  "trackedCount": 995,
+  "observedLocallyUTC": "2026-11-02T23:59:12.097Z",
+  "head": "07b8c61db22efc530d7fa23303790d9e66f9065a",
+  "tree": "74306fc951fdab71a73c164adca4cae700cf1678",
+  "trackedCount": 996,
   "entries": [
     {
       "path": ".devcontainer/devcontainer.json",
@@ -3453,7 +3453,7 @@
       "path": "src/plugins/synced-lyrics/renderer/renderer.tsx",
       "mode": "100644",
       "type": "blob",
-      "blob": "f01f950b40a25b11c7cfb9d601d62b280267e0c1"
+      "blob": "4b83c6ee7010c69667f945856afac991c06ce3d1"
     },
     {
       "path": "src/plugins/synced-lyrics/renderer/scroll-motion.ts",
@@ -3483,7 +3483,7 @@
       "path": "src/plugins/synced-lyrics/style.css",
       "mode": "100644",
       "type": "blob",
-      "blob": "9f1c65fbedd11ab61b850a4d253d7bf0ffad043b"
+      "blob": "6541143137158bd8d9095e540acd3a0b507249b9"
     },
     {
       "path": "src/plugins/synced-lyrics/tools.ts",
@@ -3975,7 +3975,7 @@
       "path": "src/providers/renderer-audio.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "a3db963370504cb908a7c16790bf324304923d68"
+      "blob": "6547094c6304ec56394a76a47e0ebdc031b930e4"
     },
     {
       "path": "src/providers/renderer-output.ts",
@@ -4023,7 +4023,7 @@
       "path": "src/renderer.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "080ce594089c1def1dbbc927c0b74ca37e744252"
+      "blob": "2a7d9f849a3f8d7c96679fbbcc419483f17894c6"
     },
     {
       "path": "src/reset.d.ts",
@@ -4353,13 +4353,13 @@
       "path": "tests/api-music-actions-native.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "5b40a3cf49457acc975d8b83ca95250240adece7"
+      "blob": "a2a7334a83a302344215ff42db186e9175e1d7fb"
     },
     {
       "path": "tests/api-music-actions.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "70ef9270521e4e72601f100115255afb713b67ac"
+      "blob": "ed6ae711dbf686906196dc62cc83ad63cd52b0d5"
     },
     {
       "path": "tests/api-music-catalog.test.ts",
@@ -4383,7 +4383,7 @@
       "path": "tests/api-music-comments-native.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "af9dc578a1c386bb2e8cbbc0e5357e3e9cc00b69"
+      "blob": "1487a39b02742f7e3fd2d728e743488b183f980f"
     },
     {
       "path": "tests/api-music-comments.test.ts",
@@ -4479,13 +4479,13 @@
       "path": "tests/api-music-queue-actions-native.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "4a2be71c2d93205abba2fc9156913b2236d63e4c"
+      "blob": "6f68c18d575853dd073f394cbd56599792982607"
     },
     {
       "path": "tests/api-music-queue-actions.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "3ba9e1456b87aa9bce54e317b9911b4857173bed"
+      "blob": "3b6f22560ba89555fefcb2363f5a016e814ecd03"
     },
     {
       "path": "tests/api-music-queue-native.test.ts",
@@ -4791,7 +4791,7 @@
       "path": "tests/equalizer-audio.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "4c8e375b54ca4f1c38f1e8e5a9f5de60ebd0def8"
+      "blob": "01be0c030abb57e00506454cee61f02080de2bd9"
     },
     {
       "path": "tests/equalizer-auto-preamp.test.ts",
@@ -5169,7 +5169,7 @@
       "path": "tests/helpers/playlist-provider-source.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "ac904d7745c1679bd92c93879b34c159324c4840"
+      "blob": "ccca48f11ade7af19c78766ac10e757765580e94"
     },
     {
       "path": "tests/helpers/playlist-renderer-fixture.ts",
@@ -5362,6 +5362,12 @@
       "mode": "100644",
       "type": "blob",
       "blob": "a6fc4fb5a295a3c15916f251a424eedfd617b1e3"
+    },
+    {
+      "path": "tests/lyrics-picker-visibility.test.ts",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1171ac28a57b0a1555fced4778d5b2d0d167523a"
     },
     {
       "path": "tests/lyrics-request-lifecycle.test.ts",
@@ -5655,7 +5661,7 @@
       "path": "tests/plugin-api-ready.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "975fc88214ada51ad3a40704e1d11bfbd0139072"
+      "blob": "22d49b0eb44140a0ed257379b342fdd0dbdf58e8"
     },
     {
       "path": "tests/plugin-dialog-escape.test.ts",
@@ -6074,6 +6080,6 @@
       "contentNotRead": true
     }
   ],
-  "runnerManifestCountPlanned": 994,
+  "runnerManifestCountPlanned": 995,
   "runtimeMeasurements": null
 }
