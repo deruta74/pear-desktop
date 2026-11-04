@@ -1,8 +1,8 @@
 {
   "exactStaticOmission": "assets/generated/icons/mac/icon.icon/Assets/SVG Image.svg",
-  "observedLocallyUTC": "2026-11-02T23:59:12.097Z",
-  "head": "07b8c61db22efc530d7fa23303790d9e66f9065a",
-  "tree": "74306fc951fdab71a73c164adca4cae700cf1678",
+  "observedLocallyUTC": "2026-11-04T14:33:59.931027+00:00",
+  "head": "9a04f5486f1567d73efca4b45deb752e2162e00c",
+  "tree": "7ff28012bca52a22556c43cb870fbfd12609a773",
   "trackedCount": 996,
   "entries": [
     {
@@ -939,7 +939,7 @@
       "path": "package.json",
       "mode": "100644",
       "type": "blob",
-      "blob": "5b5558afb0645d3aa234eabe92dc1c73fe643e29"
+      "blob": "e345eac3e75624831248771611ba671d04325cc8"
     },
     {
       "path": "patches/@ffmpeg.wasm__main@0.12.0.patch",
@@ -1017,7 +1017,7 @@
       "path": "scripts/ci-test-groups.node.cjs",
       "mode": "100644",
       "type": "blob",
-      "blob": "7c15c0a32d0f45a4b370b4ab9e31333d9eb69408"
+      "blob": "91f144f59960a1feed6283f06ce9103b88eaa395"
     },
     {
       "path": "scripts/collect-macos-node-crashes.cjs",
@@ -1071,7 +1071,7 @@
       "path": "scripts/run-ci-tests.cjs",
       "mode": "100644",
       "type": "blob",
-      "blob": "40c00117cc94bab7dec162e112e29fd99f4e325c"
+      "blob": "0821e2ee63340c02b48951a5bbb620d517fdb66b"
     },
     {
       "path": "scripts/verify-release.cjs",
@@ -3309,7 +3309,7 @@
       "path": "src/plugins/synced-lyrics/menu.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "9a19c88d893030c7b0e42babfb85a1b5853aa6f1"
+      "blob": "367ab2cc7d1b75e69b58feb3158471a1b1f6c096"
     },
     {
       "path": "src/plugins/synced-lyrics/parsers/lrc.test.ts",
@@ -3351,7 +3351,7 @@
       "path": "src/plugins/synced-lyrics/providers/MusixMatch.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "bc11074b8af781e1c479ec05395babcf5be18945"
+      "blob": "9ad81f5bb1761c06820ffa9beb930ae78efd52c6"
     },
     {
       "path": "src/plugins/synced-lyrics/providers/NetEase.ts",
@@ -3429,7 +3429,7 @@
       "path": "src/plugins/synced-lyrics/renderer/components/SyncedLine.tsx",
       "mode": "100644",
       "type": "blob",
-      "blob": "5bdf3d9c24d41fb84290a2d69b8db27bdf443e4f"
+      "blob": "34553a7617f11d3119e591aa604107398cd566e6"
     },
     {
       "path": "src/plugins/synced-lyrics/renderer/components/index.ts",
@@ -3483,7 +3483,7 @@
       "path": "src/plugins/synced-lyrics/style.css",
       "mode": "100644",
       "type": "blob",
-      "blob": "6541143137158bd8d9095e540acd3a0b507249b9"
+      "blob": "094fe9a8c2229e1b0f86fd2706af64992227d99e"
     },
     {
       "path": "src/plugins/synced-lyrics/tools.ts",
@@ -5391,7 +5391,7 @@
       "path": "tests/lyrics-tools-menu.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "82641c9bc227f3391d39eb783edca9b474816bff"
+      "blob": "017a2740b27f199010530de8494d97c8b2ac6dd8"
     },
     {
       "path": "tests/lyrics-tools.test.ts",
@@ -5409,7 +5409,7 @@
       "path": "tests/lyrics-word-rendering.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "8c379c81dcb9cf6f3745d52f0a1047085985dfad"
+      "blob": "ea22920196e390b6027a1cfc565295b433386437"
     },
     {
       "path": "tests/mcp-notices-window.test.ts",
@@ -5421,7 +5421,7 @@
       "path": "tests/musixmatch-provider.test.ts",
       "mode": "100644",
       "type": "blob",
-      "blob": "a5e9884235729ce75191913b36738fb89ddceb3c"
+      "blob": "9c3c141bc2fa911fd34ef7a18d922b60497fdb89"
     },
     {
       "path": "tests/navigation-gestures.test.ts",
@@ -6045,8 +6045,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "5abad56df6cb88c0e3f5750db206b66029d1764bcef3472ab8d94f2cdbefa677",
-      "blob": "5b5558afb0645d3aa234eabe92dc1c73fe643e29"
+      "sha256": "6b05f2087ccb338a51b830f0b9f1088d5fd89bf829ad169c2162b518b4cdae42",
+      "blob": "e345eac3e75624831248771611ba671d04325cc8"
     },
     {
       "path": "pnpm-lock.yaml",
