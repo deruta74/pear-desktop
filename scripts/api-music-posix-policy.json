@@ -18,8 +18,11 @@
       "arch": "x64",
       "runnerLabelCandidate": "ubuntu-24.04",
       "imageOS": "ubuntu24",
-      "imageVersionMode": "exact",
-      "imageVersion": "20261101.114.1",
+      "imageVersionMode": "exact-set",
+      "imageVersion": [
+        "20261101.114.1",
+        "20261101.360.1"
+      ],
       "nodeSHA256": "67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c",
       "pnpmEntrySHA256": "67b035e322203961795e8e34ca63a08c37a4386eda94107fb3d28f3246d882ad",
       "pnpmPackageClosureSHA256": "b1711f4d71fbf0c6148fdcaba3fc0ad9f36bcdc8023b0e25f837838ac7b513e3",
