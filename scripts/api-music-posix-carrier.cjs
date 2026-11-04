@@ -832,9 +832,7 @@ function staticPolicy(policy, runtime) {
   policy.platforms.forEach((r, i) => {
     if (!keys(r, ['platform','arch','runnerLabelCandidate','imageOS','imageVersionMode','imageVersion','nodeSHA256','pnpmEntrySHA256','pnpmPackageClosureSHA256','cliSHA256','nodeVersion','nodeCanonicalPathExpected','pnpmVersion','pnpmCanonicalEntryPathExpected','playwrightVersion']) ||
         [r.platform,r.arch,r.runnerLabelCandidate].join('|') !== triples[i].join('|') || !image(r.imageOS) ||
-        !(r.imageVersionMode==='exact' && image(r.imageVersion) ||
-          i===0 && r.imageOS==='ubuntu24' && r.imageVersionMode==='exact-set' && Array.isArray(r.imageVersion) && r.imageVersion.length===2 &&
-          r.imageVersion.every((v)=>typeof v==='string' && /^[0-9]{8}\.[0-9]{1,4}\.[0-9]{1,2}$/.test(v)) && new Set(r.imageVersion).size===2 || i===1 && r.imageOS==='macos26' && r.imageVersionMode==='runtime-observed' && r.imageVersion===null) ||
+        !(r.imageVersionMode==='exact' && image(r.imageVersion) || ((i===0 && r.imageOS==='ubuntu24') || (i===1 && r.imageOS==='macos26')) && r.imageVersionMode==='runtime-observed' && r.imageVersion===null) ||
         !['nodeSHA256','pnpmEntrySHA256','pnpmPackageClosureSHA256','cliSHA256'].every((k) => sha(r[k])) ||
         r.nodeVersion !== 'v24.22.0' || r.pnpmVersion !== '11.28.6' || r.playwrightVersion !== '1.61.1' ||
         !absolute(r.nodeCanonicalPathExpected) || !absolute(r.pnpmCanonicalEntryPathExpected)) fail('ADMISSION_UNPROVEN');
@@ -842,13 +840,13 @@ function staticPolicy(policy, runtime) {
   return policy.platforms.find((r) => r.platform === runtime.platform && r.arch === runtime.arch);
 }
 function checkImage(row,e) {
-  if (e.ImageOS!==row.imageOS || (row.imageVersionMode==='exact-set' ? !row.imageVersion.includes(e.ImageVersion) : row.imageVersionMode==='exact' ? e.ImageVersion!==row.imageVersion :
-      typeof e.ImageVersion!=='string' || !/^[0-9]{8}\.[0-9]{4}\.[0-9]{1,2}$/.test(e.ImageVersion))) fail('ADMISSION_UNPROVEN');
+  if (e.ImageOS!==row.imageOS || (row.imageVersionMode==='exact' ? e.ImageVersion!==row.imageVersion :
+      typeof e.ImageVersion!=='string' || !(row.platform==='linux' ? /^[0-9]{8}\.[0-9]{1,4}\.[0-9]{1,2}$/ : /^[0-9]{8}\.[0-9]{4}\.[0-9]{1,2}$/).test(e.ImageVersion))) fail('ADMISSION_UNPROVEN');
 }
 function capturedImage(row,e) {
   checkImage(row,e);
   return {schema:1,mode:row.imageVersionMode,platform:row.platform,arch:row.arch,imageOS:e.ImageOS,imageVersion:e.ImageVersion,
-    origin:'GITHUB_HOSTED_PROCESS_ENVIRONMENT',preselectedVersion:row.imageVersionMode!=='runtime-observed'};
+    origin:'GITHUB_HOSTED_PROCESS_ENVIRONMENT',preselectedVersion:row.imageVersionMode==='exact'};
 }
 function sameImage(ctx,e) {
   if (e.ImageOS!==ctx.image.imageOS || e.ImageVersion!==ctx.image.imageVersion) fail('ADMISSION_UNPROVEN');
