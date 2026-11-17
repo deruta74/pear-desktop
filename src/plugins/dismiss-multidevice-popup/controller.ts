@@ -1,4 +1,20 @@
 type Dialog = HTMLElement & { opened?: boolean; close?: () => void };
+type Confirmation = Element & {
+  data?: {
+    confirmButton?: {
+      buttonRenderer?: {
+        navigationEndpoint?: { watchEndpoint?: { continuePlayback?: unknown } };
+      };
+    };
+  };
+};
+const confirmationSelector = 'yt-confirm-dialog-renderer';
+const dialogSelector = 'tp-yt-paper-dialog';
+
+// The idle prompt is a different renderer. Match the native action, not its label.
+const isMultidevicePrompt = (renderer: Confirmation) =>
+  renderer.data?.confirmButton?.buttonRenderer?.navigationEndpoint
+    ?.watchEndpoint?.continuePlayback === true;
 
 export function startMultideviceDismissal(doc: Document): () => void {
   const app = doc.querySelector('ytmusic-app');
@@ -10,10 +26,18 @@ export function startMultideviceDismissal(doc: Document): () => void {
     !stopped && app.isConnected && doc.querySelector('ytmusic-app') === app;
   const opened = (dialog: Dialog): boolean => {
     try {
+      const ariaHidden = dialog.getAttribute('aria-hidden');
+      if (
+        ariaHidden === 'true' ||
+        dialog.hidden ||
+        dialog.style.display === 'none'
+      )
+        return false;
       return (
         dialog.opened === true ||
         dialog.hasAttribute('opened') ||
-        dialog.hasAttribute('open')
+        dialog.hasAttribute('open') ||
+        ariaHidden === 'false'
       );
     } catch {
       // Unknown site state is ineligible; preserve the dialog and our disposer.
@@ -25,9 +49,11 @@ export function startMultideviceDismissal(doc: Document): () => void {
       stop();
       return;
     }
-    for (const renderer of app.querySelectorAll('ytmusic-you-there-renderer')) {
+    for (const renderer of app.querySelectorAll<Confirmation>(
+      confirmationSelector,
+    )) {
       if (!current()) break;
-      const dialog = renderer.closest<Dialog>('tp-yt-paper-dialog');
+      const dialog = renderer.closest<Dialog>(dialogSelector);
       if (!dialog || !app.contains(dialog)) continue;
       const wasOpen = opened(dialog);
       if (!current()) break;
@@ -38,12 +64,14 @@ export function startMultideviceDismissal(doc: Document): () => void {
       if (attempted.has(dialog)) continue;
       // Capture once: site accessors may retire the owner or replace the method.
       try {
+        if (!isMultidevicePrompt(renderer) || !current()) continue;
         const close = dialog.close;
         if (
           !opened(dialog) ||
+          !isMultidevicePrompt(renderer) ||
           !current() ||
           !app.contains(renderer) ||
-          renderer.closest('tp-yt-paper-dialog') !== dialog ||
+          renderer.closest(dialogSelector) !== dialog ||
           typeof close !== 'function'
         )
           continue;
@@ -75,29 +103,35 @@ export function startMultideviceDismissal(doc: Document): () => void {
         record.target instanceof view.Element
           ? record.target
           : record.target.parentElement;
-      if (element?.closest('tp-yt-paper-dialog, ytmusic-you-there-renderer'))
-        related = true;
+      if (element?.closest(dialogSelector)) related = true;
       if (
         record.type === 'childList' &&
         [...record.addedNodes, ...record.removedNodes].some(
           (node) =>
             node instanceof view.Element &&
-            (node.matches('ytmusic-you-there-renderer, tp-yt-paper-dialog') ||
-              node.querySelector('ytmusic-you-there-renderer')),
+            (node.matches(`${confirmationSelector}, ${dialogSelector}`) ||
+              node.querySelector(confirmationSelector)),
         )
       )
         related = true;
       if (
         record.type === 'attributes' &&
         record.target instanceof view.HTMLElement &&
-        record.target.matches('tp-yt-paper-dialog')
+        record.target.matches(dialogSelector)
       ) {
-        if (
-          (record.attributeName === 'opened' ||
-            record.attributeName === 'open') &&
-          record.oldValue === null
-        )
-          attempted.delete(record.target);
+        // Mutation delivery can combine a hide and a reopen into one batch.
+        const { attributeName, oldValue } = record;
+        const wasClosed =
+          ((attributeName === 'opened' || attributeName === 'open') &&
+            oldValue === null) ||
+          (attributeName === 'aria-hidden' && oldValue === 'true') ||
+          (attributeName === 'hidden' && oldValue !== null) ||
+          (attributeName === 'style' &&
+            oldValue !== null &&
+            /(?:^|;)\s*display\s*:\s*none\s*(?:!important\s*)?(?:;|$)/i.test(
+              oldValue,
+            ));
+        if (wasClosed) attempted.delete(record.target);
       }
     }
     if (related) scan();
@@ -106,7 +140,7 @@ export function startMultideviceDismissal(doc: Document): () => void {
     if (
       event.target instanceof view.HTMLElement &&
       app.contains(event.target) &&
-      event.target.matches('tp-yt-paper-dialog')
+      event.target.matches(dialogSelector)
     )
       attempted.delete(event.target);
     scan();
@@ -125,7 +159,14 @@ export function startMultideviceDismissal(doc: Document): () => void {
     subtree: true,
     attributes: true,
     attributeOldValue: true,
-    attributeFilter: ['opened', 'open', 'class', 'hidden'],
+    attributeFilter: [
+      'opened',
+      'open',
+      'class',
+      'hidden',
+      'style',
+      'aria-hidden',
+    ],
   });
   app.addEventListener('iron-overlay-opened', onOpen);
   view.addEventListener('pagehide', stop);

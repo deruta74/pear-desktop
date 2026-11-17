@@ -40,9 +40,19 @@ async function fixture(
       const dialog = document.createElement('tp-yt-paper-dialog');
       dialog.id = id;
       if (opened) dialog.setAttribute('opened', '');
-      dialog.innerHTML = multi
-        ? '<ytmusic-you-there-renderer></ytmusic-you-there-renderer>'
-        : '<ytmusic-confirm-dialog-renderer></ytmusic-confirm-dialog-renderer>';
+      const renderer = document.createElement('yt-confirm-dialog-renderer');
+      Object.assign(renderer, {
+        data: {
+          confirmButton: {
+            buttonRenderer: {
+              navigationEndpoint: {
+                watchEndpoint: { continuePlayback: multi },
+              },
+            },
+          },
+        },
+      });
+      dialog.append(renderer);
       if (native)
         (dialog as any).close = () => {
           f.closeCalls.push(id);
@@ -79,6 +89,72 @@ async function fixture(
   });
 }
 const closed = (page: Page) => page.evaluate(() => (window as any).closeCalls);
+
+test('multidevice ignores idle, incomplete and lookalike confirmations', async ({
+  page,
+}) => {
+  await fixture(page, 'dismiss-multidevice-popup');
+  await page.evaluate(() => {
+    const f = window as any;
+    const idle = f.addDialog('idle');
+    idle.replaceChildren(document.createElement('ytmusic-you-there-renderer'));
+    const incomplete = f.addDialog('incomplete');
+    incomplete.firstElementChild.data = {};
+    const lookalike = f.addDialog('lookalike');
+    lookalike.firstElementChild.data.confirmButton.buttonRenderer.navigationEndpoint.watchEndpoint.continuePlayback =
+      'true';
+    f.addDialog('multi');
+    f.begin();
+  });
+  expect(await closed(page)).toEqual(['multi']);
+  expect(await page.locator('tp-yt-paper-dialog').count()).toBe(4);
+});
+
+test('multidevice recognizes a reused confirmation when it becomes visible', async ({
+  page,
+}) => {
+  await fixture(page, 'dismiss-multidevice-popup');
+  await page.evaluate(() => {
+    const f = window as any;
+    const dialog = f.addDialog('reused', true, false);
+    dialog.setAttribute('aria-hidden', 'true');
+    dialog.style.display = 'none';
+    dialog.close = () => {
+      f.closeCalls.push(dialog.id);
+      dialog.setAttribute('aria-hidden', 'true');
+      dialog.style.display = 'none';
+    };
+    f.begin();
+  });
+  for (let opening = 1; opening <= 2; opening++) {
+    await page.evaluate(() => {
+      const dialog = document.querySelector<HTMLElement>('#reused')!;
+      dialog.style.display = 'block';
+      dialog.setAttribute('aria-hidden', 'false');
+    });
+    await expect
+      .poll(() => closed(page), { timeout: 500 })
+      .toEqual(Array(opening).fill('reused'));
+  }
+});
+
+test('multidevice recognizes a close and reopen in one mutation batch', async ({
+  page,
+}) => {
+  await fixture(page, 'dismiss-multidevice-popup');
+  await page.evaluate(() => {
+    const f = window as any;
+    const dialog = f.addDialog('reused', true, false);
+    dialog.setAttribute('aria-hidden', 'false');
+    dialog.close = () => f.closeCalls.push(dialog.id);
+    f.begin();
+    dialog.setAttribute('aria-hidden', 'true');
+    dialog.setAttribute('aria-hidden', 'false');
+  });
+  await expect
+    .poll(() => closed(page), { timeout: 500 })
+    .toEqual(['reused', 'reused']);
+});
 
 for (const dynamic of [false, true])
   test(`multidevice only: ${dynamic ? 'later' : 'existing'} open native dialog closes`, async ({
