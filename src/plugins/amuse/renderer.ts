@@ -53,7 +53,7 @@ export const renderer = createRenderer<{ release?: () => void }>({
     this.release = stop;
     window.addEventListener('pagehide', stop);
     report();
-    void ipc
+    ipc
       .invoke('peard:amuse-player-ready')
       .then((value: unknown) => {
         if (!stopped && typeof value === 'string') {

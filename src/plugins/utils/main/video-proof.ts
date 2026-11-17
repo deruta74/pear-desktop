@@ -32,7 +32,12 @@ export async function untilAborted<T>(
     return await Promise.race([
       operation,
       new Promise<never>((_resolve, reject) => {
-        onAbort = () => reject(signal.reason);
+        onAbort = () =>
+          reject(
+            signal.reason instanceof Error
+              ? signal.reason
+              : new Error('Audio request cancelled'),
+          );
         if (signal.aborted) onAbort();
         else signal.addEventListener('abort', onAbort, { once: true });
       }),
