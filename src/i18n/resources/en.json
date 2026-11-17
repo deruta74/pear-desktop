@@ -732,6 +732,14 @@
         }
       }
     },
+    "pitch-shifter": {
+      "name": "Pitch Shifter",
+      "description": "Change pitch without changing tempo. Adds about 32 ms of processing latency at 48 kHz.",
+      "menu": {
+        "semitones": "Semitones",
+        "reset": "Reset to original pitch"
+      }
+    },
     "equalizer": {
       "editor": {
         "audio-error": "This audio response could not be applied. Reduce overlapping boosts or Q; the previous sound is retained.",
