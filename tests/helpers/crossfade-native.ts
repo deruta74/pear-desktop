@@ -6,9 +6,13 @@ import path from 'node:path';
 import { equalizerBundle, fixturePage } from './equalizer-bundle';
 import type { Page } from '@playwright/test';
 import type { DiagnosticCase } from './crossfade-diagnostics';
-export function timeCodedWave(outgoing = true, amplitude = 0.1) {
+export function timeCodedWave(
+  outgoing = true,
+  amplitude = 0.1,
+  seconds = 6,
+  pulse = false,
+) {
   const rate = 48000,
-    seconds = 6,
     n = rate * seconds,
     bytes = Buffer.alloc(44 + n * 2);
   bytes.write('RIFF', 0);
@@ -27,7 +31,10 @@ export function timeCodedWave(outgoing = true, amplitude = 0.1) {
     const frequency = outgoing ? (i / rate < 2 ? 750 : 500) : 1000;
     bytes.writeInt16LE(
       Math.round(
-        amplitude * 32767 * Math.sin((2 * Math.PI * frequency * i) / rate),
+        amplitude *
+          (pulse && (i / rate) % 0.5 > 0.06 ? 0.05 : 1) *
+          32767 *
+          Math.sin((2 * Math.PI * frequency * i) / rate),
       ),
       44 + i * 2,
     );
@@ -65,6 +72,9 @@ export async function startCrossfadeFixture(
   page: Page,
   options: {
     baseline?: boolean;
+    rendererExport?: string;
+    waveSeconds?: number;
+    pulse?: boolean;
     requestDelay?: boolean;
     config?: Record<string, unknown>;
     denied?: boolean;
@@ -93,6 +103,8 @@ export async function startCrossfadeFixture(
     const body = timeCodedWave(
       !route.request().url().endsWith('b.wav'),
       options.waveAmplitude ?? 0.1,
+      options.waveSeconds ?? 6,
+      options.pulse ?? false,
     );
     const range = route
       .request()
@@ -284,10 +296,19 @@ export async function startCrossfadeFixture(
       contentLength: 576044,
     };
     history.replaceState(null, '', `/watch?v=${ids[0]}`);
-    const renderer = f.crossfade.renderer;
+    const feature = f[options.rendererExport ?? 'crossfade'];
+    const renderer = feature.renderer;
+    const subscriptions = new Map<string, Set<(...args: unknown[]) => void>>();
+    const subscribe = (name: string, handler: (...args: unknown[]) => void) => {
+      let set = subscriptions.get(name);
+      if (!set) subscriptions.set(name, (set = new Set()));
+      set.add(handler);
+      (window as any).speed = handler;
+      return () => set!.delete(handler);
+    };
     await renderer.start({
       getConfig: async () => ({
-        ...f.crossfade.config,
+        ...feature.config,
         enabled: true,
         fadeInDuration: 1000,
         fadeOutDuration: 1000,
@@ -301,10 +322,7 @@ export async function startCrossfadeFixture(
             ? new Promise((r) => (resolve = r))
             : Promise.resolve(options.baseline ? stream.url : stream);
         },
-        subscribe: (_name: string, handler: (...args: unknown[]) => void) => {
-          (window as any).speed = handler;
-          return () => {};
-        },
+        subscribe,
       },
     });
     renderer.onPlayerApiReady(api);
@@ -333,6 +351,11 @@ export async function startCrossfadeFixture(
       renderer,
       power,
       diagnostic,
+      stream,
+      subscribe,
+      emitIpc: (name: string, ...args: unknown[]) => {
+        for (const listener of subscriptions.get(name) ?? []) listener(...args);
+      },
       get requests() {
         return requests;
       },
@@ -344,7 +367,7 @@ export async function startCrossfadeFixture(
       },
       setConfig: (config: Record<string, unknown>) =>
         renderer.onConfigChange({
-          ...f.crossfade.config,
+          ...feature.config,
           enabled: true,
           ...config,
         }),

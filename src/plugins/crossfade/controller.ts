@@ -27,14 +27,15 @@ import { TransitionAudio } from './transition-audio';
 import type { MusicPlayer } from '@/types/music-player';
 
 let pendingRequest: object | undefined;
+let pendingResult: Promise<StreamResult | null> | undefined;
 /** Physical IPC is not cancellable. Retire consumers, retain this slot until settlement. */
 export function requestCrossfadeAudio(
   videoId: string,
   invoke: (videoId: string) => Promise<StreamResult | null>,
 ):
-  | { kind: 'busy' }
+  | { kind: 'busy'; result?: Promise<StreamResult | null> }
   | { kind: 'started'; token: object; result: Promise<StreamResult | null> } {
-  if (pendingRequest) return { kind: 'busy' };
+  if (pendingRequest) return { kind: 'busy', result: pendingResult };
   const token = {};
   pendingRequest = token;
   let promise: Promise<StreamResult | null>;
@@ -46,11 +47,16 @@ export function requestCrossfadeAudio(
     );
   }
   const result = promise.finally(() => {
-    if (pendingRequest === token) pendingRequest = undefined;
+    if (pendingRequest === token) {
+      pendingRequest = undefined;
+      pendingResult = undefined;
+    }
   });
+  pendingResult = result;
   return { kind: 'started', token, result };
 }
-const controllers = new WeakMap<HTMLVideoElement, object>();
+const controllers = new WeakMap<HTMLVideoElement, Map<string, object>>();
+const transitions = new WeakMap<HTMLVideoElement, object>();
 type State =
   | 'idle'
   | 'preparing'
@@ -66,13 +72,23 @@ export function createCrossfadeController(options: {
   config: CrossfadePluginConfig;
   requestAudio: (videoId: string) => Promise<StreamResult | null>;
   onUnavailable: (error: unknown) => void;
+  isAllowed?: () => boolean;
+  mode?: 'crossfade' | 'automix';
+  plan?: (state: NativeCrossfadeState) => CrossfadePluginConfig | null;
 }) {
   const { api, main, graph } = options,
     token = {};
-  controllers.set(main, token);
+  const mode = options.mode ?? 'crossfade';
+  let owners = controllers.get(main);
+  if (!owners) {
+    owners = new Map();
+    controllers.set(main, owners);
+  }
+  owners.set(mode, token);
   let config = normalizeCrossfadeConfig(options.config),
     state: State = 'idle',
     generation = 0;
+  let waitAfterModeRearm = false;
   let incomingBinding: PlaybackBinding | null = null;
   let capture: NativeCrossfadeState | null = null,
     audio: TransitionAudio | null = null;
@@ -89,8 +105,10 @@ export function createCrossfadeController(options: {
     lastSource = '',
     emptied = false;
   const abort = new AbortController();
-  const live = () => state !== 'stopped' && controllers.get(main) === token;
-  const active = (expected: number) => live() && generation === expected;
+  const live = () => state !== 'stopped' && owners.get(mode) === token;
+  const allowed = () => options.isAllowed?.() !== false;
+  const active = (expected: number) =>
+    live() && allowed() && generation === expected;
   const key = (s: NativeCrossfadeState) =>
     `${s.binding.documentId}:${s.binding.episodeId}:${s.source}`;
   const clearTimer = () => {
@@ -134,12 +152,17 @@ export function createCrossfadeController(options: {
         try {
           gain?.disconnect();
         } finally {
-          claim?.();
+          try {
+            claim?.();
+          } finally {
+            if (transitions.get(main) === token) transitions.delete(main);
+          }
         }
       }
     }
   };
   const cancel = () => {
+    waitAfterModeRearm = false;
     generation++;
     if (capture) rejected = key(capture);
     capture = null;
@@ -154,7 +177,7 @@ export function createCrossfadeController(options: {
     );
   };
   const snapshot = () =>
-    live() ? readNativeCrossfadeState(api, main, graph) : null;
+    live() && allowed() ? readNativeCrossfadeState(api, main, graph) : null;
   const sameA = (s: NativeCrossfadeState | null) =>
     !!capture &&
     !!s &&
@@ -522,11 +545,47 @@ export function createCrossfadeController(options: {
     }
   };
   const prepare = async (s: NativeCrossfadeState) => {
+    const holder = transitions.get(main);
+    if (holder && holder !== token) return;
+    transitions.set(main, token);
     state = 'preparing';
     capture = s;
     const expected = ++generation;
+    if (options.plan) {
+      const planned = options.plan(s);
+      if (!active(expected) || !sameA(snapshot())) {
+        if (live()) cancel();
+        return;
+      }
+      if (!planned) {
+        cancel();
+        return;
+      }
+      const normalized = normalizeCrossfadeConfig(planned);
+      if (!normalized.overlapEligible) {
+        cancel();
+        return;
+      }
+      config = normalized;
+    }
+    const waitForPhysical =
+      options.plan || (options.isAllowed && waitAfterModeRearm);
+    waitAfterModeRearm = false;
     const request = requestCrossfadeAudio(s.videoId, options.requestAudio);
     if (request.kind === 'busy') {
+      if (waitForPhysical && request.result) {
+        timer = setTimeout(() => {
+          if (active(expected)) cancel();
+        }, 10000);
+        await request.result.catch(() => null);
+        if (active(expected) && sameA(snapshot())) {
+          clearTimer();
+          capture = null;
+          state = 'idle';
+          tick();
+        }
+        return;
+      }
       if (active(expected)) cancel();
       return;
     }
@@ -581,7 +640,12 @@ export function createCrossfadeController(options: {
     }
   };
   const tick = () => {
-    if (!live() || !config.overlapEligible) return;
+    if (!live()) return;
+    if (!allowed()) {
+      cancel();
+      return;
+    }
+    if (!config.overlapEligible) return;
     if (state === 'handoff') {
       const revision = (
         main.ownerDocument.defaultView as unknown as {
@@ -843,6 +907,12 @@ export function createCrossfadeController(options: {
       config = normalizeCrossfadeConfig(next);
     },
     cancel,
+    rearm() {
+      if (!live()) return;
+      cancel();
+      rejected = '';
+      waitAfterModeRearm = true;
+    },
     dispose() {
       if (state === 'stopped') return;
       state = 'stopped';
@@ -852,7 +922,9 @@ export function createCrossfadeController(options: {
       api.removeEventListener('videodatachange', metadata);
       releaseRate();
       retire();
-      if (controllers.get(main) === token) controllers.delete(main);
+      if (owners.get(mode) === token) owners.delete(mode);
+      if (owners.size === 0 && controllers.get(main) === owners)
+        controllers.delete(main);
     },
   };
   return controller;

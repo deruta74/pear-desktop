@@ -221,6 +221,10 @@
     }
   },
   "plugins": {
+    "automix": {
+      "unavailable": "AutoMix beta: this transition is unavailable; native playback continues.",
+      "conflict": "AutoMix beta paused: disable Crossfade to use AutoMix."
+    },
     "chromecast": {
       "description": "Play YouTube Music on Google Cast receivers",
       "dialog": {
