@@ -10,6 +10,10 @@ export interface RendererAudioGraph {
   insertMain(input: AudioNode, output: AudioNode): () => void;
   insertDry(input: AudioNode, output: AudioNode): () => void;
   insertMaster(input: AudioNode, output: AudioNode): () => void;
+  /** Dedicated post-EQ processor slot. Each slot retains one-owner semantics. */
+  insertPostMaster(input: AudioNode, output: AudioNode): () => void;
+  /** One-shot notification for processor cleanup, including already retired graphs. */
+  observeRetirement(listener: () => void): () => void;
   registerMedia(
     element: HTMLMediaElement,
     gain?: GainNode,
@@ -202,10 +206,19 @@ export function initializeAudioGraph(
   if (existing) return (current = existing);
   const dryInput = audioContext.createGain();
   const masterInput = audioContext.createGain();
+  const postMasterInput = audioContext.createGain();
   const musicGate = audioContext.createGain();
   const outputInput = audioContext.createGain();
   let retired = false;
   const insertRetirements = new Set<() => void>();
+  const retirementObservers = new Set<() => void>();
+  const notifyRetirement = (listener: () => void) => {
+    try {
+      listener();
+    } catch (error) {
+      console.error('[audio-graph] Retirement observer failed', error);
+    }
+  };
   const auxiliaryDisposers = new Set<() => void>();
   let auxiliaryMediaCount = 0;
   // Only the renderer's original dry edge is ours to replace. Never detach raw taps.
@@ -216,7 +229,8 @@ export function initializeAudioGraph(
   }
   audioSource.connect(dryInput);
   dryInput.connect(masterInput);
-  masterInput.connect(outputInput);
+  masterInput.connect(postMasterInput);
+  postMasterInput.connect(outputInput);
   outputInput.connect(musicGate);
   musicGate.connect(audioContext.destination);
   const output = new RendererOutput(
@@ -354,7 +368,17 @@ export function initializeAudioGraph(
     musicGate,
     insertMain: insert(audioSource, dryInput),
     insertDry: insert(dryInput, masterInput),
-    insertMaster: insert(masterInput, outputInput),
+    insertMaster: insert(masterInput, postMasterInput),
+    insertPostMaster: insert(postMasterInput, outputInput),
+    observeRetirement(listener) {
+      if (retired) {
+        notifyRetirement(listener);
+        return () => {};
+      }
+      const owned = () => listener();
+      retirementObservers.add(owned);
+      return () => retirementObservers.delete(owned);
+    },
     outputInput,
     registerWetOutput(wet, failed) {
       return output.registerWet(wet, failed);
@@ -485,6 +509,10 @@ export function initializeAudioGraph(
     } catch {
       /* Detached. */
     }
+    for (const listener of [...retirementObservers]) {
+      if (retirementObservers.delete(listener)) notifyRetirement(listener);
+    }
+    retirementObservers.clear();
     output.close();
     for (const retire of insertRetirements) retire();
     insertRetirements.clear();
@@ -504,7 +532,13 @@ export function initializeAudioGraph(
     } catch {
       /* Detached. */
     }
-    for (const node of [dryInput, masterInput, outputInput, musicGate]) {
+    for (const node of [
+      dryInput,
+      masterInput,
+      postMasterInput,
+      outputInput,
+      musicGate,
+    ]) {
       try {
         node.disconnect();
       } catch {

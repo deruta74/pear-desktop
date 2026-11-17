@@ -221,6 +221,27 @@
     }
   },
   "plugins": {
+    "chromecast": {
+      "description": "Play YouTube Music on Google Cast receivers",
+      "dialog": {
+        "cancel": "Cancel",
+        "choose-device": "Choose a Cast device",
+        "no-devices": {
+          "detail": "Check that this computer and your Cast receiver are on the same network, and that casting is enabled on the receiver.",
+          "mac-detail": "On macOS, allow Local Network access for this app in System Settings.",
+          "message": "No Google Cast devices found"
+        },
+        "ok": "OK",
+        "stop": {
+          "confirm": "Stop casting",
+          "message": "Stop casting to {{receiverName}}?"
+        }
+      },
+      "menu": {
+        "auto-cast-on-startup": "Auto cast to the last device on startup"
+      },
+      "name": "Google Cast"
+    },
     "taskbar-progress": {
       "name": "Taskbar progress",
       "description": "Show the current track's playback progress in the taskbar or dock."
@@ -709,6 +730,14 @@
           "missing": "Indexed file missing",
           "selectTrack": "Select a track before choosing audio quality"
         }
+      }
+    },
+    "pitch-shifter": {
+      "name": "Pitch Shifter",
+      "description": "Change pitch without changing tempo. Adds about 32 ms of processing latency at 48 kHz.",
+      "menu": {
+        "semitones": "Semitones",
+        "reset": "Reset to original pitch"
       }
     },
     "equalizer": {
@@ -1344,13 +1373,20 @@
         "to-placeholder": "end of song"
       }
     },
+    "audio-only-mode": {
+      "name": "Audio only mode (experimental)",
+      "description": "Prefer verified official album audio over music videos. Experimental: queue continuation needs real playback validation."
+    },
     "playlist-search": {
       "name": "Collection search",
       "description": "Filter items already loaded in playlists, albums and library lists. Does not download the full collection.",
       "label": "Search loaded items",
       "placeholder": "Title or artist",
       "clear": "Clear",
-      "results": "{{matches}} of {{total}} loaded items match"
+      "results": "{{matches}} of {{total}} loaded items match",
+      "names-label": "Search playlists",
+      "names-placeholder": "Playlist name",
+      "names-results": "{{matches}} of {{total}} loaded playlists match"
     },
     "statusbar-lyrics": {
       "name": "Menu bar lyrics",

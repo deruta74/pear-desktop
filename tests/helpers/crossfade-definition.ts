@@ -5,10 +5,14 @@ import {
   crossfadeDefaults,
   parseCrossfadeMenu,
 } from '../../src/plugins/crossfade/config';
-import { selectCrossfadeAudioFormat } from '../../src/plugins/crossfade/stream';
+import { resolvePlayableAudio } from '../../src/plugins/utils/main/playable-audio';
 /** Executes actual menu/backend definition with external prompt/client boundaries only. */
 export function crossfadeDefinition(
-  boundaries: { prompt?: () => Promise<unknown>; yt?: unknown } = {},
+  boundaries: {
+    prompt?: () => Promise<unknown>;
+    yt?: unknown;
+    mint?: () => Promise<string>;
+  } = {},
 ) {
   const source = stripTypeScriptTypes(
     readFileSync(
@@ -25,7 +29,12 @@ export function crossfadeDefinition(
     promptOptions: () => ({}),
     crossfadeDefaults,
     parseCrossfadeMenu,
-    selectCrossfadeAudioFormat,
+    resolvePlayableAudio,
+    mintVideoProof:
+      boundaries.mint ??
+      (() => Promise.reject(new Error('No network in fixture'))),
+    setupStreamEvaluator() {},
+    AbortController,
     Innertube: { create: async () => boundaries.yt },
     getNetFetchAsFetch: () => () => {},
     console,
