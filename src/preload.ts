@@ -15,6 +15,7 @@ import {
   forceUnloadPreloadPlugin,
   loadAllPreloadPlugins,
 } from './loader/preload';
+import { setupCastBridge } from './plugins/chromecast/preload-bridge';
 
 let languageDocumentActive = true;
 const isLanguageDocumentCurrent = () => languageDocumentActive;
@@ -71,7 +72,11 @@ ipcRenderer.on('plugin:enable', async (_, id: string) => {
 contextBridge.exposeInMainWorld('mainConfig', config);
 contextBridge.exposeInMainWorld('electronIs', is);
 const pageIpcChannel = (channel: string): string => {
-  if (typeof channel !== 'string' || channel.startsWith('peard:blocker-scene-'))
+  if (
+    typeof channel !== 'string' ||
+    channel.startsWith('peard:blocker-scene-') ||
+    channel.startsWith('peard:cast:')
+  )
     throw new Error('Reserved internal IPC channel');
   return channel;
 };
@@ -115,6 +120,14 @@ contextBridge.exposeInMainWorld(
   'ELECTRON_RENDERER_URL',
   process.env.ELECTRON_RENDERER_URL,
 );
+
+if (
+  process.isMainFrame &&
+  location.origin === 'https://music.youtube.com' &&
+  config.plugins.getPlugins()?.chromecast?.enabled === true
+) {
+  setupCastBridge();
+}
 
 const [path, script] = ipcRenderer.sendSync('get-renderer-script') as [
   string | null,

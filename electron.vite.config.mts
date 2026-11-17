@@ -1,3 +1,4 @@
+import { copyFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +37,16 @@ export default defineConfig(({ mode }) => {
   const mainConfig: MainViteConfig = {
     plugins: [
       mcpNoticesPlugin(__dirname),
+      {
+        name: 'copy-cast-proto',
+        closeBundle() {
+          const castEntry = fileURLToPath(import.meta.resolve('castv2'));
+          copyFileSync(
+            join(dirname(castEntry), 'lib', 'cast_channel.proto'),
+            join(__dirname, 'dist', 'main', 'cast_channel.proto'),
+          );
+        },
+      },
       pluginLoader('backend'),
       viteResolve({
         'virtual:i18n': i18nImporter(),

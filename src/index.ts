@@ -41,6 +41,10 @@ import {
 import { refreshMenu, setApplicationMenu } from '@/menu';
 import musicPlayerCss from '@/music-player.css?inline';
 import { defaultAuthProxyConfig } from '@/plugins/auth-proxy-adapter/config';
+import {
+  shouldAutoCast,
+  type AutoCastSettings,
+} from '@/plugins/chromecast/auto-cast';
 import { fileExists, injectCSS, injectCSSAsFile } from '@/plugins/utils/main';
 import { restart, setupAppControls } from '@/providers/app-controls';
 import { installBlockerSceneBridge } from '@/providers/blocker-scene-main';
@@ -517,9 +521,13 @@ async function createMainWindow() {
     win.setAlwaysOnTop(true);
   }
 
-  const urlToLoad = config.get('options.resumeOnStart')
-    ? config.get('url')
-    : config.defaultConfig.url;
+  const autoCastOnStartup = shouldAutoCast(
+    config.plugins.getOptions<AutoCastSettings>('chromecast'),
+  );
+  const urlToLoad =
+    !autoCastOnStartup && config.get('options.resumeOnStart')
+      ? config.get('url')
+      : config.defaultConfig.url;
 
   win.on('move', () => {
     if (win.isMaximized()) {
