@@ -20,6 +20,8 @@ import {
 } from './config';
 import { createCrossfadeController } from './controller';
 
+import { exclusiveMixAllowed } from '../automix/exclusive';
+
 import type { StreamResult } from './stream';
 import type { RendererContext } from '@/types/contexts';
 import type { BrowserWindow } from 'electron';
@@ -203,6 +205,7 @@ export default createPlugin<
       let stopped = false;
       let controller: ReturnType<typeof createCrossfadeController> | undefined;
       let releaseSpeed: (() => void) | undefined;
+      let releaseConfig: (() => void) | undefined;
       const status = document.createElement('div');
       status.setAttribute('role', 'status');
       status.style.cssText =
@@ -215,6 +218,8 @@ export default createPlugin<
         const release = releaseSpeed;
         releaseSpeed = undefined;
         release?.();
+        releaseConfig?.();
+        releaseConfig = undefined;
       };
       this.dispose = dispose;
       previousDispose?.();
@@ -227,6 +232,12 @@ export default createPlugin<
         main,
         graph,
         config: this.config,
+        isAllowed: () =>
+          exclusiveMixAllowed(
+            'crossfade',
+            this.config?.enabled === true,
+            window.mainConfig.get('plugins'),
+          ),
         requestAudio: (videoId) =>
           this.ipc!.invoke(
             'audio-url',
@@ -239,6 +250,9 @@ export default createPlugin<
         },
       });
       this.controller = controller;
+      releaseConfig = this.ipc?.subscribe?.('config-changed', (id: unknown) => {
+        if (id === 'automix') controller?.rearm();
+      });
       try {
         const release = this.ipc?.subscribe?.(
           'peard:playback-speed-step',

@@ -218,6 +218,10 @@
     }
   },
   "plugins": {
+    "automix": {
+      "unavailable": "AutoMix бета: переход недоступен; продолжается обычное воспроизведение.",
+      "conflict": "AutoMix бета приостановлен: отключите Crossfade."
+    },
     "chromecast": {
       "description": "Воспроизведение YouTube Music на ресиверах Google Cast",
       "dialog": {

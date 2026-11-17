@@ -49,7 +49,7 @@ export async function equalizerBundle(extra = '', translate = false) {
           },
           load(id) {
             if (id === '\0@/utils')
-              return 'export const createPlugin=value=>value;';
+              return 'export const createPlugin=value=>value;export const createRenderer=createPlugin;export const createBackend=createPlugin;';
             if (id === '\0@/i18n')
               return translate
                 ? `import i18next from 'i18next';const resources=${readFileSync(path.join(root, 'src/i18n/resources/en.json'), 'utf8')};const instance=i18next.createInstance();instance.init({initImmediate:false,lng:'en',resources:{en:{translation:resources}},interpolation:{escapeValue:false}});export const t=instance.t.bind(instance);`
