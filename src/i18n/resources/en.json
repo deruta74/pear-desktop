@@ -1350,7 +1350,10 @@
       "label": "Search loaded items",
       "placeholder": "Title or artist",
       "clear": "Clear",
-      "results": "{{matches}} of {{total}} loaded items match"
+      "results": "{{matches}} of {{total}} loaded items match",
+      "names-label": "Search playlists",
+      "names-placeholder": "Playlist name",
+      "names-results": "{{matches}} of {{total}} loaded playlists match"
     },
     "statusbar-lyrics": {
       "name": "Menu bar lyrics",
