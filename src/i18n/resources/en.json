@@ -1344,6 +1344,10 @@
         "to-placeholder": "end of song"
       }
     },
+    "audio-only-mode": {
+      "name": "Audio only mode (experimental)",
+      "description": "Prefer verified official album audio over music videos. Experimental: queue continuation needs real playback validation."
+    },
     "playlist-search": {
       "name": "Collection search",
       "description": "Filter items already loaded in playlists, albums and library lists. Does not download the full collection.",
