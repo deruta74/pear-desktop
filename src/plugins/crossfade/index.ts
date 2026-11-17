@@ -4,6 +4,11 @@ import { Innertube } from '\u0079\u006f\u0075\u0074\u0075\u0062\u0065i.js';
 
 import { t } from '@/i18n';
 import { getNetFetchAsFetch } from '@/plugins/utils/main';
+import { resolvePlayableAudio } from '@/plugins/utils/main/playable-audio';
+import {
+  mintVideoProof,
+  setupStreamEvaluator,
+} from '@/plugins/utils/main/video-proof';
 import promptOptions from '@/providers/prompt-options';
 import { getCurrentAudioGraph } from '@/providers/renderer-audio';
 import { createPlugin } from '@/utils';
@@ -14,14 +19,14 @@ import {
   type CrossfadePluginConfig,
 } from './config';
 import { createCrossfadeController } from './controller';
-import { selectCrossfadeAudioFormat, type StreamResult } from './stream';
 
+import type { StreamResult } from './stream';
 import type { RendererContext } from '@/types/contexts';
 import type { BrowserWindow } from 'electron';
 export type { CrossfadePluginConfig } from './config';
 
 export default createPlugin<
-  unknown,
+  { stopStreams?: () => void },
   unknown,
   {
     config?: CrossfadePluginConfig;
@@ -128,39 +133,54 @@ export default createPlugin<
     ];
   },
 
-  async backend({ ipc }) {
-    const yt = await Innertube.create({
-      fetch: getNetFetchAsFetch(),
-    });
-
-    ipc.handle('audio-url', async (videoID: string) => {
+  backend: {
+    stopStreams: undefined as (() => void) | undefined,
+    async start({ ipc }) {
+      this.stopStreams?.();
+      const owner = new AbortController();
+      this.stopStreams = () => {
+        owner.abort();
+        ipc.removeHandler('audio-url');
+      };
+      const fetch = getNetFetchAsFetch();
+      const ownedFetch: typeof fetch = (input, init) =>
+        fetch(input, {
+          ...init,
+          signal: AbortSignal.any([
+            owner.signal,
+            AbortSignal.timeout(8000),
+            ...(init?.signal ? [init.signal] : []),
+          ]),
+        });
+      setupStreamEvaluator();
+      let yt: Awaited<ReturnType<typeof Innertube.create>>;
       try {
-        if (!/^[\w-]{11}$/.test(videoID)) return null;
-        const info = await yt.getBasicInfo(videoID);
-        if (
-          info.basic_info.id !== videoID ||
-          info.basic_info.is_live === true ||
-          info.basic_info.is_live_content === true
-        )
-          return null;
-        const format = selectCrossfadeAudioFormat(
-          info.streaming_data?.adaptive_formats ?? [],
-        );
-        if (!format) return null;
-        try {
-          const url = await format.decipher(yt.session.player);
-          return {
-            url,
-            mimeType: format.mime_type,
-            contentLength: format.content_length!,
-          } satisfies StreamResult;
-        } catch {
-          return null;
-        }
-      } catch {
-        return null;
+        yt = await Innertube.create({ fetch: ownedFetch });
+      } catch (error) {
+        if (owner.signal.aborted) return;
+        throw error;
       }
-    });
+      if (owner.signal.aborted) return;
+      let inFlight = 0;
+      ipc.handle('audio-url', async (videoId: string) => {
+        if (inFlight >= 2 || owner.signal.aborted) return null;
+        inFlight++;
+        try {
+          return await resolvePlayableAudio(
+            yt,
+            videoId,
+            (id, signal) => mintVideoProof(id, ownedFetch, signal),
+            owner.signal,
+          );
+        } finally {
+          inFlight--;
+        }
+      });
+    },
+    stop() {
+      this.stopStreams?.();
+      this.stopStreams = undefined;
+    },
   },
 
   renderer: {

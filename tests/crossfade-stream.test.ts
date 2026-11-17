@@ -3,6 +3,12 @@ import {
   selectCrossfadeAudioFormat,
   validCrossfadeStream,
 } from '../src/plugins/crossfade/stream';
+import { resolvePlayableAudio } from '../src/plugins/utils/main/playable-audio';
+import {
+  setupStreamEvaluator,
+  untilAborted,
+} from '../src/plugins/utils/main/video-proof';
+import { Player, Platform } from 'youtubei.js';
 const format = (changes: Record<string, unknown> = {}) => ({
   has_audio: true,
   has_video: false,
@@ -102,8 +108,13 @@ test('actual private backend uses adaptive original audio and exactly one deciph
     },
   };
   const plugin = crossfadeDefinition({ yt });
-  await plugin.backend({
-    ipc: { handle: (_name: string, value: unknown) => (handler = value) },
+  await plugin.backend.start({
+    ipc: {
+      handle: (_name: string, value: unknown) => (handler = value),
+      removeHandler: () => {
+        handler = undefined;
+      },
+    },
   });
   expect(await handler('bad')).toBeNull();
   expect(requests).toBe(0);
@@ -114,4 +125,102 @@ test('actual private backend uses adaptive original audio and exactly one deciph
   });
   expect(requests).toBe(1);
   expect(deciphers).toBe(1);
+  plugin.backend.stop();
+  expect(handler).toBeUndefined();
+});
+
+test('stream resolves the requested catalog audio through YTMUSIC with its own proof', async () => {
+  const signal = new AbortController().signal;
+  const id = 'AAAAAAAAAAA';
+  const client = {
+    session: { player: undefined },
+    async getBasicInfo(videoId: string, options?: unknown) {
+      expect(videoId).toBe(id);
+      expect(options).toEqual({ client: 'YTMUSIC', po_token: 'proof-value' });
+      return {
+        basic_info: { id: videoId },
+        streaming_data: {
+          adaptive_formats: [
+            format({
+              decipher: async () => 'https://media.googlevideo.com/play?x=1',
+            }),
+          ],
+        },
+      };
+    },
+  };
+  const result = await resolvePlayableAudio(
+    client,
+    id,
+    async (requested, owner) => {
+      expect(requested).toBe(id);
+      expect(owner).toBe(signal);
+      return 'proof-value';
+    },
+    signal,
+  );
+  expect(result).toMatchObject({
+    url: 'https://media.googlevideo.com/play?x=1&pot=proof-value',
+    contentLength: 1000000,
+  });
+});
+
+test('retiring a stream request while deciphering does not publish the URL', async () => {
+  const owner = new AbortController();
+  const client = {
+    session: { player: undefined },
+    async getBasicInfo(id: string) {
+      return {
+        basic_info: { id },
+        streaming_data: {
+          adaptive_formats: [
+            format({
+              decipher: async () => {
+                owner.abort();
+                return 'https://media.googlevideo.com/play';
+              },
+            }),
+          ],
+        },
+      };
+    },
+  };
+  expect(
+    await resolvePlayableAudio(
+      client,
+      'AAAAAAAAAAA',
+      async () => 'proof',
+      owner.signal,
+    ),
+  ).toBeNull();
+});
+
+test('installed youtubei player evaluates its signature and n processor', async () => {
+  const previous = Platform.shim.eval;
+  try {
+    setupStreamEvaluator();
+    const player = new Player('fixture', 0, {
+      output: `const exportedVars = { nsigFunction: (url, sp, sig) => new class {
+        get(key) { return key === 'n' ? 'decoded-n' : key === sp ? 'decoded-' + sig : undefined }
+      } };`,
+      exported: ['nsigFunction'],
+    });
+    const cipher = new URLSearchParams({
+      url: 'https://media.googlevideo.com/play?n=original',
+      s: 'original-signature',
+      sp: 'sig',
+    }).toString();
+    const output = new URL(await player.decipher(undefined, cipher));
+    expect(output.searchParams.get('n')).toBe('decoded-n');
+    expect(output.searchParams.get('sig')).toBe('decoded-original-signature');
+  } finally {
+    Platform.shim.eval = previous;
+  }
+});
+
+test('a stalled proof operation releases its caller on cancellation', async () => {
+  const owner = new AbortController();
+  const pending = untilAborted(new Promise<void>(() => {}), owner.signal);
+  owner.abort(new Error('owner retired'));
+  await expect(pending).rejects.toThrow('owner retired');
 });

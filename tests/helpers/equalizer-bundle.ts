@@ -30,6 +30,7 @@ export async function equalizerBundle(extra = '', translate = false) {
                 'custom-electron-prompt',
                 'youtubei.js',
                 '@/plugins/utils/main',
+                '@/plugins/utils/main/video-proof',
                 '@/providers/prompt-options',
               ].includes(id)
             )
@@ -59,6 +60,8 @@ export async function equalizerBundle(extra = '', translate = false) {
               return 'export const Innertube={create:async()=>({})};';
             if (id === '\0@/plugins/utils/main')
               return 'export const getNetFetchAsFetch=()=>fetch;';
+            if (id === '\0@/plugins/utils/main/video-proof')
+              return 'export const setupStreamEvaluator=()=>{};export const mintVideoProof=async()=>{throw new Error("Renderer fixture cannot mint proofs")};';
             if (id === '\0@/providers/prompt-options')
               return 'export default {};';
             if (id.startsWith('\0style:'))

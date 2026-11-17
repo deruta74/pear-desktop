@@ -19,14 +19,13 @@ import {
   Innertube,
   UniversalCache,
   YTNodes,
-  Platform,
   type YT,
   type YTMusic,
-  type Types,
 } from '\u0079\u006f\u0075\u0074\u0075\u0062\u0065i.js';
 
 import { t } from '@/i18n';
 import { getNetFetchAsFetch } from '@/plugins/utils/main';
+import { setupStreamEvaluator } from '@/plugins/utils/main/video-proof';
 import {
   registerCallback,
   cleanupName,
@@ -84,25 +83,7 @@ const ffmpeg = lazyVar.lazy(async () =>
 );
 const ffmpegMutex = new Mutex();
 
-Platform.shim.eval = (
-  data: Types.BuildScriptResult,
-  env: Record<string, Types.VMPrimative>,
-) => {
-  const properties = [];
-
-  if (env.n) {
-    properties.push(`n: exportedVars.nFunction("${env.n}")`);
-  }
-
-  if (env.sig) {
-    properties.push(`sig: exportedVars.sigFunction("${env.sig}")`);
-  }
-
-  const code = `${data.output}\nreturn { ${properties.join(', ')} }`;
-
-  // oxlint-disable-next-line typescript/no-unsafe-return,typescript/no-implied-eval,typescript/no-unsafe-call
-  return new Function(code)();
-};
+setupStreamEvaluator();
 
 let win: BrowserWindow;
 let playingUrl: string;
