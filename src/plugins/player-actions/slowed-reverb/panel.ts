@@ -5,8 +5,8 @@ import {
   clampSlow,
   clampWetHighpass,
   clampWetLowpass,
-  formatPercent,
-  formatRate,
+  SLOW_MAX,
+  SLOW_MIN,
 } from './engine';
 
 export interface SlowedReverbSectionState {
@@ -80,19 +80,119 @@ function debounceTrailing(
   return wrapped;
 }
 
-function makeSliderRow(labelText: string): {
-  row: HTMLElement;
-  value: HTMLSpanElement;
-} {
-  const row = document.createElement('label');
-  row.className = 'pbg-row';
+interface SliderOptions {
+  labelText: string;
+  unit: string;
+  min: number;
+  max: number;
+  step: number;
+  wheelStep?: number;
+  scale?: number;
+  initialValue: number;
+  clampValue: (value: number) => number;
+  onLive: (value: number) => void;
+  onCommit: (value: number) => void;
+}
+
+function makeSliderRow({
+  labelText,
+  unit,
+  min,
+  max,
+  step,
+  wheelStep = step,
+  scale = 1,
+  initialValue,
+  clampValue,
+  onLive,
+  onCommit,
+}: SliderOptions) {
+  const row = document.createElement('div');
+  row.className = 'pbg-row pbg-reverb-row';
   const label = document.createElement('span');
   label.className = 'pbg-label';
   label.textContent = labelText;
-  const value = document.createElement('span');
-  value.className = 'pbg-value';
-  row.append(label, value);
-  return { row, value };
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.className = 'pbg-range';
+  const numberField = document.createElement('input');
+  numberField.type = 'number';
+  numberField.className = 'pbg-input pbg-reverb-number';
+  for (const input of [slider, numberField]) {
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.setAttribute('aria-label', labelText);
+  }
+  const unitLabel = document.createElement('span');
+  unitLabel.textContent = unit;
+  unitLabel.setAttribute('aria-hidden', 'true');
+  const entry = document.createElement('span');
+  entry.className = 'pbg-reverb-entry';
+  entry.append(numberField, unitLabel);
+  row.append(label, slider, entry);
+
+  const sync = (value: number) => {
+    const previous = slider.value;
+    slider.value = String(scale === 1 ? value : Math.round(value * scale));
+    slider.setAttribute('aria-valuetext', `${slider.value} ${unit}`);
+    // An IPC echo or another slider's commit can arrive during typing.
+    if (
+      document.activeElement !== numberField ||
+      numberField.value === previous
+    )
+      numberField.value = slider.value;
+  };
+  sync(initialValue);
+
+  const live = throttleLive(onLive);
+  const wheelCommit = debounceTrailing(onCommit, WHEEL_COMMIT_MS);
+  const applyPreview = (next: number) => {
+    sync(next);
+    numberField.value = slider.value;
+    live(next);
+  };
+  const commitNumber = () => {
+    const previous = clampValue(slider.valueAsNumber / scale);
+    const entered = numberField.valueAsNumber;
+    const next = Number.isFinite(entered)
+      ? clampValue(entered / scale)
+      : previous;
+    sync(next);
+    numberField.value = slider.value;
+    if (next === previous) return;
+    wheelCommit.cancel();
+    onCommit(next);
+  };
+  numberField.addEventListener('change', commitNumber);
+  numberField.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    event.stopPropagation();
+    commitNumber();
+  });
+  slider.addEventListener('input', () => {
+    wheelCommit.cancel();
+    applyPreview(clampValue(slider.valueAsNumber / scale));
+  });
+  slider.addEventListener('change', () => {
+    wheelCommit.cancel();
+    onCommit(clampValue(slider.valueAsNumber / scale));
+  });
+  slider.addEventListener(
+    'wheel',
+    (event) => {
+      if (event.deltaY === 0) return;
+      event.preventDefault();
+      const delta = event.deltaY < 0 ? wheelStep : -wheelStep;
+      const next = clampValue((slider.valueAsNumber + delta) / scale);
+      applyPreview(next);
+      wheelCommit(next);
+    },
+    { passive: false },
+  );
+  return { row, sync, cancel: wheelCommit.cancel, flush: wheelCommit.flush };
 }
 
 export function createSlowedReverbSection(
@@ -114,107 +214,55 @@ export function createSlowedReverbSection(
   activeRow.append(activeBox, activeLabel);
   root.appendChild(activeRow);
 
-  const speedRow = makeSliderRow(t('plugins.slowed-reverb.panel.speed'));
-  const speed = document.createElement('input');
-  speed.type = 'range';
-  speed.className = 'pbg-range';
-  speed.min = '0.7';
-  speed.max = '1.3';
-  speed.step = '0.01';
-  speed.value = String(clampSlow(initial.slow));
-  speed.setAttribute('aria-label', t('plugins.slowed-reverb.panel.speed'));
-  speedRow.row.append(speed, speedRow.value);
-  root.appendChild(speedRow.row);
-
-  const reverbRow = makeSliderRow(t('plugins.slowed-reverb.panel.reverb'));
-  const reverb = document.createElement('input');
-  reverb.type = 'range';
-  reverb.className = 'pbg-range';
-  reverb.min = '0';
-  reverb.max = '100';
-  reverb.step = '1';
-  reverb.value = String(
-    Math.round(clampIntensity(initial.reverbIntensity) * 100),
-  );
-  reverb.setAttribute('aria-label', t('plugins.slowed-reverb.panel.reverb'));
-  reverbRow.row.append(reverb, reverbRow.value);
-  root.appendChild(reverbRow.row);
-
-  // Keep tone controls on the wet branch; their labels and units explain that
-  // the dry music and Equalizer response remain independent.
-  const toneSlider = (
-    labelText: string,
-    initialValue: number,
-    min: number,
-    max: number,
-    step: number,
-    clampValue: (value: unknown) => number,
-    onLive: (value: number) => void,
-    onCommit: (value: number) => void,
-  ) => {
-    const { row, value } = makeSliderRow(labelText);
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.className = 'pbg-range';
-    input.min = String(min);
-    input.max = String(max);
-    input.step = String(step);
-    input.setAttribute('aria-label', labelText);
-    const sync = (next: number) => {
-      input.value = String(next);
-      value.textContent = `${next} Hz`;
-      input.setAttribute('aria-valuetext', `${next} Hz`);
-    };
-    sync(initialValue);
-    const live = throttleLive(onLive);
-    const commit = debounceTrailing(onCommit, WHEEL_COMMIT_MS);
-    input.addEventListener('input', () => {
-      commit.cancel();
-      const next = clampValue(input.value);
-      sync(next);
-      live(next);
-    });
-    input.addEventListener('change', () => {
-      commit.cancel();
-      onCommit(clampValue(input.value));
-    });
-    input.addEventListener(
-      'wheel',
-      (event: WheelEvent) => {
-        event.preventDefault();
-        const next = clampValue(
-          Number(input.value) + (event.deltaY < 0 ? step : -step),
-        );
-        sync(next);
-        live(next);
-        commit(next);
-      },
-      { passive: false },
-    );
-    row.append(input, value);
-    root.appendChild(row);
-    return { sync, cancel: commit.cancel, flush: commit.flush };
-  };
-  const highpass = toneSlider(
-    t('plugins.slowed-reverb.panel.wet-highpass'),
-    clampWetHighpass(initial.wetHighpass),
-    20,
-    1000,
-    10,
-    clampWetHighpass,
-    callbacks.onWetHighpassLive,
-    callbacks.onWetHighpassCommit,
-  );
-  const lowpass = toneSlider(
-    t('plugins.slowed-reverb.panel.wet-lowpass'),
-    clampWetLowpass(initial.wetLowpass),
-    1000,
-    20000,
-    100,
-    clampWetLowpass,
-    callbacks.onWetLowpassLive,
-    callbacks.onWetLowpassCommit,
-  );
+  const speed = makeSliderRow({
+    labelText: t('plugins.slowed-reverb.panel.speed'),
+    unit: '×',
+    min: SLOW_MIN,
+    max: SLOW_MAX,
+    step: 0.01,
+    initialValue: clampSlow(initial.slow),
+    clampValue: clampSlow,
+    onLive: callbacks.onSlowLive,
+    onCommit: callbacks.onSlowCommit,
+  });
+  const reverb = makeSliderRow({
+    labelText: t('plugins.slowed-reverb.panel.reverb'),
+    unit: '%',
+    min: 0,
+    max: 100,
+    step: 1,
+    scale: 100,
+    initialValue: clampIntensity(initial.reverbIntensity),
+    clampValue: clampIntensity,
+    onLive: callbacks.onReverbLive,
+    onCommit: callbacks.onReverbCommit,
+  });
+  const highpass = makeSliderRow({
+    labelText: t('plugins.slowed-reverb.panel.wet-highpass'),
+    unit: 'Hz',
+    min: 20,
+    max: 1000,
+    step: 1,
+    wheelStep: 10,
+    initialValue: clampWetHighpass(initial.wetHighpass),
+    clampValue: clampWetHighpass,
+    onLive: callbacks.onWetHighpassLive,
+    onCommit: callbacks.onWetHighpassCommit,
+  });
+  const lowpass = makeSliderRow({
+    labelText: t('plugins.slowed-reverb.panel.wet-lowpass'),
+    unit: 'Hz',
+    min: 1000,
+    max: 20000,
+    step: 1,
+    wheelStep: 100,
+    initialValue: clampWetLowpass(initial.wetLowpass),
+    clampValue: clampWetLowpass,
+    onLive: callbacks.onWetLowpassLive,
+    onCommit: callbacks.onWetLowpassCommit,
+  });
+  const sliders = [speed, reverb, highpass, lowpass];
+  root.append(...sliders.map(({ row }) => row));
 
   const reset = document.createElement('button');
   reset.type = 'button';
@@ -222,80 +270,11 @@ export function createSlowedReverbSection(
   reset.textContent = t('plugins.slowed-reverb.panel.reset');
   root.appendChild(reset);
 
-  const paint = (state: SlowedReverbSectionState): void => {
-    speedRow.value.textContent = formatRate(state.slow);
-    reverbRow.value.textContent = formatPercent(state.reverbIntensity);
-  };
-  paint(initial);
-
-  const slowLive = throttleLive(callbacks.onSlowLive);
-  const reverbLive = throttleLive(callbacks.onReverbLive);
-  const slowWheelCommit = debounceTrailing(
-    callbacks.onSlowCommit,
-    WHEEL_COMMIT_MS,
-  );
-  const reverbWheelCommit = debounceTrailing(
-    callbacks.onReverbCommit,
-    WHEEL_COMMIT_MS,
-  );
-
   activeBox.addEventListener('change', () => {
     callbacks.onActiveChange(activeBox.checked);
   });
-  speed.addEventListener('input', () => {
-    slowWheelCommit.cancel();
-    const next = clampSlow(Number(speed.value));
-    speedRow.value.textContent = formatRate(next);
-    slowLive(next);
-  });
-  speed.addEventListener('change', () => {
-    slowWheelCommit.cancel();
-    callbacks.onSlowCommit(clampSlow(Number(speed.value)));
-  });
-  reverb.addEventListener('input', () => {
-    reverbWheelCommit.cancel();
-    const next = clampIntensity(Number(reverb.value) / 100);
-    reverbRow.value.textContent = formatPercent(next);
-    reverbLive(next);
-  });
-  reverb.addEventListener('change', () => {
-    reverbWheelCommit.cancel();
-    callbacks.onReverbCommit(clampIntensity(Number(reverb.value) / 100));
-  });
-  speed.addEventListener(
-    'wheel',
-    (e: WheelEvent) => {
-      e.preventDefault();
-      const next = clampSlow(
-        Number(speed.value) + (e.deltaY < 0 ? 0.01 : -0.01),
-      );
-      speed.value = String(next);
-      speedRow.value.textContent = formatRate(next);
-      slowLive(next);
-      slowWheelCommit(next);
-    },
-    { passive: false },
-  );
-  reverb.addEventListener(
-    'wheel',
-    (e: WheelEvent) => {
-      e.preventDefault();
-      const next = clampIntensity(
-        // oxlint-disable-next-line @stylistic/no-mixed-operators
-        Number(reverb.value) / 100 + (e.deltaY < 0 ? 0.01 : -0.01),
-      );
-      reverb.value = String(Math.round(next * 100));
-      reverbRow.value.textContent = formatPercent(next);
-      reverbLive(next);
-      reverbWheelCommit(next);
-    },
-    { passive: false },
-  );
   reset.addEventListener('click', () => {
-    slowWheelCommit.cancel();
-    reverbWheelCommit.cancel();
-    highpass.cancel();
-    lowpass.cancel();
+    for (const slider of sliders) slider.cancel();
     callbacks.onReset();
   });
 
@@ -303,21 +282,14 @@ export function createSlowedReverbSection(
     root,
     sync: (state: SlowedReverbSectionState) => {
       activeBox.checked = state.active;
-      speed.value = String(clampSlow(state.slow));
-      reverb.value = String(
-        Math.round(clampIntensity(state.reverbIntensity) * 100),
-      );
+      speed.sync(clampSlow(state.slow));
+      reverb.sync(clampIntensity(state.reverbIntensity));
       highpass.sync(clampWetHighpass(state.wetHighpass));
       lowpass.sync(clampWetLowpass(state.wetLowpass));
-      paint(state);
     },
     destroy: () => {
-      // Persist a wheel adjustment that is still inside the debounce window:
-      // the live rate was applied, keep config in sync with it.
-      slowWheelCommit.flush();
-      reverbWheelCommit.flush();
-      highpass.flush();
-      lowpass.flush();
+      // Persist any wheel adjustment still inside the debounce window.
+      for (const slider of sliders) slider.flush();
       root.remove();
     },
   };

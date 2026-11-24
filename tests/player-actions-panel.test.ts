@@ -92,7 +92,7 @@ test('playback-speed owns replacement popup/video hooks and repeated toggles lea
 });
 
 for (const height of [425, 360])
-  test(`native real-CSS panel stays accessible at 325x${height}`, async ({
+  test(`native panel supports exact reverb input at 325x${height}`, async ({
     page,
   }) => {
     const [
@@ -167,9 +167,24 @@ for (const height of [425, 360])
       await page.addScriptTag({ content: code });
       await page.evaluate(async () => {
         const w = window as any;
+        let config = {
+          ...w.panelFixture.config,
+          enabled: true,
+          slowedReverb: {
+            active: true,
+            slow: 0.85,
+            reverbIntensity: 0.4,
+            wetHighpass: 240,
+            wetLowpass: 6400,
+          },
+        };
+        w.savedPanelConfig = config;
         await w.panelFixture.renderer.start({
-          getConfig: async () => ({ ...w.panelFixture.config, enabled: true }),
-          setConfig: async () => {},
+          getConfig: async () => config,
+          setConfig: async (patch: Partial<typeof config>) => {
+            config = { ...config, ...patch };
+            w.savedPanelConfig = config;
+          },
         });
         w.panelFixture.renderer.onPlayerApiReady({
           getPlayerResponse: () => ({ videoDetails: { videoId: 'A' } }),
@@ -189,6 +204,69 @@ for (const height of [425, 360])
       await expect(
         page.getByRole('slider', { name: 'Speed', exact: true }),
       ).toBeVisible();
+      const lowpass = panel.getByRole('spinbutton', {
+        name: 'Reverb low-pass',
+      });
+      const lowpassSlider = panel.getByRole('slider', {
+        name: 'Reverb low-pass',
+      });
+      await expect(lowpass).toHaveValue('6400');
+      await lowpass.fill('6500');
+      await lowpass.press('Enter');
+      await expect(lowpassSlider).toHaveValue('6500');
+      await expect
+        .poll(() =>
+          page.evaluate(() => (window as any).savedPanelConfig.slowedReverb),
+        )
+        .toEqual({
+          active: true,
+          slow: 0.85,
+          reverbIntensity: 0.4,
+          wetHighpass: 240,
+          wetLowpass: 6500,
+        });
+
+      await lowpass.fill('');
+      await lowpass.press('Tab');
+      await expect(lowpass).toHaveValue('6500');
+
+      await lowpassSlider.press('ArrowRight');
+      await expect(lowpass).toHaveValue('6501');
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => (window as any).savedPanelConfig.slowedReverb.wetLowpass,
+          ),
+        )
+        .toBe(6501);
+
+      await panel
+        .getByRole('spinbutton', { name: 'Speed', exact: true })
+        .fill('0.92');
+      await panel
+        .getByRole('spinbutton', { name: 'Reverb', exact: true })
+        .fill('63');
+      await panel
+        .getByRole('spinbutton', { name: 'Reverb high-pass' })
+        .fill('311');
+      await panel
+        .getByRole('spinbutton', { name: 'Reverb high-pass' })
+        .press('Tab');
+      await expect
+        .poll(() =>
+          page.evaluate(() => (window as any).savedPanelConfig.slowedReverb),
+        )
+        .toEqual({
+          active: true,
+          slow: 0.92,
+          reverbIntensity: 0.63,
+          wetHighpass: 311,
+          wetLowpass: 6501,
+        });
+
+      expect(await panel.evaluate((node) => node.scrollWidth)).toBe(
+        await panel.evaluate((node) => node.clientWidth),
+      );
       const save = page.getByRole('button', { name: 'Save', exact: true });
       await save.scrollIntoViewIfNeeded();
       await expect(save).toBeInViewport({ ratio: 1 });

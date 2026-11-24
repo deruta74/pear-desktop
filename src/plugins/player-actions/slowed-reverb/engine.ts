@@ -85,14 +85,6 @@ export function isReverbEngaged(config: {
   return config.active && clampIntensity(config.reverbIntensity) > 0;
 }
 
-export function formatRate(value: number): string {
-  return `${clampSlow(value).toFixed(2)}x`;
-}
-
-export function formatPercent(value: number): string {
-  return `${Math.round(clampIntensity(value) * 100)}%`;
-}
-
 export interface DattorroParams {
   wetGain: number;
   decay: number;
