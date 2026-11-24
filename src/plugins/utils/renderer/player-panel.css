@@ -66,13 +66,6 @@
   opacity: 0.85;
 }
 
-.pbg-value {
-  min-width: 44px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.85;
-}
-
 .pbg-range {
   flex: 1;
   accent-color: #ff4e45;
@@ -134,6 +127,41 @@
   outline: 2px solid rgba(255, 78, 69, 0.7);
   outline-offset: 1px;
   border-color: rgba(255, 255, 255, 0.32);
+}
+
+.pbg-reverb-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(44px, 1fr) 76px;
+  cursor: default;
+}
+
+.pbg-reverb-row .pbg-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pbg-reverb-row .pbg-range {
+  width: 100%;
+  margin: 0;
+}
+
+.pbg-reverb-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 15px;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.pbg-reverb-number {
+  appearance: textfield;
+  min-width: 0;
+  padding: 4px;
+  text-align: right;
+}
+
+.pbg-reverb-number::-webkit-inner-spin-button {
+  appearance: none;
 }
 
 .pbg-now {
