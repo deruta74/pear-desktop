@@ -1,5 +1,9 @@
 //! The desktop queue separates its local controls from the remote video.
+#[cfg(target_os = "macos")]
+mod iframe;
 mod platform;
+#[cfg(target_os = "macos")]
+mod transport;
 use std::{
     borrow::Cow,
     fs::{self, File, OpenOptions},
@@ -27,7 +31,7 @@ use wry::{
 };
 
 #[cfg(target_os = "macos")]
-use wry::WebViewBuilderExtDarwin;
+use wry::{PageLoadEvent, WebViewBuilderExtDarwin};
 
 use crate::{
     Result, TITLE, attach_menu,
@@ -62,6 +66,10 @@ enum PlayerEvent {
     Command(ControlMessage),
     TitleChanged(u64, String),
     VideoProblem(u64, &'static str),
+    #[cfg(target_os = "macos")]
+    TransportCommitted(u64),
+    #[cfg(target_os = "macos")]
+    TransportSample(u64, u64, String),
 }
 
 #[derive(Deserialize)]
@@ -73,22 +81,31 @@ struct ControlMessage {
 
 pub struct LaunchMode {
     smoke: bool,
+    iframe_player: bool,
 }
 
 pub fn launch_mode() -> Result<Option<LaunchMode>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let queue = args.len() == 1 && args[0] == "--queue";
     let smoke = cfg!(feature = "benchmark") && args.len() == 1 && args[0] == "--queue-smoke";
+    let iframe_player = args.len() == 1 && args[0] == "--iframe-player";
+    #[cfg(not(target_os = "macos"))]
+    if iframe_player {
+        return Err("The IFrame API player preview currently requires macOS.".into());
+    }
     #[cfg(target_os = "macos")]
     {
         let bundled = NSBundle::mainBundle()
             .bundleIdentifier()
             .is_some_and(|id| id.to_string() == APP_ID);
-        if (queue || smoke) && !bundled {
+        if (queue || smoke || iframe_player) && !bundled {
             return Err("The native queue requires the Pear Desktop macOS app bundle.".into());
         }
         if bundled && args.is_empty() {
-            return Ok(Some(LaunchMode { smoke: false }));
+            return Ok(Some(LaunchMode {
+                smoke: false,
+                iframe_player: false,
+            }));
         }
     }
     if smoke && std::env::var_os("PEAR_PREVIEW_QUEUE_DIR").is_none() {
@@ -96,7 +113,10 @@ pub fn launch_mode() -> Result<Option<LaunchMode>> {
             "Set PEAR_PREVIEW_QUEUE_DIR to a disposable directory for smoke testing.".into(),
         );
     }
-    Ok((queue || smoke).then_some(LaunchMode { smoke }))
+    Ok((queue || smoke || iframe_player).then_some(LaunchMode {
+        smoke,
+        iframe_player,
+    }))
 }
 
 fn queue_path_and_lock() -> Result<(PathBuf, File)> {
@@ -188,6 +208,7 @@ fn show_video(
     id: Option<&str>,
     generation: u64,
     events: tao::event_loop::EventLoopProxy<PlayerEvent>,
+    iframe_player: bool,
 ) -> Result<WebView> {
     let Some(id) = id else {
         let view = layout.build(
@@ -200,12 +221,44 @@ fn show_video(
         return Ok(view);
     };
 
+    let problem_events = events.clone();
+    let report_problem = move |message| {
+        let _ = problem_events.send_event(PlayerEvent::VideoProblem(generation, message));
+    };
+    #[cfg(target_os = "macos")]
+    if iframe_player {
+        let page = Arc::new(iframe::Page::new(id)?);
+        let navigation = page.clone();
+        let view = layout.build(
+            window,
+            move |builder| {
+                isolated_builder(builder)
+                    .with_allow_link_preview(false)
+                    .with_navigation_handler(move |candidate| navigation.permits(&candidate))
+                    .with_on_page_load_handler(move |event, url| {
+                        if matches!(event, PageLoadEvent::Started)
+                            && iframe::Page::is_wrapper_url(&url)
+                        {
+                            let _ = events.send_event(PlayerEvent::TransportCommitted(generation));
+                        }
+                    })
+                    .with_on_web_content_process_terminate_handler(move || {
+                        report_problem(
+                            "The video player stopped. Use Reload Player or Open in browser.",
+                        );
+                    })
+            },
+            Pane::Video,
+            queue_visible,
+        )?;
+        page.load(&view)?;
+        return Ok(view);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = iframe_player;
     let url = embed_url(id);
     let permitted_url = url.clone();
     let title_events = events.clone();
-    let report_problem = move |message| {
-        let _ = events.send_event(PlayerEvent::VideoProblem(generation, message));
-    };
     #[cfg(target_os = "macos")]
     let on_stopped = report_problem.clone();
     let view = layout.build(
@@ -278,6 +331,18 @@ fn render(
     Ok(())
 }
 
+fn player_flow(
+    load: Option<Instant>,
+    #[cfg(target_os = "macos")] transport: Option<&transport::Transport>,
+) -> ControlFlow {
+    #[cfg(target_os = "macos")]
+    let load = load
+        .into_iter()
+        .chain(transport.and_then(transport::Transport::deadline))
+        .min();
+    load.map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
+}
+
 pub fn run(mode: LaunchMode) -> Result<()> {
     let (queue_path, queue_lock) = queue_path_and_lock()?;
     let data_dir = queue_path
@@ -347,6 +412,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     )?;
     controls.load_url(CONTROLS_URL)?;
     let loader = event_loop.create_proxy();
+    let iframe_player = mode.iframe_player;
     let load =
         move |layout: &Layout, window: &Window, library: &Library, generation, queue_visible| {
             show_video(
@@ -356,6 +422,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 library.state().current.as_deref(),
                 generation,
                 loader.clone(),
+                iframe_player,
             )
         };
     let mut queue_visible = true;
@@ -370,16 +437,23 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut loading_slow = false;
     let mut titled_generation = None;
     let mut controls_ready = false;
+    #[cfg(target_os = "macos")]
+    let mut transport = iframe_player.then(transport::Transport::default);
+    #[cfg(target_os = "macos")]
+    let results = event_loop.create_proxy();
 
     event_loop.run(move |event, _, flow| {
         let _keep_alive = (&menu, &queue_lock);
-        *flow = load_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil);
+        *flow = player_flow(
+            load_deadline,
+            #[cfg(target_os = "macos")]
+            transport.as_ref(),
+        );
         let mut reload_player = false;
         let mut error = None;
         let mut acknowledged_sequence = None;
         let mut verify_controls = false;
-
-        match event {
+        let update_queue = match event {
             Event::WindowEvent {
                 window_id, event, ..
             } if window_id == window.id() => {
@@ -405,6 +479,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *reload.id() => {
                 reload_player = true;
+                true
             }
             Event::UserEvent(PlayerEvent::Menu(event))
                 if event.id == *toggle_queue.id() || event.id == *add_video.id() =>
@@ -431,6 +506,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 if adding && let Err(reason) = focus_add(&controls) {
                     error = Some(format!("Could not focus the video field: {reason}"));
                 }
+                true
             }
             Event::UserEvent(PlayerEvent::TitleChanged(id, title)) if id == generation => {
                 let first_title = titled_generation != Some(id);
@@ -449,16 +525,68 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         Err(reason) => error = Some(reason.to_string()),
                     }
                 }
+                true
             }
             Event::UserEvent(PlayerEvent::VideoProblem(id, message)) if id == generation => {
                 load_deadline = None;
                 player_error = Some(message.into());
+                #[cfg(target_os = "macos")]
+                if let Some(transport) = &mut transport {
+                    transport.reset(false);
+                }
+                true
             }
-            Event::NewEvents(StartCause::ResumeTimeReached { .. })
-                if load_deadline.is_some_and(|deadline| Instant::now() >= deadline) =>
-            {
-                load_deadline = None;
-                loading_slow = true;
+            #[cfg(target_os = "macos")]
+            Event::UserEvent(PlayerEvent::TransportCommitted(id)) if id == generation => {
+                if let Some(transport) = &mut transport {
+                    transport.reset(true);
+                }
+                false
+            }
+            #[cfg(target_os = "macos")]
+            Event::UserEvent(PlayerEvent::TransportSample(id, sequence, response)) if id == generation => {
+                let Some(transport) = &mut transport else { return };
+                let previous_status = (transport.ready(), transport.is_stale());
+                if !transport.receive(sequence, &response, Instant::now()) { return; }
+                if let Some(problem) = transport.problem() {
+                    player_error = Some(problem.into());
+                    load_deadline = None;
+                    transport.reset(false);
+                    true
+                } else if previous_status != (transport.ready(), transport.is_stale()) {
+                    if transport.ready() {
+                        load_deadline = None;
+                        loading_slow = false;
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+                let now = Instant::now();
+                #[cfg(target_os = "macos")]
+                let expired = transport.as_mut().is_some_and(|transport| transport.expire(now));
+                #[cfg(target_os = "macos")]
+                if let (Some(transport), Some(video)) = (&mut transport, &current_player)
+                    && let Some(sequence) = transport.begin(now)
+                {
+                    let results = results.clone();
+                    if let Err(reason) = iframe::Page::observe(video, move |snapshot| {
+                        let _ = results.send_event(PlayerEvent::TransportSample(generation, sequence, snapshot));
+                    }) {
+                        eprintln!("Could not read player state: {reason}");
+                        transport.receive(sequence, "null", now);
+                    }
+                }
+                let overdue = load_deadline.is_some_and(|deadline| now >= deadline);
+                if overdue {
+                    load_deadline = None;
+                    loading_slow = true;
+                }
+                #[cfg(target_os = "macos")]
+                let overdue = overdue || expired;
+                overdue
             }
             Event::UserEvent(PlayerEvent::Command(message)) => {
                 acknowledged_sequence = Some(message.sequence);
@@ -475,19 +603,41 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             error = Some(format!("Could not open the browser: {reason}"));
                         }
                     }
+                    #[cfg(target_os = "macos")]
+                    command @ (Command::SetPlayback { .. } | Command::Seek { .. }) => {
+                        if let (Some(transport), Some(video)) = (&mut transport, &current_player) {
+                            let action = match command {
+                                Command::SetPlayback { playing: true } => iframe::Action::Play,
+                                Command::SetPlayback { playing: false } => iframe::Action::Pause,
+                                Command::Seek { position } => iframe::Action::Seek(position),
+                                _ => unreachable!("only transport commands enter this arm"),
+                            };
+                            if let Err(reason) = transport.perform(video, action) {
+                                transport.resend_controls();
+                                error = Some(reason.to_string());
+                            }
+                        } else {
+                            error = Some("Playback controls are unavailable for this video.".into());
+                        }
+                    }
                     command => match library.apply(command) {
                         Ok(changed) => reload_player = changed,
                         Err(reason) => error = Some(reason.to_string()),
                     },
                 }
+                true
             }
             _ => return,
-        }
+        };
 
         if reload_player {
             generation += 1;
             load_deadline = None;
             loading_slow = false;
+            #[cfg(target_os = "macos")]
+            if let Some(transport) = &mut transport {
+                transport.reset(false);
+            }
             // Remove the old WebView before creating the next one so its audio stops
             // even if the new WebView fails to initialize.
             drop(current_player.take());
@@ -503,11 +653,20 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
         }
 
-        *flow = load_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil);
-        if controls_ready {
+        *flow = player_flow(
+            load_deadline,
+            #[cfg(target_os = "macos")]
+            transport.as_ref(),
+        );
+        if controls_ready && update_queue {
+            let player_ready = titled_generation == Some(generation);
+            #[cfg(target_os = "macos")]
+            let player_ready = player_ready || transport.as_ref().is_some_and(transport::Transport::ready);
+            #[cfg(target_os = "macos")]
+            let loading_slow = loading_slow || transport.as_ref().is_some_and(transport::Transport::is_stale);
             let notice = if library.state().current.is_none()
                 || player_error.is_some()
-                || titled_generation == Some(generation)
+                || player_ready
             {
                 None
             } else if loading_slow {
@@ -526,6 +685,12 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             ) {
                 eprintln!("Could not update the queue controls: {error}");
             }
+        }
+        #[cfg(target_os = "macos")]
+        if controls_ready && let Some(transport) = &mut transport
+            && let Err(reason) = transport.render(&controls, library.state().current.is_some())
+        {
+            eprintln!("Could not update the playback controls: {reason}");
         }
     });
 }

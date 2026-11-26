@@ -18,6 +18,15 @@ The local controls and the official player use separate private WebViews. Only t
 
 **Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
 
+### Experimental playback controls on macOS
+
+```sh
+app="$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
+"$app/Contents/MacOS/pear-desktop-preview" --iframe-player
+```
+
+Press Play in the visible YouTube player first. Once playback starts, the queue panel can pause, resume, and seek through the official IFrame Player API. The mode uses the same local queue and displays previously saved titles. Open new entries in the default player to capture their titles. The example video was paused, scrubbed to another position, and resumed from the queue panel on macOS.
+
 ## Run the queue on Linux or Windows
 
 The queue is opt-in while these platforms are being tested. On Linux, install the GTK 3 and WebKitGTK 4.1 development packages (`libgtk-3-dev` and `libwebkit2gtk-4.1-dev` on Debian or Ubuntu), plus a C toolchain and `pkg-config`. On Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app checks that both native WebView2 controllers support InPrivate mode before loading a page.
@@ -28,7 +37,7 @@ cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-d
 
 The queue file is `com.pear-desktop.rust-preview/queue.json` under `$XDG_DATA_HOME` (or `~/.local/share`) on Linux and under `%LOCALAPPDATA%` on Windows. To test with a fresh queue, set `PEAR_PREVIEW_QUEUE_DIR` to a separate absolute directory. **View → Hide Queue** and **File → Add Video** are available from the native menus.
 
-On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed that the bundled controls received their Rust acknowledgement and that YouTube's example video title appeared and persisted. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. Windows x64 passed an MSVC cross-target type check. Native Windows behavior and live Linux audio still need runtime checks.
+On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed the controls acknowledgement and title persistence. The example video played in the VM, with audio verified on a PulseAudio test sink. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. Windows x64 passed an MSVC cross-target type check. Windows runtime testing is pending.
 
 Omit `--queue` to run the original system WebView compatibility experiment from Cargo:
 

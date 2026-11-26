@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en" data-wrapper-url="{WRAPPER_URL}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-1LwkXSfp/2SRQuP504W9uts9eUHXyZ8ko4l4D9kCSSo=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
+  <title>YouTube player</title>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; background: #000; }
+    iframe { display: block; width: 100%; height: 100%; min-width: 200px; min-height: 200px; border: 0; }
+  </style>
+</head>
+<body>
+  <iframe id="player" title="YouTube video player" src="{PLAYER_URL}"
+          referrerpolicy="strict-origin-when-cross-origin"
+          sandbox="allow-scripts allow-same-origin allow-presentation"
+          allow="encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>
+  <script>
+    (() => {
+      const wrapperUrl = document.documentElement.dataset.wrapperUrl;
+      const wrapperOrigin = new URL(wrapperUrl).origin;
+      const isWrapper = () =>
+        self === top && self.origin === wrapperOrigin && document.URL === wrapperUrl && document.baseURI === wrapperUrl;
+      if (!isWrapper()) return;
+
+      const frame = document.getElementById('player');
+      const maxSeconds = 31 * 24 * 60 * 60;
+      const states = [-1, 0, 1, 2, 3, 5];
+      const errorCodes = [2, 5, 100, 101, 150, 153];
+      let player;
+      let ready = false;
+      let hasPlayed = false;
+      let state = null;
+      let ended = false;
+      let error = null;
+      let blocked = false;
+
+      const fail = () => { error ??= -1; };
+
+      document.addEventListener('securitypolicyviolation', (event) => {
+        if (event.effectiveDirective === 'script-src-elem' || event.effectiveDirective === 'frame-src') fail();
+      });
+      document.addEventListener('error', (event) => {
+        if (event.target instanceof HTMLScriptElement) fail();
+      }, true);
+
+      window.onYouTubeIframeAPIReady = () => {
+        if (!isWrapper() || player) return;
+        try {
+          player = new YT.Player(frame, { events: {
+            onReady: () => { ready = true; },
+            onStateChange: ({ data }) => {
+              if (!states.includes(data)) return;
+              state = data;
+              if (data === 1) {
+                hasPlayed = true;
+                ended = false;
+                blocked = false;
+              }
+              if (data === 0 && hasPlayed) ended = true;
+            },
+            onError: ({ data }) => { error ??= errorCodes.includes(data) ? data : -1; },
+            onAutoplayBlocked: () => { blocked = true; },
+          }});
+        } catch {
+          fail();
+        }
+      };
+
+      function boundedSeconds(value) {
+        return Number.isFinite(value) && value >= 0 && value <= maxSeconds ? value : null;
+      }
+
+      function snapshot() {
+        if (!isWrapper()) return null;
+        let position = null;
+        let duration = null;
+        if (ready && error === null) {
+          try {
+            const length = boundedSeconds(player.getDuration());
+            const time = boundedSeconds(player.getCurrentTime());
+            if (length > 0) duration = Math.ceil(length);
+            if (time !== null) position = Math.min(Math.floor(time), duration ?? maxSeconds);
+          } catch {
+            fail();
+          }
+        }
+        return {
+          ready, hasPlayed: ready && hasPlayed, state: ready ? state : null,
+          position, duration, ended: ready && ended, error, blocked,
+        };
+      }
+
+      function command(apply) {
+        // The viewer starts playback using the official player's visible controls.
+        if (!isWrapper() || !ready || !hasPlayed || blocked || error !== null) return;
+        try {
+          apply();
+        } catch {
+          fail();
+        }
+      }
+
+      Object.defineProperty(window, 'pearIframePlayer', { value: Object.freeze({
+        snapshot,
+        play: () => command(() => player.playVideo()),
+        pause: () => command(() => player.pauseVideo()),
+        seek: (seconds) => {
+          if (!Number.isInteger(seconds) || seconds < 0 || seconds > maxSeconds) return;
+          command(() => {
+            const duration = boundedSeconds(player.getDuration());
+            if (duration > 0) {
+              const position = seconds < duration ? seconds : Math.max(0, duration - 1);
+              player.seekTo(position, true);
+            }
+          });
+        },
+      }) });
+    })();
+  </script>
+  <script async src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>

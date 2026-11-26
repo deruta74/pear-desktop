@@ -19,15 +19,33 @@ const MAX_SOURCE_BYTES: usize = 4096;
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
-    Add { source: String },
-    Select { id: String },
-    Remove { id: String },
-    MoveUp { id: String },
-    MoveDown { id: String },
+    Add {
+        source: String,
+    },
+    Select {
+        id: String,
+    },
+    Remove {
+        id: String,
+    },
+    MoveUp {
+        id: String,
+    },
+    MoveDown {
+        id: String,
+    },
     Previous {},
     Next {},
     Ready {},
     OpenBrowser {},
+    #[cfg(target_os = "macos")]
+    SetPlayback {
+        playing: bool,
+    },
+    #[cfg(target_os = "macos")]
+    Seek {
+        position: u32,
+    },
 }
 
 #[derive(Clone, Default, Deserialize, PartialEq, Eq, Serialize)]
@@ -135,6 +153,8 @@ impl Library {
                 state.current = Some(id.clone());
             }
             Command::Ready {} | Command::OpenBrowser {} => return Ok(false),
+            #[cfg(target_os = "macos")]
+            Command::SetPlayback { .. } | Command::Seek { .. } => return Ok(false),
         }
 
         if state == self.state {
@@ -163,7 +183,7 @@ fn entry_index(entries: &[String], id: &str) -> io::Result<usize> {
     })
 }
 
-fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     id.len() == 11
         && id
             .bytes()

@@ -10,8 +10,14 @@ const selection = document.getElementById('selection-id');
 const selectionPanel = selection.closest('.selection');
 const position = document.getElementById('position');
 const previous = document.getElementById('previous');
+const playToggle = document.getElementById('play-toggle');
 const next = document.getElementById('next');
 const openBrowser = document.getElementById('open-browser');
+const transportHint = document.getElementById('transport-hint');
+const timeline = document.getElementById('transport-timeline');
+const seek = document.getElementById('playback-position');
+const elapsed = document.getElementById('elapsed');
+const duration = document.getElementById('duration');
 const queue = document.getElementById('queue-items');
 const count = document.getElementById('queue-count');
 const empty = document.getElementById('queue-empty');
@@ -21,6 +27,8 @@ const encoder = new TextEncoder();
 let nextSequence = 1;
 let pending = null;
 let renderedState = null;
+let renderedTransport = null;
+let editingPosition = false;
 
 function send(command) {
   if (pending) return;
@@ -54,6 +62,88 @@ function send(command) {
     statusText.textContent = '';
   }
 }
+
+function formatTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = String(seconds % 60).padStart(2, '0');
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${remainder}`
+    : `${minutes}:${remainder}`;
+}
+
+function updateElapsed() {
+  const time = formatTime(seek.valueAsNumber);
+  if (elapsed.textContent !== time) {
+    elapsed.textContent = time;
+  }
+  const accessibleTime = `${time} of ${duration.textContent}`;
+  if (seek.getAttribute('aria-valuetext') !== accessibleTime) {
+    seek.setAttribute('aria-valuetext', accessibleTime);
+  }
+}
+
+function updateTransport() {
+  const transport = renderedTransport;
+  const active = document.activeElement;
+  const hasProblem = Boolean(playerProblemText.textContent);
+  const canPlay = Boolean(
+    transport?.ready &&
+    transport.hasPlayed &&
+    !transport.blocked &&
+    !hasProblem,
+  );
+  const totalSeconds = Math.floor(transport?.duration ?? 0);
+  const canSeek =
+    canPlay &&
+    Number.isFinite(transport.position) &&
+    Number.isSafeInteger(totalSeconds) &&
+    totalSeconds > 0;
+  playToggle.hidden = !transport;
+  playToggle.disabled = !canPlay;
+  const playing = canPlay && transport.playing;
+  const label = playing ? 'Pause video' : 'Play video';
+  if (playToggle.title !== label) {
+    playToggle.title = label;
+    playToggle.setAttribute('aria-label', label);
+    playToggle.toggleAttribute('data-playing', playing);
+  }
+
+  if (!canSeek) editingPosition = false;
+  timeline.hidden = !canSeek;
+  seek.disabled = !canSeek;
+  if (canSeek && !editingPosition) {
+    const currentSeconds = Math.min(
+      totalSeconds,
+      Math.max(0, Math.floor(transport.position)),
+    );
+    if (Number(seek.max) !== totalSeconds) seek.max = totalSeconds;
+    if (seek.valueAsNumber !== currentSeconds) {
+      seek.valueAsNumber = currentSeconds;
+    }
+    const totalTime = formatTime(totalSeconds);
+    if (duration.textContent !== totalTime) duration.textContent = totalTime;
+    updateElapsed();
+  }
+
+  let hint = '';
+  if (transport && !hasProblem) {
+    if (transport.blocked) hint = 'Playback controls unavailable.';
+    else if (!transport.ready) hint = 'Loading playback controls…';
+    else if (!transport.hasPlayed) hint = 'Start playback in the video pane.';
+  }
+  if (transportHint.textContent !== hint) transportHint.textContent = hint;
+
+  if ((active === playToggle && !canPlay) || (active === seek && !canSeek)) {
+    const fallback = openBrowser.disabled ? source : openBrowser;
+    (canPlay ? playToggle : fallback).focus({ preventScroll: true });
+  }
+}
+
+window.renderPearTransport = (transport) => {
+  renderedTransport = transport;
+  updateTransport();
+};
 
 function videoTitle(titles, id) {
   const title =
@@ -219,6 +309,8 @@ window.renderPearState = (
   const hasSelection = index !== -1;
   const entryTitles = entries.map((id) => videoTitle(titles, id));
   const currentTitle = entryTitles[index];
+  const selectionChanged =
+    renderedState !== null && current !== renderedState.current;
   const active = document.activeElement;
   const selectionLabel = hasSelection
     ? currentTitle || current
@@ -280,9 +372,10 @@ window.renderPearState = (
 
   if (acknowledged || error !== null) errorText.textContent = error ?? '';
   const problem = playerProblem ?? '';
-  if (playerProblemText.textContent !== problem) {
-    playerProblemText.textContent = problem;
-  }
+  const problemChanged = playerProblemText.textContent !== problem;
+  if (problemChanged) playerProblemText.textContent = problem;
+  if (selectionChanged) renderedTransport = null;
+  if (selectionChanged || problemChanged) updateTransport();
   statusText.textContent = [confirmation, notice].filter(Boolean).join(' ');
 };
 
@@ -310,7 +403,44 @@ filter.addEventListener('keydown', (event) => {
   }
 });
 previous.addEventListener('click', () => send({ type: 'previous' }));
+playToggle.addEventListener('click', () => {
+  if (!playToggle.disabled) {
+    send({ type: 'set_playback', playing: !renderedTransport.playing });
+  }
+});
 next.addEventListener('click', () => send({ type: 'next' }));
 openBrowser.addEventListener('click', () => send({ type: 'open_browser' }));
+
+seek.addEventListener('pointerdown', () => {
+  editingPosition = true;
+});
+window.addEventListener('pointerup', () => {
+  editingPosition = false;
+});
+function cancelSeekPreview() {
+  if (!editingPosition) return;
+  editingPosition = false;
+  updateTransport();
+}
+seek.addEventListener('pointercancel', cancelSeekPreview);
+seek.addEventListener('blur', cancelSeekPreview);
+window.addEventListener('blur', cancelSeekPreview);
+seek.addEventListener('input', () => {
+  editingPosition = true;
+  updateElapsed();
+});
+seek.addEventListener('change', () => {
+  editingPosition = false;
+  if (seek.disabled) return;
+  if (pending) {
+    updateTransport();
+    return;
+  }
+  const target = Math.min(
+    seek.valueAsNumber,
+    Math.floor(renderedTransport.duration),
+  );
+  send({ type: 'seek', position: target });
+});
 
 send({ type: 'ready' });
