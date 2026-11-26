@@ -1,6 +1,8 @@
 //! Pear Desktop's native Dattorro tank and stereo reverb mixer.
 #![forbid(unsafe_code)]
 
+pub mod equalizer;
+
 mod stereo_reverb;
 pub use stereo_reverb::{ReverbSettings, StereoReverb};
 
