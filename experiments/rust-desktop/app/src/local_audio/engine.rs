@@ -1,3 +1,4 @@
+mod eq;
 mod render;
 mod wav;
 
@@ -20,6 +21,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use pear_preview_dsp::ReverbSettings;
+use pear_preview_dsp::equalizer::{EqualizerError, EqualizerSettings, StereoEqualizer};
 use rtrb::{Producer, RingBuffer};
 use serde::Serialize;
 
@@ -74,6 +76,8 @@ pub(super) struct Engine {
     shared: Arc<Shared>,
     worker: JoinHandle<()>,
     input: WavInfo,
+    output_rate: u32,
+    equalizer: Box<eq::Updates>,
 }
 
 impl Engine {
@@ -96,7 +100,14 @@ impl Engine {
 
         let shared = Arc::new(Shared::new());
         let (producer, consumer) = RingBuffer::new(QUEUE_FRAMES);
-        let render = Render::new(consumer, Arc::clone(&shared), input, config.sample_rate);
+        let (equalizer, tone) = eq::Updates::new(config.sample_rate);
+        let render = Render::new(
+            consumer,
+            Arc::clone(&shared),
+            input,
+            config.sample_rate,
+            tone,
+        );
         let stream = match supported.sample_format() {
             SampleFormat::F32 => output_stream::<f32>(&device, &config, render, &shared),
             SampleFormat::F64 => output_stream::<f64>(&device, &config, render, &shared),
@@ -124,6 +135,8 @@ impl Engine {
             shared,
             worker,
             input,
+            output_rate: config.sample_rate,
+            equalizer: Box::new(equalizer),
         };
         engine
             .stream
@@ -133,6 +146,7 @@ impl Engine {
     }
 
     pub(super) fn snapshot(&mut self) -> Snapshot {
+        self.equalizer.flush();
         let (frame, active) = self.shared.status(self.input.frames);
         let duration_ms = self.duration_ms();
         let error = match self.shared.error.load(Ordering::Acquire) {
@@ -190,6 +204,24 @@ impl Engine {
 
     pub(super) fn set_reverb(&mut self, settings: ReverbSettings) {
         self.shared.reverb.set(settings);
+    }
+
+    pub(super) fn set_equalizer(
+        &mut self,
+        settings: EqualizerSettings<'_>,
+    ) -> Result<(), EqualizerError> {
+        let prepared = if settings.bypass {
+            None
+        } else {
+            let volume = f32::from_bits(self.shared.volume.load(Ordering::Relaxed));
+            Some(StereoEqualizer::new(
+                self.output_rate,
+                settings,
+                f64::from(volume),
+            )?)
+        };
+        self.equalizer.replace(prepared);
+        Ok(())
     }
 
     fn duration_ms(&self) -> u64 {

@@ -1,4 +1,6 @@
 mod engine;
+mod equalizer;
+mod presets;
 
 use std::{
     borrow::Cow,
@@ -59,6 +61,20 @@ enum AudioCommand {
         high_pass_hz: f32,
         low_pass_hz: f32,
     },
+    SetEqualizer {
+        profile: equalizer::Profile,
+        revision: u32,
+    },
+    SaveEqualizerPreset {
+        name: String,
+    },
+    LoadEqualizerPreset {
+        name: String,
+        revision: u32,
+    },
+    DeleteEqualizerPreset {
+        name: String,
+    },
 }
 
 enum AudioEvent {
@@ -81,6 +97,12 @@ struct View<'a> {
     opening: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     settings: Option<Settings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    equalizer: Option<&'a equalizer::Profile>,
+    #[serde(rename = "eqRevision", skip_serializing_if = "Option::is_none")]
+    eq_revision: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    presets: Option<Vec<&'a str>>,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -94,7 +116,7 @@ struct Settings {
 }
 
 fn command(request: &Request<String>) -> Option<AudioCommand> {
-    if request.uri() != DOCUMENT || request.body().len() > 512 {
+    if request.uri() != DOCUMENT || request.body().len() > 8 * 1024 {
         return None;
     }
     serde_json::from_str(request.body()).ok()
@@ -117,6 +139,10 @@ fn assets(request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
             "pear-audio://app.local/local-audio.js" => Some((
                 "text/javascript; charset=utf-8",
                 include_bytes!("../ui/local-audio.js"),
+            )),
+            "pear-audio://app.local/local-eq.js" => Some((
+                "text/javascript; charset=utf-8",
+                include_bytes!("../ui/local-eq.js"),
             )),
             _ => None,
         }
@@ -204,6 +230,11 @@ pub(crate) fn launch() -> std::io::Result<()> {
 }
 
 pub(crate) fn run() -> Result<()> {
+    let store = presets::Store::from_environment()?;
+    let (mut presets, mut error) = match store.read() {
+        Ok(presets) => (presets, None),
+        Err(reason) => (Vec::new(), Some(reason.to_owned())),
+    };
     let event_loop = EventLoopBuilder::<AudioEvent>::with_user_event().build();
     let window = WindowBuilder::new()
         .with_title("Pear Local Audio")
@@ -258,10 +289,10 @@ pub(crate) fn run() -> Result<()> {
     crate::verify_private_session(&view)?;
     view.load_url(DOCUMENT)?;
     let mut track: Option<Track> = None;
-    let mut error: Option<String> = None;
     let mut volume = 1.0;
     let mut speed = 1.0;
     let mut reverb = ReverbSettings::default();
+    let mut equalizer = equalizer::Profile::default();
     let mut opening = false;
     let mut deadline = None;
     #[cfg(target_os = "linux")]
@@ -323,8 +354,11 @@ pub(crate) fn run() -> Result<()> {
                         next.engine.set_volume(volume);
                         next.engine.set_speed(speed);
                         next.engine.set_reverb(reverb);
+                        error = equalizer.apply(&mut next.engine).err().map(str::to_owned);
+                        if error.is_some() {
+                            equalizer.disable();
+                        }
                         track = Some(next);
-                        error = None;
                     }
                     Err(problem) => error = Some(problem.to_string()),
                 }
@@ -334,6 +368,22 @@ pub(crate) fn run() -> Result<()> {
             _ => return,
         };
         let send_settings = matches!(action, Some(AudioCommand::Ready {}));
+        let eq_revision = match &action {
+            Some(
+                AudioCommand::SetEqualizer { revision, .. }
+                | AudioCommand::LoadEqualizerPreset { revision, .. },
+            ) => Some(*revision),
+            _ => None,
+        };
+        let send_presets = send_settings
+            || matches!(
+                action,
+                Some(
+                    AudioCommand::SaveEqualizerPreset { .. }
+                        | AudioCommand::DeleteEqualizerPreset { .. }
+                        | AudioCommand::LoadEqualizerPreset { .. }
+                )
+            );
         match action {
             Some(AudioCommand::Open {}) => {
                 if !opening && let Some(path) = pick_file(&window) {
@@ -384,6 +434,48 @@ pub(crate) fn run() -> Result<()> {
                             };
                             engine.set_reverb(reverb);
                         }
+                        AudioCommand::SetEqualizer { profile, .. } => match profile.normalize() {
+                            Some(profile) => match profile.apply(engine) {
+                                Ok(()) => {
+                                    equalizer = profile;
+                                    error = None;
+                                }
+                                Err(problem) => error = Some(problem.into()),
+                            },
+                            None => error = Some("Check the equalizer band values.".into()),
+                        },
+                        AudioCommand::SaveEqualizerPreset { name } => {
+                            match store.save(&name, &equalizer) {
+                                Ok(saved) => {
+                                    presets = saved;
+                                    error = None;
+                                }
+                                Err(reason) => error = Some(reason.into()),
+                            }
+                        }
+                        AudioCommand::LoadEqualizerPreset { name, .. } => {
+                            error = store
+                                .read()
+                                .and_then(|current| {
+                                    presets = current;
+                                    let preset = presets
+                                        .iter()
+                                        .find(|preset| preset.name == name)
+                                        .ok_or("That equalizer preset no longer exists.")?;
+                                    preset.profile.apply(engine)?;
+                                    equalizer = preset.profile.clone();
+                                    Ok(())
+                                })
+                                .err()
+                                .map(str::to_owned);
+                        }
+                        AudioCommand::DeleteEqualizerPreset { name } => match store.remove(&name) {
+                            Ok(saved) => {
+                                presets = saved;
+                                error = None;
+                            }
+                            Err(reason) => error = Some(reason.into()),
+                        },
                         _ => {}
                     }
                 }
@@ -420,6 +512,10 @@ pub(crate) fn run() -> Result<()> {
                 high_pass_hz: reverb.high_pass_hz,
                 low_pass_hz: reverb.low_pass_hz,
             }),
+            equalizer: (send_settings || eq_revision.is_some()).then_some(&equalizer),
+            eq_revision,
+            presets: send_presets
+                .then(|| presets.iter().map(|preset| preset.name.as_str()).collect()),
         };
         if let Ok(state) = serde_json::to_string(&state)
             && let Err(problem) =
@@ -471,7 +567,7 @@ mod tests {
             .is_none()
         );
         assert!(command(&message("https://example.com/", r#"{"type":"open"}"#)).is_none());
-        assert!(command(&message(DOCUMENT, &" ".repeat(513))).is_none());
+        assert!(command(&message(DOCUMENT, &" ".repeat(8193))).is_none());
         assert_eq!(title(Path::new("music/test.wav")), "test.wav");
     }
 }

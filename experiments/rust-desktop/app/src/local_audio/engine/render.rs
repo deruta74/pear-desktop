@@ -7,6 +7,7 @@ use cpal::{FromSample, SizedSample};
 use pear_preview_dsp::{ReverbSettings, StereoReverb};
 use rtrb::Consumer;
 
+use super::eq::Tone;
 use super::{QUEUE_FRAMES, QueuedFrame, Shared, WavInfo, unpack};
 
 const REVERB_TAIL_SECONDS: u32 = 3;
@@ -18,6 +19,7 @@ pub(super) struct Render {
     input: WavInfo,
     rate_ratio: f64,
     effects: StereoReverb,
+    tone: Tone,
     effects_version: u32,
     wet_enabled: bool,
     tail_limit: u32,
@@ -30,6 +32,7 @@ impl Render {
         shared: Arc<Shared>,
         input: WavInfo,
         output_rate: u32,
+        tone: Tone,
     ) -> Self {
         Self {
             shared,
@@ -43,6 +46,7 @@ impl Render {
             input,
             rate_ratio: f64::from(input.sample_rate) / f64::from(output_rate),
             effects: StereoReverb::new(output_rate),
+            tone,
             effects_version: 0,
             wet_enabled: false,
             tail_limit: output_rate * REVERB_TAIL_SECONDS,
@@ -66,10 +70,15 @@ impl Render {
         if generation != self.frames.generation {
             self.cursor = Cursor::new(seek_frame);
             self.effects.reset();
+            self.tone.reset();
             self.tail_remaining = 0;
         }
         self.frames.begin_callback(generation);
-        if !self.shared.playing.load(Ordering::Acquire) {
+        let playing = self.shared.playing.load(Ordering::Acquire);
+        let volume = f32::from_bits(self.shared.volume.load(Ordering::Relaxed));
+        let active = playing && (!self.cursor.at_end(self.input.frames) || self.tail_remaining > 0);
+        self.tone.update(volume, active);
+        if !playing {
             if self.cursor.at_end(self.input.frames) {
                 self.tail_remaining = 0;
             }
@@ -84,15 +93,15 @@ impl Render {
             self.effects_version = version;
             self.wet_enabled = settings.intensity.is_finite() && settings.intensity > 0.0;
         }
-        let volume = f32::from_bits(self.shared.volume.load(Ordering::Relaxed));
         let speed = f32::from_bits(self.shared.speed.load(Ordering::Relaxed));
         let step = self.rate_ratio * f64::from(speed);
+        let effects_have_tail = self.wet_enabled || self.tone.has_tail();
 
         for target in output.chunks_exact_mut(channels) {
             let dry = match self.cursor.sample(&mut self.frames, self.input.frames) {
                 Some(dry) => {
                     self.cursor.advance(step, self.input.frames);
-                    self.tail_remaining = if self.wet_enabled {
+                    self.tail_remaining = if effects_have_tail {
                         self.tail_limit
                     } else {
                         self.tail_remaining.saturating_sub(1)
@@ -100,15 +109,16 @@ impl Render {
                     dry
                 }
                 None if self.cursor.at_end(self.input.frames) && self.tail_remaining > 0 => {
-                    // Drain only at natural media end. An underrun holds the cursor and DSP.
+                    // Drain effects only at natural media end. An underrun holds the cursor and DSP.
                     self.tail_remaining -= 1;
                     [0.0; 2]
                 }
                 None => break,
             };
+            let mixed = self.effects.process_frame(dry);
             let [left, right] = self
-                .effects
-                .process_frame(dry)
+                .tone
+                .process(mixed)
                 .map(|sample| (sample * volume).clamp(-1.0, 1.0));
             if channels == 1 {
                 target[0] = T::from_sample((left + right) * 0.5);

@@ -336,6 +336,50 @@ fn pause_silences_eof_tail_and_replay_starts_with_a_clean_reverb() {
 }
 
 #[test]
+fn eq_only_tail_survives_eof_but_is_reset_when_replaying() {
+    use pear_preview_dsp::equalizer::{EqualizerBand, EqualizerSettings, StereoEqualizer};
+    let shared = Arc::new(Shared::new());
+    let (mut queue, consumer) = RingBuffer::new(32);
+    let (mut updates, tone) = super::eq::Updates::new(8_000);
+    let mut render = Render::new(
+        consumer,
+        Arc::clone(&shared),
+        WavInfo {
+            frames: 1,
+            sample_rate: 8_000,
+        },
+        8_000,
+        tone,
+    );
+    updates.replace(Some(
+        StereoEqualizer::new(
+            8_000,
+            EqualizerSettings {
+                bands: &[EqualizerBand {
+                    frequency_hz: 100.0,
+                    gain_db: 18.0,
+                    q: 16.0,
+                }],
+                ..EqualizerSettings::default()
+            },
+            1.0,
+        )
+        .unwrap(),
+    ));
+    let mut output = [0.0f32; 64];
+    render.fill(&mut output, 2); // Install the profile while paused.
+    enqueue(&mut queue, 0, &[[0.5, -0.5]]);
+    shared.playing.store(true, Ordering::Release);
+    render.fill(&mut output, 2);
+    assert!(output[2..].iter().any(|sample| sample.abs() > 0.0001));
+    assert_eq!(shared.status(1), (1, true));
+    let generation = shared.seek_to(0);
+    enqueue(&mut queue, generation, &[[0.0, 0.0]]);
+    render.fill(&mut output, 2);
+    assert_eq!(output, [0.0; 64]);
+}
+
+#[test]
 fn decode_worker_keeps_streaming_and_seeks_after_eof() {
     let fixture = Fixture::from_bytes(&wav_fixture(MONO_I16, &[0i16, 8_192, 16_384]));
     let wav = WavSource::open(&fixture.0).unwrap();
@@ -403,6 +447,12 @@ fn cpal_default_device_plays_synthetic_wav() {
     assert_eq!(engine.snapshot().position_ms, 1_000);
     assert!(!engine.snapshot().playing);
     engine.set_speed(2.0);
+    engine
+        .set_equalizer(pear_preview_dsp::equalizer::EqualizerSettings {
+            manual_preamp_db: 6.0,
+            ..pear_preview_dsp::equalizer::EqualizerSettings::default()
+        })
+        .unwrap();
     engine.set_reverb(ReverbSettings {
         intensity: 0.7,
         high_pass_hz: 200.0,
@@ -457,6 +507,7 @@ fn setup(
 ) -> (Arc<Shared>, Producer<QueuedFrame>, Render) {
     let shared = Arc::new(Shared::new());
     let (producer, consumer) = RingBuffer::new(32);
+    let (_updates, tone) = super::eq::Updates::new(output_rate);
     let render = Render::new(
         consumer,
         Arc::clone(&shared),
@@ -465,6 +516,7 @@ fn setup(
             sample_rate,
         },
         output_rate,
+        tone,
     );
     (shared, producer, render)
 }

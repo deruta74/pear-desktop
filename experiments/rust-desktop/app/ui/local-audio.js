@@ -42,6 +42,9 @@ window.renderPearLocal = ({
   error,
   opening = false,
   settings,
+  equalizer,
+  presets,
+  eqRevision,
 }) => {
   current = transport;
   const wasHidden = element('player').hidden;
@@ -49,6 +52,12 @@ window.renderPearLocal = ({
   open.setAttribute('aria-disabled', String(opening));
   element('opening').hidden = !opening;
   element('player').hidden = element('effects').hidden = !transport;
+  window.renderPearEqualizer?.(
+    equalizer,
+    presets,
+    Boolean(transport),
+    eqRevision,
+  );
   element('empty').hidden = Boolean(transport) || opening;
   setText(element('problem'), transport?.error ?? error ?? '');
   if (settings) {

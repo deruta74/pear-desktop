@@ -188,6 +188,11 @@ impl StereoEqualizer {
         self.preamp_db
     }
 
+    /// Whether this profile contains recursive filters with a decay.
+    pub fn has_filters(&self) -> bool {
+        self.filter_count != 0
+    }
+
     /// Recalculate automatic headroom using the prepared response. The volume
     /// is applied by the caller. Invalid volume falls back to full scale.
     pub fn set_source_volume(&mut self, source_volume: f64) {

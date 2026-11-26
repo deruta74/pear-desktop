@@ -44,6 +44,10 @@ pub(super) fn queue_directory() -> crate::Result<PathBuf> {
         return Ok(path);
     }
 
+    Ok(data_root()?.join(APP_ID))
+}
+
+pub(crate) fn data_root() -> crate::Result<PathBuf> {
     let home = || {
         std::env::var_os("HOME")
             .map(PathBuf::from)
@@ -67,7 +71,7 @@ pub(super) fn queue_directory() -> crate::Result<PathBuf> {
 
     #[cfg(target_os = "windows")]
     let _ = home;
-    Ok(root.join(APP_ID))
+    Ok(root)
 }
 
 pub(super) fn configure_event_loop(

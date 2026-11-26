@@ -10,6 +10,7 @@ mod metadata_lookup;
 mod platform;
 #[cfg(target_os = "linux")]
 pub(crate) use platform::DeadlineTimer;
+pub(crate) use platform::data_root;
 mod playlists;
 mod preferences;
 mod speed_menu;

@@ -6,6 +6,7 @@
     <title>Pear Local Audio</title>
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="/local-audio.css" />
+    <script src="/local-eq.js" defer></script>
     <script src="/local-audio.js" defer></script>
   </head>
   <body>
@@ -51,6 +52,65 @@
           </div>
         </div>
       </section>
+      <details id="local-eq" class="local-effects local-eq" hidden>
+        <summary>Equalizer</summary>
+        <div class="local-eq-options">
+          <label
+            ><input id="eq-enabled" type="checkbox" /> Enable equalizer</label
+          >
+          <label>
+            Bands
+            <select id="eq-layout">
+              <option value="bands8">8 bands</option>
+              <option value="bands14">14 bands</option>
+              <option value="bands20">20 bands</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label
+            ><input id="eq-auto" type="checkbox" checked /> Auto preamp</label
+          >
+          <label>
+            Preamp (dB)
+            <input
+              id="eq-preamp"
+              type="number"
+              min="-24"
+              max="12"
+              step="0.1"
+              value="0"
+              disabled
+            />
+          </label>
+        </div>
+        <div id="eq-editor" hidden>
+          <canvas id="eq-graph" aria-label="Custom band positions"></canvas>
+          <button id="eq-add-band" type="button">Add band</button>
+        </div>
+        <div id="eq-bands"></div>
+        <form id="eq-save-preset" class="eq-preset-form">
+          <label for="eq-preset-name">Preset name</label>
+          <input
+            id="eq-preset-name"
+            type="text"
+            autocomplete="off"
+            maxlength="48"
+            required
+          />
+          <button type="submit">Save preset</button>
+        </form>
+        <div class="eq-preset-form">
+          <label for="eq-preset-list">Saved presets</label>
+          <select id="eq-preset-list"></select>
+          <button id="eq-load-preset" type="button">Load</button>
+          <button id="eq-delete-preset" type="button">Remove</button>
+        </div>
+        <div id="eq-confirm-preset" class="eq-preset-form" hidden>
+          <span id="eq-preset-question"></span>
+          <button id="eq-yes-preset" type="button">Remove preset</button>
+          <button id="eq-no-preset" type="button">Cancel</button>
+        </div>
+      </details>
       <section
         id="effects"
         class="local-effects"
