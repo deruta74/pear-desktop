@@ -33,7 +33,7 @@ On Linux, use the same `--iframe-player` flag through Cargo.
 cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --iframe-player
 ```
 
-Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. The mode uses the same local queue and displays previously saved titles. Open new entries in the default player to capture their titles, or enable video details below.
+Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. The mode uses the same local queue. It shows saved titles and looks up details for the selected video.
 
 On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. On Ubuntu ARM64, the same video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
 
@@ -41,11 +41,11 @@ On macOS, the example video was paused, scrubbed to another position, and resume
 
 In `--iframe-player` on macOS or Linux, start the video and open **Lyrics**. Check the track name and artist, then select **Find lyrics**. Pear sends those two fields and the video duration to LRCLIB when you submit. Synced lines follow playback and highlight individual words where LRCLIB supplies timing. The animated dots appear during the current timed rest, and reduced motion keeps them still. Lyrics stay in memory and clear when you change the video. [LRCLIB API](https://lrclib.net/docs)
 
-### Optional video details
+### Video details and optional search
 
-To enable public video details and music search, store a developer key restricted to YouTube Data API v3 in a private text file. Set `PEAR_YOUTUBE_API_KEY_FILE` in the launch environment to the file path. The standard player and queue work without a key.
+Pear shows the title, channel and artwork for the selected video when YouTube supplies them. The public oEmbed lookup works without an API key.
 
-Pear looks up the selected video's title and channel. Open **Search** to submit a music query and add embeddable results to the queue. Search requests use the configured project's API quota and run when you submit a query. Titles and search results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
+To enable **Search**, store a developer key restricted to YouTube Data API v3 in a private text file and set `PEAR_YOUTUBE_API_KEY_FILE` to that file's path. Pear then uses the Data API for video details and music search. Search requests use the configured project's API quota and run when you submit a query. Lookup results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
 
 ## Run the queue on Linux or Windows
 
@@ -57,7 +57,7 @@ cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-d
 
 The queue file is `com.pear-desktop.rust-preview/queue.json` under `$XDG_DATA_HOME` (or `~/.local/share`) on Linux and under `%LOCALAPPDATA%` on Windows. To test with a fresh queue, set `PEAR_PREVIEW_QUEUE_DIR` to a separate absolute directory. **View → Hide Queue** and **File → Add Video** are available from the native menus.
 
-On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed the controls acknowledgement and title persistence. The example video played in the VM, with audio verified on a PulseAudio test sink. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. On a Windows x64 runner, the native WebView2 queue opened, completed the controls handshake, and reached the official embed. The runner could not click the player's Play control, so Windows video and audio playback still need verification. [Windows verification run](https://github.com/deruta74/pear-desktop/actions/runs/45742269773)
+On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed the controls acknowledgement and title persistence. The example video played in the VM, with audio verified on a PulseAudio test sink. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. On a Windows x64 runner, the native WebView2 queue opened, completed the controls handshake, and reached the official embed in an onscreen window. The embed did not expose a visible Play control on that runner. Windows video and audio playback still need verification. [Windows verification run](https://github.com/deruta74/pear-desktop/actions/runs/45744454411)
 
 Omit `--queue` to run the original system WebView compatibility experiment from Cargo:
 

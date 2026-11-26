@@ -18,14 +18,28 @@
           <h2 id="selection-heading">Current video</h2>
           <span id="position" class="position"></span>
         </div>
-        <p
-          id="selection-id"
-          class="selection-title"
-          dir="auto"
-          aria-live="polite"
-        >
-          No video selected
-        </p>
+        <div class="selection-media">
+          <img
+            id="selection-artwork"
+            class="selection-artwork"
+            width="72"
+            height="54"
+            alt=""
+            decoding="async"
+            referrerpolicy="no-referrer"
+            hidden
+          />
+          <div class="selection-description">
+            <p
+              id="selection-id"
+              class="selection-title"
+              dir="auto"
+              aria-live="polite"
+            >
+              No video selected
+            </p>
+          </div>
+        </div>
         <div class="playback-actions">
           <button
             id="previous"

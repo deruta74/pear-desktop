@@ -44,7 +44,7 @@ async function panel(t, { withoutObjectHasOwn = false } = {}) {
       body: body ?? 'Missing queue panel asset',
       headers: {
         'Content-Security-Policy':
-          "default-src 'none'; script-src 'self'; style-src 'self'",
+          "default-src 'none'; script-src 'self'; style-src 'self'; img-src https://i.ytimg.com/vi/",
       },
     });
   });
@@ -508,7 +508,10 @@ test('renders literal titles and ID fallbacks without Object.hasOwn', async (t) 
   const selected = page.getByRole('button', { name: `Select ${title}` });
   await expect(selected).toHaveText(title);
   await expect(selected).toBeFocused();
-  await expect(page.locator('img')).toHaveCount(0);
+  await expect(page.locator('img:not(#selection-artwork)')).toHaveCount(0);
+  expect(
+    await page.locator('#selection-artwork').getAttribute('src'),
+  ).toBeNull();
   await expect(
     page.getByRole('button', { name: `Select ${second}` }),
   ).toBeVisible();
@@ -586,6 +589,45 @@ test('shows a supplied metadata problem independently of playback and queue feed
   await expect(problemText).toHaveCount(0);
 });
 
+test('loads only artwork matching the current video and clears it on selection change', async (t) => {
+  const page = await panel(t);
+  const cover = page.locator('#selection-artwork');
+  const url = `https://i.ytimg.com/vi/${first}/hqdefault.jpg`;
+  let requested = 0;
+  await page.route(url, (route) => {
+    requested += 1;
+    return route.fulfill({
+      contentType: 'image/gif',
+      body: Buffer.from(
+        'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+        'base64',
+      ),
+    });
+  });
+  const metadata = { title: 'Track', channel: 'Band' };
+  for (const thumbnailUrl of [
+    `https://i.ytimg.com/vi/${second}/hqdefault.jpg`,
+    `${url}?other=1`,
+  ]) {
+    await state(page, [first, second], first, null, null, undefined, {
+      metadata: { ...metadata, thumbnailUrl },
+    });
+    expect(await cover.getAttribute('src')).toBeNull();
+  }
+  await state(page, [first, second], first, null, null, undefined, {
+    metadata: { ...metadata, thumbnailUrl: url },
+  });
+  await expect(cover).toBeVisible();
+  await expect(cover).toHaveAttribute('referrerpolicy', 'no-referrer');
+  await expect
+    .poll(() => cover.evaluate((image) => image.naturalWidth))
+    .toBe(1);
+  expect(requested).toBe(1);
+  await state(page, [first, second], second);
+  await expect(cover).toBeHidden();
+  expect(await cover.getAttribute('src')).toBeNull();
+});
+
 test('fits a queue row at the minimum panel size while displaying long YouTube metadata', async (t) => {
   const page = await panel(t);
   await page.setViewportSize({ width: 384, height: 520 });
@@ -595,7 +637,11 @@ test('fits a queue row at the minimum panel size while displaying long YouTube m
       title: 'A long video title that takes multiple lines '.repeat(5),
       channel: 'A channel with a long display name '.repeat(8),
     },
+    catalog: searchState(),
+    lyrics: lyricsState(),
+    savedPlaylists: savedPlaylists(),
   });
+  await expect(page.getByRole('navigation').getByRole('button')).toHaveCount(4);
   await transport(page, readyTransport);
   const attribution = page.getByText(/^YouTube · A channel/);
   await expect(attribution).toBeVisible();

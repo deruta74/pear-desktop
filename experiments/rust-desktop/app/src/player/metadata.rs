@@ -2,15 +2,17 @@ use std::{fs::File, io::Read, path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use ureq::{
-    Agent, Body,
+    Agent, Body, RequestBuilder,
     http::{HeaderValue, header},
     tls::{RootCerts, TlsConfig, TlsProvider},
+    typestate::WithoutBody,
 };
 
 use crate::library::valid_id;
 
 const VIDEOS_ENDPOINT: &str = "https://www.googleapis.com/youtube/v3/videos";
 const SEARCH_ENDPOINT: &str = "https://www.googleapis.com/youtube/v3/search";
+const EMBED_ENDPOINT: &str = "https://www.youtube.com/oembed";
 const MAX_VIDEO_BODY_BYTES: u64 = 16 * 1024;
 const MAX_SEARCH_BODY_BYTES: u64 = 48 * 1024;
 const MAX_SEARCH_QUERY_CHARS: usize = 160;
@@ -21,13 +23,21 @@ const MAX_KEY_FILE_BYTES: u64 = 512;
 #[derive(Clone)]
 pub(super) struct Client {
     agent: Agent,
-    api_key: Option<HeaderValue>,
+    source: Source,
+}
+
+#[derive(Clone)]
+enum Source {
+    DataApi(Option<HeaderValue>),
+    PublicEmbed,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub(super) struct Metadata {
     pub(super) title: String,
     pub(super) channel: String,
+    #[serde(rename = "thumbnailUrl", skip_serializing_if = "Option::is_none")]
+    pub(super) thumbnail_url: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -51,9 +61,17 @@ pub(super) enum LookupError {
 }
 
 impl Client {
+    pub(super) fn public_embed() -> Self {
+        Self::new(Source::PublicEmbed)
+    }
+
     pub(super) fn from_env() -> Option<Self> {
         let path = std::env::var_os("PEAR_YOUTUBE_API_KEY_FILE")?;
         let api_key = read_key_file(Path::new(&path));
+        Some(Self::new(Source::DataApi(api_key)))
+    }
+
+    fn new(source: Source) -> Self {
         let agent = Agent::config_builder()
             .https_only(true)
             .proxy(None)
@@ -70,19 +88,30 @@ impl Client {
             .build()
             .new_agent();
 
-        Some(Self { agent, api_key })
+        Self { agent, source }
     }
 
     pub(super) fn lookup(&self, id: &str) -> Result<Option<Metadata>, LookupError> {
         if !valid_id(id) {
             return Err(LookupError::InvalidVideoId);
         }
-        let mut response = self.get(
+        if matches!(self.source, Source::PublicEmbed) {
+            let watch_url = format!("https://www.youtube.com/watch?v={id}");
+            let mut response = self
+                .json_request(EMBED_ENDPOINT, &[("url", &watch_url), ("format", "json")])
+                .call()
+                .map_err(transport_error)?;
+            return interpret_embed_response(response.status().as_u16(), response.body_mut(), id);
+        }
+        let mut response = self.data_api_get(
             VIDEOS_ENDPOINT,
             &[
                 ("part", "snippet,id"),
                 ("id", id),
-                ("fields", "items(id,snippet(title,channelTitle))"),
+                (
+                    "fields",
+                    "items(id,snippet(title,channelTitle,thumbnails/high/url))",
+                ),
             ],
         )?;
         interpret_response(response.status().as_u16(), response.body_mut(), id)
@@ -91,7 +120,7 @@ impl Client {
     pub(super) fn search(&self, query: &str) -> Result<Vec<SearchResult>, LookupError> {
         let query = normalize_query(query).ok_or(LookupError::InvalidQuery)?;
         let max_results = MAX_SEARCH_RESULTS.to_string();
-        let mut response = self.get(
+        let mut response = self.data_api_get(
             SEARCH_ENDPOINT,
             &[
                 ("part", "snippet"),
@@ -107,20 +136,23 @@ impl Client {
         interpret_search_response(response.status().as_u16(), response.body_mut())
     }
 
-    fn get(
-        &self,
-        endpoint: &str,
-        params: &[(&str, &str)],
-    ) -> Result<ureq::http::Response<Body>, LookupError> {
-        let api_key = self
-            .api_key
-            .clone()
-            .ok_or(LookupError::InvalidKeyConfiguration)?;
+    fn json_request(&self, endpoint: &str, params: &[(&str, &str)]) -> RequestBuilder<WithoutBody> {
         self.agent
             .get(endpoint)
             .query_pairs(params.iter().copied())
             .header(header::ACCEPT, "application/json")
-            .header("x-goog-api-key", api_key)
+    }
+
+    fn data_api_get(
+        &self,
+        endpoint: &str,
+        params: &[(&str, &str)],
+    ) -> Result<ureq::http::Response<Body>, LookupError> {
+        let Source::DataApi(Some(api_key)) = &self.source else {
+            return Err(LookupError::InvalidKeyConfiguration);
+        };
+        self.json_request(endpoint, params)
+            .header("x-goog-api-key", api_key.clone())
             .call()
             .map_err(transport_error)
     }
@@ -183,6 +215,14 @@ struct VideoItem {
 struct VideoSnippet {
     title: String,
     channel_title: String,
+    thumbnails: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct EmbedResponse {
+    title: String,
+    author_name: String,
+    thumbnail_url: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -236,9 +276,45 @@ fn interpret_response(
         [item] if item.id == id => Ok(Some(Metadata {
             title: display_field(&item.snippet.title)?,
             channel: display_field(&item.snippet.channel_title)?,
+            thumbnail_url: canonical_thumbnail(
+                id,
+                item.snippet
+                    .thumbnails
+                    .as_ref()
+                    .and_then(|value| value.pointer("/high/url")),
+            ),
         })),
         _ => Err(LookupError::InvalidResponse),
     }
+}
+
+fn interpret_embed_response(
+    status: u16,
+    body: &mut Body,
+    id: &str,
+) -> Result<Option<Metadata>, LookupError> {
+    match status {
+        200 => {}
+        401 | 404 => return Ok(None),
+        429 => return Err(LookupError::Throttled),
+        _ => return Err(LookupError::Service),
+    }
+    if !has_json_mime(body) {
+        return Err(LookupError::InvalidResponse);
+    }
+    let bytes = read_body(body, MAX_VIDEO_BODY_BYTES)?;
+    let embed: EmbedResponse =
+        serde_json::from_slice(&bytes).map_err(|_| LookupError::InvalidResponse)?;
+    Ok(Some(Metadata {
+        title: display_field(&embed.title)?,
+        channel: display_field(&embed.author_name)?,
+        thumbnail_url: canonical_thumbnail(id, embed.thumbnail_url.as_ref()),
+    }))
+}
+
+fn canonical_thumbnail(id: &str, url: Option<&serde_json::Value>) -> Option<String> {
+    let canonical = format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg");
+    (url.and_then(serde_json::Value::as_str) == Some(canonical.as_str())).then_some(canonical)
 }
 
 fn interpret_search_response(
@@ -285,26 +361,31 @@ fn read_api_response(
         _ => return Err(LookupError::Service),
     }
 
-    if !body
-        .mime_type()
-        .is_some_and(|mime| mime.eq_ignore_ascii_case("application/json"))
-    {
+    if !has_json_mime(body) {
         return Err(if status == 200 {
             LookupError::InvalidResponse
         } else {
             LookupError::Service
         });
     }
-    let bytes = body
-        .with_config()
-        .limit(max_bytes)
-        .read_to_vec()
-        .map_err(transport_error)?;
+    let bytes = read_body(body, max_bytes)?;
     if status == 200 {
         return Ok(Some(bytes));
     }
     classify_api_error(status, &bytes)?;
     Ok(None)
+}
+
+fn has_json_mime(body: &Body) -> bool {
+    body.mime_type()
+        .is_some_and(|mime| mime.eq_ignore_ascii_case("application/json"))
+}
+
+fn read_body(body: &mut Body, max_bytes: u64) -> Result<Vec<u8>, LookupError> {
+    body.with_config()
+        .limit(max_bytes)
+        .read_to_vec()
+        .map_err(transport_error)
 }
 
 fn classify_api_error(status: u16, bytes: &[u8]) -> Result<(), LookupError> {
@@ -422,7 +503,32 @@ mod tests {
             Ok(Some(Metadata {
                 title: "Title with text".into(),
                 channel: "Channel Name".into(),
+                thumbnail_url: None,
             }))
+        );
+    }
+
+    #[test]
+    fn accepts_the_data_api_thumbnail_only_for_the_returned_video() {
+        let mut item = serde_json::json!({
+            "items": [{"id": VIDEO_ID, "snippet": {
+                "title": "Track", "channelTitle": "Artist",
+                "thumbnails": {"high": {"url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"}},
+            }}],
+        });
+        let metadata = response(200, item.to_string()).unwrap().unwrap();
+        assert_eq!(
+            metadata.thumbnail_url.as_deref(),
+            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"),
+        );
+        item["items"][0]["snippet"]["thumbnails"]["high"]["url"] =
+            "https://i.ytimg.com/vi/M7lc1UVf-VE/hqdefault.jpg".into();
+        assert_eq!(
+            response(200, item.to_string())
+                .unwrap()
+                .unwrap()
+                .thumbnail_url,
+            None,
         );
     }
 
@@ -464,6 +570,119 @@ mod tests {
         assert!(key_header(vec![b'a'; MAX_KEY_FILE_BYTES as usize + 1].as_slice()).is_none());
     }
 
+    fn embed_response(
+        status: u16,
+        json: impl Into<Vec<u8>>,
+    ) -> Result<Option<Metadata>, LookupError> {
+        let mut body = Body::builder().mime_type("application/json").data(json);
+        interpret_embed_response(status, &mut body, VIDEO_ID)
+    }
+
+    #[test]
+    fn public_embed_requests_only_the_canonical_watch_url_and_json_format() {
+        let mut client = Client::public_embed();
+        client.agent = Agent::config_builder()
+            .middleware(
+                |request: ureq::http::Request<ureq::SendBody>,
+                 _: ureq::middleware::MiddlewareNext<'_>| {
+                    let uri = url::Url::parse(&request.uri().to_string()).unwrap();
+                    assert_eq!(uri.scheme(), "https");
+                    assert_eq!(uri.host_str(), Some("www.youtube.com"));
+                    assert_eq!(uri.path(), "/oembed");
+                    let params: Vec<_> = uri.query_pairs().collect();
+                    assert_eq!(
+                        params,
+                        [
+                            (
+                                "url".into(),
+                                "https://www.youtube.com/watch?v=dQw4w9WgXcQ".into()
+                            ),
+                            ("format".into(), "json".into()),
+                        ],
+                    );
+                    assert!(!request.headers().contains_key("x-goog-api-key"));
+                    assert!(!request.headers().contains_key(header::AUTHORIZATION));
+                    Ok(ureq::http::Response::new(
+                        Body::builder()
+                            .mime_type("application/json")
+                            .data(br#"{"title":"Public video","author_name":"Channel"}"#),
+                    ))
+                },
+            )
+            .build()
+            .new_agent();
+        assert_eq!(
+            client.lookup("https://youtu.be/dQw4w9WgXcQ?t=30"),
+            Err(LookupError::InvalidVideoId),
+        );
+        assert_eq!(
+            client.lookup(VIDEO_ID).unwrap().unwrap().title,
+            "Public video",
+        );
+        assert_eq!(
+            client.search("Björk"),
+            Err(LookupError::InvalidKeyConfiguration)
+        );
+    }
+
+    #[test]
+    fn extracts_only_display_fields_and_a_canonical_thumbnail() {
+        let json = br#"{"title":"  A public\n video  ","author_name":"  Author ","thumbnail_url":"https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg","html":{"unexpected":"<iframe src=other>"}}"#;
+        let metadata = embed_response(200, json).unwrap().unwrap();
+        assert_eq!(
+            serde_json::to_value(metadata).unwrap(),
+            serde_json::json!({
+                "title": "A public video",
+                "channel": "Author",
+                "thumbnailUrl": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+            }),
+        );
+    }
+
+    #[test]
+    fn discards_an_unsafe_thumbnail_without_losing_the_title() {
+        for invalid in [
+            serde_json::json!("http://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"),
+            serde_json::json!("https://i.ytimg.com.attacker.test/vi/dQw4w9WgXcQ/hqdefault.jpg"),
+            serde_json::json!("https://name:password@i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"),
+            serde_json::json!("https://i.ytimg.com:8443/vi/dQw4w9WgXcQ/hqdefault.jpg"),
+            serde_json::json!("https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg"),
+            serde_json::json!("https://i.ytimg.com/vi/dQw4w9WgXcQ/image.jpg"),
+            serde_json::json!("https://i.ytimg.com/vi/dQw4w9WgXcQ/../dQw4w9WgXcQ/hqdefault.jpg"),
+            serde_json::json!("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg?trace=value"),
+            serde_json::json!("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg#anchor"),
+            serde_json::json!(123),
+        ] {
+            let json = serde_json::json!({
+                "title": "Public video", "author_name": "Channel", "thumbnail_url": invalid,
+            });
+            let metadata = embed_response(200, json.to_string()).unwrap().unwrap();
+            assert_eq!(metadata.title, "Public video");
+            assert!(metadata.thumbnail_url.is_none());
+        }
+    }
+
+    #[test]
+    fn handles_embed_statuses_without_data_api_key_errors() {
+        assert_eq!(embed_response(401, b""), Ok(None));
+        assert_eq!(embed_response(404, b""), Ok(None));
+        assert_eq!(embed_response(429, b""), Err(LookupError::Throttled));
+        for status in [301, 400, 403, 500] {
+            assert_eq!(embed_response(status, b""), Err(LookupError::Service));
+        }
+    }
+
+    #[test]
+    fn bounds_embed_html_as_part_of_the_decoded_response() {
+        let json = serde_json::json!({
+            "title": "Public video", "author_name": "Channel", "html": "a".repeat(16 * 1024),
+        });
+        assert_eq!(
+            embed_response(200, json.to_string()),
+            Err(LookupError::InvalidResponse)
+        );
+    }
+
     fn search_response(
         status: u16,
         json: impl Into<Vec<u8>>,
@@ -489,7 +708,7 @@ mod tests {
     fn validates_search_before_credentials_or_network() {
         let client = Client {
             agent: Agent::new_with_defaults(),
-            api_key: None,
+            source: Source::DataApi(None),
         };
         assert_eq!(client.search("\n"), Err(LookupError::InvalidQuery));
         assert_eq!(

@@ -8,6 +8,7 @@ const statusText = document.getElementById('queue-status');
 const playerProblemText = document.getElementById('player-problem');
 const metadataProblemText = document.getElementById('metadata-problem');
 const selection = document.getElementById('selection-id');
+const selectionArtwork = document.getElementById('selection-artwork');
 const selectionPanel = selection.closest('.selection');
 const position = document.getElementById('position');
 const previous = document.getElementById('previous');
@@ -293,6 +294,21 @@ function updateSelectionAttribution(channel) {
     attribution.textContent = label;
     attribution.title = label;
   }
+}
+
+selectionArtwork.addEventListener('error', () => {
+  if (selectionArtwork.naturalWidth === 0) selectionArtwork.hidden = true;
+});
+
+function updateSelectionArtwork(id, url) {
+  const approved =
+    typeof id === 'string' &&
+    /^[0-9A-Za-z_-]{11}$/.test(id) &&
+    url === `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+  if (selectionArtwork.getAttribute('src') === (approved ? url : null)) return;
+  selectionArtwork.hidden = !approved;
+  if (approved) selectionArtwork.src = url;
+  else selectionArtwork.removeAttribute('src');
 }
 
 function rowAction(type, label, id, icon, disabled = false) {
@@ -1282,6 +1298,7 @@ window.renderPearState = (
   }
   selection.classList.toggle('video-id', hasSelection && !currentTitle);
   updateSelectionAttribution(selectedMetadata?.channel.trim());
+  updateSelectionArtwork(current, selectedMetadata?.thumbnailUrl);
   selectionPanel.toggleAttribute('data-current', hasSelection);
   position.textContent = hasSelection
     ? `${index + 1} of ${entries.length}`

@@ -58,9 +58,9 @@ const CONTROLS_URL: &str = CONTROLS_ASSET_URL;
 #[cfg(target_os = "windows")]
 const CONTROLS_URL: &str = "https://pear-queue.app.local/";
 #[cfg(not(target_os = "windows"))]
-const CONTROLS_CSP: &str = "default-src 'none'; script-src pear-queue:; style-src pear-queue:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const CONTROLS_CSP: &str = "default-src 'none'; script-src pear-queue:; style-src pear-queue:; img-src https://i.ytimg.com/vi/; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 #[cfg(target_os = "windows")]
-const CONTROLS_CSP: &str = "default-src 'none'; script-src https://pear-queue.app.local; style-src https://pear-queue.app.local; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const CONTROLS_CSP: &str = "default-src 'none'; script-src https://pear-queue.app.local; style-src https://pear-queue.app.local; img-src https://i.ytimg.com/vi/; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const MAX_IPC_BYTES: usize = 4096;
 const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -516,18 +516,20 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
         }
     });
-    let mut lookup = client.and_then(|client| {
-        match metadata_lookup::Lookup::new(client, event_loop.create_proxy()) {
-            Ok(mut lookup) => {
-                lookup.select(library.state().current.as_deref());
-                Some(lookup)
-            }
-            Err(_) => {
-                eprintln!("Could not start YouTube video details lookup.");
-                None
-            }
-        }
-    });
+    let mut lookup = (!mode.smoke)
+        .then(|| client.unwrap_or_else(metadata::Client::public_embed))
+        .and_then(
+            |client| match metadata_lookup::Lookup::new(client, event_loop.create_proxy()) {
+                Ok(mut lookup) => {
+                    lookup.select(library.state().current.as_deref());
+                    Some(lookup)
+                }
+                Err(_) => {
+                    eprintln!("Could not start YouTube video details lookup.");
+                    None
+                }
+            },
+        );
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     #[cfg(any(target_os = "macos", target_os = "linux"))]

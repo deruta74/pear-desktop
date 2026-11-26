@@ -202,6 +202,7 @@ mod tests {
         Metadata {
             title: title.into(),
             channel: "Example channel".into(),
+            thumbnail_url: None,
         }
     }
 
