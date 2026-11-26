@@ -17,11 +17,24 @@ $webviewProfile = Join-Path $profile 'WebView2'
 $preview = $null
 $listenerOwner = 0
 $stage = 'setup'
+$prefix = 'PEAR_WINDOWS_PLAYBACK_COMPARISON '
 
 function Get-OwnedWebView([int] $processId) {
     $candidate = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
     return ($candidate.Name -ieq 'msedgewebview2.exe' -and $candidate.CommandLine -and
         $candidate.CommandLine.Contains($webviewProfile, [StringComparison]::OrdinalIgnoreCase))
+}
+
+function Get-OwnedIPv4Listener([int] $port) {
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
+    if ($listeners.LocalAddress | Where-Object { $_ -cnotin '127.0.0.1', '::1' }) { throw 'non-loopback' }
+    $ipv4 = @($listeners | Where-Object { $_.LocalAddress -ceq '127.0.0.1' })
+    if (!$ipv4.Count) { return 0 }
+    $owners = @($listeners.OwningProcess | Sort-Object -Unique)
+    if ($ipv4.Count -ne 1 -or $owners.Count -ne 1 -or !(Get-OwnedWebView $ipv4[0].OwningProcess)) {
+        throw 'unexpected-listener'
+    }
+    return $ipv4[0].OwningProcess
 }
 
 try {
@@ -57,35 +70,38 @@ try {
         # The runtime appends these to the app's normal WebView2 arguments.
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port"
     }
+    $stdout = Join-Path $profile 'stdout'
     $preview = Start-Process -FilePath $PreviewExe -ArgumentList '--iframe-player-smoke' -WorkingDirectory $profile `
-        -Environment $environment -RedirectStandardOutput (Join-Path $profile 'stdout') `
+        -Environment $environment -RedirectStandardOutput $stdout `
         -RedirectStandardError (Join-Path $profile 'stderr') -PassThru
 
     $stage = 'listener-ownership'
     $clock = [Diagnostics.Stopwatch]::StartNew()
     while ($clock.Elapsed.TotalSeconds -lt 20 -and !$preview.HasExited) {
-        $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
-        if ($listeners.LocalAddress | Where-Object { $_ -cnotin '127.0.0.1', '::1' }) { throw 'non-loopback' }
-        $ipv4 = @($listeners | Where-Object { $_.LocalAddress -ceq '127.0.0.1' })
-        if ($ipv4.Count) {
-            $owners = @($listeners.OwningProcess | Sort-Object -Unique)
-            if ($ipv4.Count -ne 1 -or $owners.Count -ne 1 -or !(Get-OwnedWebView $ipv4[0].OwningProcess)) {
-                throw 'unexpected-listener'
-            }
-            $listenerOwner = $ipv4[0].OwningProcess
-            break
-        }
+        $listenerOwner = Get-OwnedIPv4Listener $port
+        if ($listenerOwner) { break }
         Start-Sleep -Milliseconds 200
     }
+    $listener = if (!$listenerOwner) { 'missing' }
+        elseif ($preview.HasExited -or (Get-OwnedIPv4Listener $port) -ne $listenerOwner) { 'closed' }
+        else { 'verified' }
 
     $stage = 'comparison'
     # Connect as soon as the listener is verified, without waiting for the app's ready event.
-    $reports = @(& node.exe $probe $(if ($listenerOwner) { $port } else { 0 }) (Join-Path $root 'edge') 2>$null)
+    $reports = @(& node.exe $probe $(if ($listener -ceq 'verified') { $port } else { 0 }) (Join-Path $root 'edge') 2>$null)
     if ($LASTEXITCODE -ne 0 -or $reports.Count -ne 1 -or $reports[0].Length -gt 1500 -or
         $reports[0] -cnotmatch '^PEAR_WINDOWS_PLAYBACK_COMPARISON [\w\-":{},]+$') {
         throw 'probe-output'
     }
-    $reports[0]
+    $report = $reports[0].Substring($prefix.Length) | ConvertFrom-Json -AsHashtable
+    $markers = @(Get-Content -LiteralPath $stdout -TotalCount 128 -ErrorAction SilentlyContinue)
+    $report.pear.native = [ordered]@{
+        listener = $listener
+        running = !$preview.HasExited
+        queueReady = $markers -ccontains 'PEAR_QUEUE_READY'
+        transportReady = $markers -ccontains 'PEAR_QUEUE_TRANSPORT_READY'
+    }
+    $prefix + ($report | ConvertTo-Json -Compress -Depth 5)
 } catch {
     "PEAR_WINDOWS_PLAYBACK_COMPARISON $stage-failed"
     exit 1

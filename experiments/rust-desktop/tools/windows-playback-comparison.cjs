@@ -223,21 +223,74 @@ async function observePlayer(side, findParent, panel, result) {
     });
 }
 
+function pearPages(contexts) {
+    const pages = contexts.flatMap((context) => context.pages());
+    const uniquePage = (url) => {
+        const matches = pages.filter((page) => page.url() === url);
+        return matches.length === 1 ? matches[0] : null;
+    };
+    return { wrapper: uniquePage(wrapperUrl), controls: uniquePage(controlsUrl) };
+}
+
+function pearTargetEvidence(targets) {
+    const kind = (url) => {
+        const matches = targets.filter((target) => target.url === url);
+        if (matches.length !== 1) return matches.length ? 'ambiguous' : 'missing';
+        return matches[0].type === 'page' ? 'page' : 'other';
+    };
+    return { wrapper: kind(wrapperUrl), controls: kind(controlsUrl) };
+}
+
 async function inspectPear(chromium, port, result) {
+    result.cdp = { stage: 'not-attempted', contexts: 'unchecked', targets: null };
     if (!port) return;
-    const browser = await chromium.connectOverCDP('http://127.0.0.1:' + port, {
-        timeout: 7000, isLocal: true, noDefaults: true,
-    });
+    let browser;
     try {
-        const context = browser.contexts()[0];
-        if (!context) return;
-        observeEmbedRequests(context, result);
-        const pages = () => context.pages();
-        const panel = await until(3000, () => pages().find((page) => page.url() === controlsUrl));
-        await observePlayer('pear', () =>
-            pages().find((page) => page.url() === wrapperUrl)?.mainFrame(), panel, result);
+        result.cdp.stage = 'attach-failed';
+        browser = await chromium.connectOverCDP('http://127.0.0.1:' + port, {
+            timeout: 7000, isLocal: true, noDefaults: true,
+        });
+        result.cdp.stage = 'locate-wrapper';
+        const observedContexts = new Set();
+        const panes = () => {
+            const contexts = browser.contexts();
+            result.cdp.contexts = contexts.length > 1 ? 'multiple' : contexts.length ? 'one' : 'none';
+            for (const context of contexts) {
+                if (!observedContexts.has(context)) {
+                    observedContexts.add(context);
+                    observeEmbedRequests(context, result);
+                }
+            }
+            return pearPages(contexts);
+        };
+        const panel = await until(3000, () => panes().controls);
+        await observePlayer('pear', () => panes().wrapper?.mainFrame(), panel, result);
+        if (result.probe === 'observed') {
+            result.cdp.stage = 'observed';
+            return;
+        }
+
+        result.cdp.stage = browser.isConnected() ? 'wrapper-missing' : 'disconnected';
+        // CDP can report a target that Playwright did not surface as a page.
+        // Read only exact known targets and retain only their bounded classifications.
+        const session = await browser.newBrowserCDPSession().catch(() => null);
+        if (!session) return;
+        try {
+            const { targetInfos } = await session.send('Target.getTargets');
+            result.cdp.targets = pearTargetEvidence(targetInfos);
+            if (result.cdp.targets.wrapper === 'ambiguous') result.cdp.stage = 'wrapper-ambiguous';
+            else if (result.cdp.targets.wrapper !== 'missing') result.cdp.stage = 'wrapper-not-in-context';
+        } catch {
+            // The browser can exit between the state check and the read.
+            if (!browser.isConnected()) result.cdp.stage = 'disconnected';
+        } finally {
+            await session.detach().catch(() => {});
+        }
+    } catch {
+        result.probe = 'unavailable';
+        if (browser) result.cdp.stage = browser.isConnected() ? 'observation-failed' : 'disconnected';
     } finally {
-        await browser.close();
+        if (browser) await browser.close().catch(() => {});
     }
 }
 
@@ -268,7 +321,7 @@ async function main() {
     const { chromium } = require('playwright-core');
     const pear = emptyResult();
     const edge = emptyResult();
-    await inspectPear(chromium, port, pear).catch(() => { pear.probe = 'unavailable'; });
+    await inspectPear(chromium, port, pear);
     await inspectEdge(chromium, process.argv[3], edge).catch(() => { edge.probe = 'unavailable'; });
     console.log('PEAR_WINDOWS_PLAYBACK_COMPARISON ' + JSON.stringify({ pear, edge, result: compare(pear, edge) }));
 }
@@ -284,4 +337,4 @@ if (require.main === module) {
     }).finally(() => clearTimeout(deadline));
 }
 
-module.exports = { compare, embedMatches, playerError };
+module.exports = { compare, embedMatches, pearPages, pearTargetEvidence, playerError };

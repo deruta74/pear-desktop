@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { compare, embedMatches, playerError } = require('./windows-playback-comparison.cjs');
+const { compare, embedMatches, pearPages, pearTargetEvidence, playerError } = require('./windows-playback-comparison.cjs');
 
 const youtube = 'https://www.youtube.com/embed/M7lc1UVf-VE';
 const pear = '?enablejsapi=1&origin=https%3A%2F%2Fcom.pear-desktop.rust-preview&autoplay=0';
@@ -62,4 +62,26 @@ test('keeps corroborating service refusals separate from generic or differing er
     assert.equal(compare({ ...ready, screen: 'other' }, { ...ready, screen: 'other' }),
         'neither-played-cause-unresolved');
     assert.equal(compare({ ...ready, http: 429 }, { ...ready, http: 429 }), 'same-embed-http-error');
+});
+
+test('finds the exact Pear panes across browser contexts without choosing ambiguous panes', () => {
+    const unrelated = { url: () => 'https://example.test/' };
+    const wrapper = { url: () => 'https://com.pear-desktop.rust-preview/iframe-player.html' };
+    const controls = { url: () => 'https://pear-queue.app.local/' };
+    const contexts = [{ pages: () => [unrelated] }, { pages: () => [wrapper] }, { pages: () => [controls] }];
+    assert.deepEqual(pearPages(contexts), { wrapper, controls });
+    assert.deepEqual(pearPages([...contexts, { pages: () => [wrapper] }]), { wrapper: null, controls });
+});
+
+test('distinguishes missing Pear targets from unattached private targets without returning raw metadata', () => {
+    const wrapper = 'https://com.pear-desktop.rust-preview/iframe-player.html';
+    const controls = 'https://pear-queue.app.local/';
+    assert.deepEqual(pearTargetEvidence([]), { wrapper: 'missing', controls: 'missing' });
+    assert.deepEqual(pearTargetEvidence([
+        { url: wrapper, type: 'other', browserContextId: 'private-profile', title: 'private-title' },
+        { url: controls, type: 'page' },
+        { url: wrapper + '?wrong=1', type: 'page' },
+    ]), { wrapper: 'other', controls: 'page' });
+    assert.deepEqual(pearTargetEvidence([{ url: wrapper, type: 'page' }, { url: wrapper, type: 'page' }]),
+        { wrapper: 'ambiguous', controls: 'missing' });
 });
