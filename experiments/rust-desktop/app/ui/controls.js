@@ -107,6 +107,7 @@ let lyricCueDeadline = null;
 let pearPanelVisible = true;
 let focusAddOnReady = false;
 let queueInputsOpen = false;
+let queueConfirmation = '';
 let editingPosition = false;
 let audioExpanded = false;
 let editingVolume = false;
@@ -126,6 +127,7 @@ function commandProblem(message, context) {
   }
   if (context === 'queue') {
     errorText.textContent = message;
+    queueConfirmation = '';
     statusText.textContent = '';
     return;
   }
@@ -2114,13 +2116,12 @@ window.renderPearState = (
       context !== 'audio' &&
       context !== 'browser-search' &&
       context !== 'playlist-page') ||
-    command?.type === 'accept_legal' ||
-    notice
+    command?.type === 'accept_legal'
   ) {
-    statusText.textContent = [context === 'queue' ? confirmation : '', notice]
-      .filter(Boolean)
-      .join(' ');
+    queueConfirmation = context === 'queue' ? confirmation : '';
   }
+  const queueStatus = [queueConfirmation, notice].filter(Boolean).join(' ');
+  if (statusText.textContent !== queueStatus) statusText.textContent = queueStatus;
   if (selectionChanged || playlistChanged) renderedTransport = null;
   lyricsSwitchingActive = Boolean(lyricsSwitching);
   updateQueueAvailability();

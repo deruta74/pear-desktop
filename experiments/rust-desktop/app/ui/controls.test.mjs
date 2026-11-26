@@ -1954,10 +1954,10 @@ test('opens browser search only when submitted and keeps its draft and acknowled
   expect(await messages(page)).toHaveLength(3);
 });
 
-test('keeps queue confirmations when a playlist page finishes loading', async (t) => {
+test('keeps queue confirmations while clearing a completed player notice', async (t) => {
   const page = await panel(t);
-  const render = (entries, playlist, results, sequence) =>
-    state(page, entries, first, null, null, sequence, {
+  const render = (entries, playlist, results, sequence, notice = null) =>
+    state(page, entries, first, null, notice, sequence, {
       catalog: searchState({ query: 'PL_1234567890', playlist, results }),
     });
   const initial = [{ ...pianoResult, id: second }];
@@ -1976,9 +1976,12 @@ test('keeps queue confirmations when a playlist page finishes loading', async (t
     publicPlaylistState({ pending: true }),
     initial,
     3,
+    'Opening the YouTube player…',
   );
   const status = page.locator('#queue-status');
-  await expect(status).toHaveText('Added to the queue.');
+  await expect(status).toHaveText(
+    'Added to the queue. Opening the YouTube player…',
+  );
 
   await render(
     [first, third],
