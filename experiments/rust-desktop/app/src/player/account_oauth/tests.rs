@@ -269,3 +269,67 @@ fn disconnect_uses_the_access_token_if_no_refresh_token_was_returned() {
     };
     assert_eq!(session.revoke_with(&transport), Err(Error::Revocation));
 }
+
+#[test]
+fn a_delayed_launcher_error_does_not_override_cancel() {
+    let cancelled = AtomicBool::new(false);
+    let result = authorize_with(
+        &config(),
+        &cancelled,
+        Duration::from_secs(1),
+        |_| {
+            cancelled.store(true, Ordering::Release);
+            Err(Error::Browser)
+        },
+        &|_, _| panic!("unexpected token exchange"),
+    );
+    assert_eq!(result.err(), Some(Error::Cancelled));
+}
+
+#[test]
+fn a_late_launch_cannot_extend_the_callback_deadline() {
+    let result = authorize_with(
+        &config(),
+        &AtomicBool::new(false),
+        Duration::from_millis(10),
+        |url| {
+            std::thread::sleep(Duration::from_millis(30));
+            let params: HashMap<_, _> = url.query_pairs().into_owned().collect();
+            browser_callback(url, &[("state", &params["state"]), ("code", "late")]);
+            Ok(())
+        },
+        &|_, _| panic!("unexpected token exchange"),
+    );
+    assert_eq!(result.err(), Some(Error::Timeout));
+}
+
+#[test]
+fn failed_revocation_during_cancel_requires_manual_removal() {
+    let cancelled = AtomicBool::new(false);
+    let result = authorize_with(
+        &config(),
+        &cancelled,
+        Duration::from_secs(3),
+        |url| {
+            let params: HashMap<_, _> = url.query_pairs().into_owned().collect();
+            browser_callback(url, &[("state", &params["state"]), ("code", "synthetic")]);
+            Ok(())
+        },
+        &|endpoint, form| {
+            if endpoint == TOKEN_ENDPOINT {
+                cancelled.store(true, Ordering::Release);
+                Ok(mock_token())
+            } else {
+                assert_eq!(endpoint, REVOCATION_ENDPOINT);
+                assert_eq!(form, &[("token", "mock-revoke")]);
+                Err(Error::Exchange)
+            }
+        },
+    );
+    assert_eq!(result.err(), Some(Error::Revocation));
+    assert!(
+        Error::Revocation
+            .message()
+            .contains("Google Account permissions")
+    );
+}

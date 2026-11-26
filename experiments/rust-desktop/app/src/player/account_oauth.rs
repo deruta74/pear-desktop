@@ -23,6 +23,7 @@ const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const REVOCATION_ENDPOINT: &str = "https://oauth2.googleapis.com/revoke";
 const SCOPE: &str = "https://www.googleapis.com/auth/youtube.readonly";
 const AUTHORIZATION_TIMEOUT: Duration = Duration::from_secs(120);
+const BROWSER_FAILURE_CHECK: Duration = Duration::from_millis(250);
 const MAX_CONFIG_BYTES: u64 = 16 * 1024;
 const MAX_TOKEN_BYTES: u64 = 32 * 1024;
 
@@ -166,7 +167,12 @@ pub(super) fn authorize(config: &ClientConfig, cancelled: &AtomicBool) -> Result
         config,
         cancelled,
         AUTHORIZATION_TIMEOUT,
-        |url| open::that_detached(url.as_str()).map_err(|_| Error::Browser),
+        |url| {
+            // This bounded variant observes quick launcher failures and reaps a slow child
+            // in the background. On macOS, that_detached waits for the child to exit.
+            open::that_detached_with_timeout(url.as_str(), BROWSER_FAILURE_CHECK)
+                .map_err(|_| Error::Browser)
+        },
         &post,
     )
 }
@@ -185,7 +191,9 @@ fn authorize_with(
     let redirect = pending.redirect();
     let authorization = authorization_url(config, &redirect, &state, &verifier)?;
     check_cancelled(cancelled)?;
-    open_browser(&authorization)?;
+    let launch = open_browser(&authorization);
+    check_cancelled(cancelled)?;
+    launch?;
     let code = pending.receive(&state, cancelled)?;
 
     let mut form = vec![
@@ -208,7 +216,7 @@ fn authorize_with(
         .and_then(|response| parse_token(&response.body, requested_at, requested_wall));
     if check_cancelled(cancelled).is_err() {
         if let Some(session) = session {
-            let _ = session.revoke_with(transport);
+            session.revoke_with(transport)?;
         }
         return Err(Error::Cancelled);
     }
