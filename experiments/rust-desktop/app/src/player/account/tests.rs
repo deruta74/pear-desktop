@@ -292,3 +292,76 @@ fn retry_preserves_catalog_cursor_and_unauthorized_clears_the_session() {
     assert!(display["rows"].is_null());
     assert!(display["retry"].is_null());
 }
+
+#[test]
+fn quit_during_sign_in_waits_for_a_late_grant_to_be_revoked() {
+    let mut panel = panel();
+    let authorization = panel.apply(Command::ConnectAccount {}).unwrap();
+    let JobKind::Authorize { cancelled, .. } = authorization.kind else {
+        panic!("expected pending authorization");
+    };
+    let now = Instant::now();
+    let deadline = panel
+        .begin_shutdown(now)
+        .expect("quit must wait for authorization");
+    assert!(cancelled.load(Ordering::Acquire));
+    assert_eq!(
+        panel.shutdown_status(deadline, now),
+        ShutdownStatus::Waiting
+    );
+    assert_eq!(
+        panel.shutdown_status(deadline, deadline),
+        ShutdownStatus::TimedOut
+    );
+    let (revoke, _) = panel.receive(
+        authorization.stamp,
+        Outcome::Authorized(Ok(oauth::Session::fixture())),
+    );
+    let revoke = revoke.expect("the late grant must be revoked");
+    assert!(matches!(revoke.kind, JobKind::Revoke(_)));
+    assert_eq!(
+        panel.shutdown_status(deadline, now),
+        ShutdownStatus::Waiting
+    );
+    panel.receive(revoke.stamp, Outcome::Revoked(Ok(())));
+    assert_eq!(
+        panel.shutdown_status(deadline, now),
+        ShutdownStatus::Finished
+    );
+}
+
+#[test]
+fn quit_during_disconnect_waits_and_reports_a_failed_revocation() {
+    let mut panel = panel();
+    sign_in(&mut panel);
+    let revoke = panel.apply(Command::DisconnectAccount {}).unwrap();
+    let now = Instant::now();
+    let deadline = panel
+        .begin_shutdown(now)
+        .expect("quit must wait for disconnect");
+    assert_eq!(
+        panel.shutdown_status(deadline, now),
+        ShutdownStatus::Waiting
+    );
+    panel.receive(
+        revoke.stamp,
+        Outcome::Revoked(Err(oauth::Error::Revocation)),
+    );
+    assert_eq!(
+        panel.shutdown_status(deadline, now),
+        ShutdownStatus::RevocationFailed
+    );
+}
+
+#[test]
+fn regular_quit_clears_connected_account_access_locally() {
+    let mut panel = panel();
+    let (page, _) = sign_in(&mut panel);
+    let JobKind::Fetch { session, .. } = page.kind else {
+        panic!("expected a catalog fetch");
+    };
+    assert!(session.bearer().is_some());
+    assert_eq!(panel.begin_shutdown(Instant::now()), None);
+    assert!(session.bearer().is_none());
+    assert_eq!(state(&panel)["status"], "disconnected");
+}

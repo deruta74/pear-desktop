@@ -495,10 +495,33 @@ fn player_flow(
         .chain(transport.and_then(transport::Transport::deadline))
         .chain(lyrics)
         .chain(local_deadlines.into_iter().flatten());
-    let deadline = deadlines.min();
+    deadline_flow(
+        deadlines.min(),
+        #[cfg(target_os = "linux")]
+        timer,
+    )
+}
+
+fn deadline_flow(
+    deadline: Option<Instant>,
+    #[cfg(target_os = "linux")] timer: &mut platform::DeadlineTimer,
+) -> ControlFlow {
     #[cfg(target_os = "linux")]
     let deadline = timer.schedule(deadline);
     deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
+}
+
+fn receive_account_outcome(
+    panel: &mut account::Panel,
+    stamp: u32,
+    outcome: account::Outcome,
+    events: &EventLoopProxy<PlayerEvent>,
+) -> bool {
+    let (follow_up, changed) = panel.receive(stamp, outcome);
+    if let Some(job) = follow_up {
+        job.spawn(events);
+    }
+    changed
 }
 
 fn start_youtube_clients(
@@ -731,11 +754,59 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         None
     };
     let results = event_loop.create_proxy();
+    let mut account_shutdown_deadline = None;
     #[cfg(target_os = "linux")]
     let mut timer = platform::DeadlineTimer::default();
 
     event_loop.run(move |event, _, flow| {
         let _keep_alive = (&menu, &queue_lock);
+        if let (Some(deadline), Some(panel)) = (account_shutdown_deadline, &mut account) {
+            if let Event::UserEvent(PlayerEvent::Account(stamp, outcome)) = event {
+                receive_account_outcome(panel, stamp, outcome, &service_events);
+            }
+            use account::ShutdownStatus;
+            *flow = match panel.shutdown_status(deadline, Instant::now()) {
+                ShutdownStatus::Waiting => deadline_flow(
+                    Some(deadline),
+                    #[cfg(target_os = "linux")]
+                    &mut timer,
+                ),
+                ShutdownStatus::Finished => ControlFlow::Exit,
+                ShutdownStatus::RevocationFailed => {
+                    eprintln!("{}", account_oauth::Error::Revocation.message());
+                    ControlFlow::Exit
+                }
+                ShutdownStatus::TimedOut => {
+                    eprintln!(
+                        "YouTube account cleanup timed out. Check access in your Google Account permissions."
+                    );
+                    ControlFlow::Exit
+                }
+            };
+            return;
+        }
+        let quit_requested = match &event {
+            Event::WindowEvent { window_id, event: WindowEvent::CloseRequested, .. } => {
+                *window_id == window.id()
+            }
+            Event::UserEvent(PlayerEvent::Menu(event)) => event.id == *quit.id(),
+            _ => false,
+        };
+        if quit_requested {
+            account_shutdown_deadline = account.as_mut().and_then(|panel| panel.begin_shutdown(Instant::now()));
+            *flow = if let Some(deadline) = account_shutdown_deadline {
+                window.set_visible(false);
+                drop(current_player.take());
+                deadline_flow(
+                    Some(deadline),
+                    #[cfg(target_os = "linux")]
+                    &mut timer,
+                )
+            } else {
+                ControlFlow::Exit
+            };
+            return;
+        }
         let account_expired = account.as_mut().is_some_and(|account| account.expire(Instant::now()));
         *flow = player_flow(
             load_deadline,
@@ -759,13 +830,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 window_id, event, ..
             } if window_id == window.id() => {
                 match event {
-                    WindowEvent::CloseRequested => {
-                        if let Some(account) = &account {
-                            account.cancel_sign_in();
-                        }
-                        *flow = ControlFlow::Exit;
-                        return;
-                    }
                     WindowEvent::Focused(false) => auto_advance.disarm(),
                     WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                         if let Err(error) = layout.arrange(
@@ -783,13 +847,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     return;
                 }
                 true
-            }
-            Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *quit.id() => {
-                if let Some(account) = &account {
-                    account.cancel_sign_in();
-                }
-                *flow = ControlFlow::Exit;
-                return;
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *local_audio.id() => {
                 if let Err(reason) = crate::local_audio::launch() {
@@ -1054,12 +1111,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 overdue || metadata_changed || catalog_changed
             }
             Event::UserEvent(PlayerEvent::Account(stamp, outcome)) => {
-                account.as_mut().is_some_and(|account| {
-                    let (follow_up, changed) = account.receive(stamp, outcome);
-                    if let Some(job) = follow_up {
-                        job.spawn(&service_events);
-                    }
-                    changed
+                account.as_mut().is_some_and(|panel| {
+                    receive_account_outcome(panel, stamp, outcome, &service_events)
                 })
             }
             Event::UserEvent(PlayerEvent::Command(message)) => {

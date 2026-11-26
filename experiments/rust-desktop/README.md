@@ -104,9 +104,11 @@ watch page in your browser.
 
 Pear keeps account access and results in memory for the current session.
 **Cancel sign-in** abandons an outstanding attempt. **Disconnect** clears the
-account view immediately and asks Google to revoke access. If revocation
-fails, remove access under your Google Account permissions. The account view
-clears when access expires or you quit Pear. Connect again for a new session.
+account view immediately and asks Google to revoke access. If you quit during
+sign-in or disconnect, Pear gives pending account cleanup up to 20 seconds.
+If cleanup fails or times out, remove access under your Google Account
+permissions. The account view clears when access expires or you quit Pear.
+Connect again for a new session.
 [Google Account permissions](https://myaccount.google.com/permissions)
 
 ## Run the queue on Linux or Windows

@@ -333,3 +333,36 @@ fn failed_revocation_during_cancel_requires_manual_removal() {
             .contains("Google Account permissions")
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn config_opener_uses_a_nonblocking_descriptor_and_rejects_nonregular_files() {
+    use std::{fs, os::fd::AsRawFd};
+
+    let root = std::env::temp_dir().join(format!("pear-oauth-test-{}", fastrand::u64(..)));
+    fs::create_dir(&root).unwrap();
+    struct Fixture(std::path::PathBuf);
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let fixture = Fixture(root);
+    let file = fixture.0.join("client.json");
+    fs::write(
+        &file,
+        br#"{"installed":{"client_id":"test.apps.googleusercontent.com"}}"#,
+    )
+    .unwrap();
+
+    let opened = ClientConfig::open_file(&file).unwrap();
+    // SAFETY: the descriptor is valid and F_GETFL does not take a third argument.
+    let flags = unsafe { libc::fcntl(opened.as_raw_fd(), libc::F_GETFL) };
+    assert_ne!(flags, -1);
+    assert_ne!(flags & libc::O_NONBLOCK, 0);
+    assert!(ClientConfig::read_file(&file).is_ok());
+    assert!(matches!(
+        ClientConfig::open_file(&fixture.0),
+        Err(Error::Config)
+    ));
+}

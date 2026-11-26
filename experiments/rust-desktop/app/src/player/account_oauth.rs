@@ -1,5 +1,5 @@
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::Read,
     path::Path,
     sync::atomic::{AtomicBool, Ordering},
@@ -89,13 +89,28 @@ impl ClientConfig {
             .transpose()
     }
 
-    fn read_file(path: &Path) -> Result<Self, Error> {
+    fn open_file(path: &Path) -> Result<File, Error> {
         if !path.is_absolute() || !path.metadata().is_ok_and(|metadata| metadata.is_file()) {
             return Err(Error::Config);
         }
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            // A path replaced with a FIFO must not block the desktop event loop.
+            options.custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY);
+        }
+        let file = options.open(path).map_err(|_| Error::Config)?;
+        if !file.metadata().is_ok_and(|metadata| metadata.is_file()) {
+            return Err(Error::Config);
+        }
+        Ok(file)
+    }
+
+    fn read_file(path: &Path) -> Result<Self, Error> {
         let mut bytes = Zeroizing::new(Vec::new());
-        File::open(path)
-            .map_err(|_| Error::Config)?
+        Self::open_file(path)?
             .take(MAX_CONFIG_BYTES + 1)
             .read_to_end(&mut bytes)
             .map_err(|_| Error::Config)?;

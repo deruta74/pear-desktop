@@ -15,6 +15,17 @@ use super::{PlayerEvent, account_catalog as catalog, account_oauth as oauth};
 #[cfg(test)]
 mod tests;
 
+// Cancellation may leave an eight-second token exchange and an eight-second revocation.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(20);
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum ShutdownStatus {
+    Waiting,
+    Finished,
+    RevocationFailed,
+    TimedOut,
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Command {
@@ -71,11 +82,13 @@ pub(super) struct Panel {
 enum Phase {
     Unavailable,
     Disconnected,
+    RevocationFailed,
     Connecting {
         stamp: u32,
         cancelled: Arc<AtomicBool>,
     },
     Cancelling(u32),
+    RevokingCancelledSignIn(u32),
     Connected {
         session: Arc<oauth::Session>,
         browse: Box<Browse>,
@@ -167,16 +180,53 @@ impl Panel {
         false
     }
 
-    pub(super) fn cancel_sign_in(&self) {
-        if let Phase::Connecting { cancelled, .. } = &self.phase {
+    fn cancel_sign_in(&mut self) {
+        if let Phase::Connecting { stamp, cancelled } = &self.phase {
             cancelled.store(true, Ordering::Release);
+            self.phase = Phase::Cancelling(*stamp);
+            self.message = "Cancelling YouTube sign-in…";
         }
+    }
+
+    pub(super) fn begin_shutdown(&mut self, now: Instant) -> Option<Instant> {
+        self.cancel_sign_in();
+        if self.cleanup_pending() {
+            return Some(now + SHUTDOWN_GRACE);
+        }
+        if let Phase::Connected { session, .. } = &self.phase {
+            session.disconnect();
+            self.disconnected("YouTube account disconnected.");
+        }
+        None
+    }
+
+    pub(super) fn shutdown_status(&self, deadline: Instant, now: Instant) -> ShutdownStatus {
+        if self.cleanup_pending() {
+            if now < deadline {
+                ShutdownStatus::Waiting
+            } else {
+                ShutdownStatus::TimedOut
+            }
+        } else if matches!(self.phase, Phase::RevocationFailed) {
+            ShutdownStatus::RevocationFailed
+        } else {
+            ShutdownStatus::Finished
+        }
+    }
+
+    fn cleanup_pending(&self) -> bool {
+        matches!(
+            self.phase,
+            Phase::Cancelling(_) | Phase::RevokingCancelledSignIn(_) | Phase::Disconnecting(_)
+        )
     }
 
     pub(super) fn apply(&mut self, command: Command) -> Option<Job> {
         self.expire(Instant::now());
         match command {
-            Command::ConnectAccount {} if matches!(self.phase, Phase::Disconnected) => {
+            Command::ConnectAccount {}
+                if matches!(self.phase, Phase::Disconnected | Phase::RevocationFailed) =>
+            {
                 let config = self.config.clone()?;
                 let stamp = self.stamp();
                 let cancelled = Arc::new(AtomicBool::new(false));
@@ -190,10 +240,8 @@ impl Panel {
                     kind: JobKind::Authorize { config, cancelled },
                 })
             }
-            Command::CancelAccount {} if let Phase::Connecting { stamp, .. } = self.phase => {
+            Command::CancelAccount {} => {
                 self.cancel_sign_in();
-                self.phase = Phase::Cancelling(stamp);
-                self.message = "Cancelling YouTube sign-in…";
                 None
             }
             Command::DisconnectAccount {} => {
@@ -289,6 +337,11 @@ impl Panel {
         self.message = message;
     }
 
+    fn revocation_failed(&mut self) {
+        self.phase = Phase::RevocationFailed;
+        self.message = oauth::Error::Revocation.message();
+    }
+
     pub(super) fn receive(&mut self, stamp: u32, outcome: Outcome) -> (Option<Job>, bool) {
         if self.expire(Instant::now()) {
             return (None, true);
@@ -318,7 +371,7 @@ impl Panel {
                 match result {
                     Ok(session) => {
                         let stamp = self.stamp();
-                        self.phase = Phase::Cancelling(stamp);
+                        self.phase = Phase::RevokingCancelledSignIn(stamp);
                         return (
                             Some(Job {
                                 stamp,
@@ -327,27 +380,26 @@ impl Panel {
                             true,
                         );
                     }
-                    Err(oauth::Error::Revocation) => {
-                        self.disconnected(oauth::Error::Revocation.message())
-                    }
+                    Err(oauth::Error::Revocation) => self.revocation_failed(),
                     Err(_) => self.disconnected(oauth::Error::Cancelled.message()),
                 }
             }
-            (Phase::Cancelling(active), Outcome::Revoked(result)) if *active == stamp => {
-                self.disconnected(result.err().unwrap_or(oauth::Error::Cancelled).message());
+            (Phase::Cancelling(active), Outcome::WorkerUnavailable) if *active == stamp => {
+                self.disconnected(oauth::Error::Cancelled.message());
             }
-            (Phase::Disconnecting(active), Outcome::Revoked(result)) if *active == stamp => {
-                self.disconnected(
-                    result
-                        .err()
-                        .map_or("YouTube account disconnected.", oauth::Error::message),
-                );
+            (Phase::RevokingCancelledSignIn(active), Outcome::Revoked(Ok(())))
+                if *active == stamp =>
+            {
+                self.disconnected(oauth::Error::Cancelled.message());
+            }
+            (Phase::Disconnecting(active), Outcome::Revoked(Ok(()))) if *active == stamp => {
+                self.disconnected("YouTube account disconnected.");
             }
             (
-                Phase::Cancelling(active) | Phase::Disconnecting(active),
-                Outcome::WorkerUnavailable,
+                Phase::RevokingCancelledSignIn(active) | Phase::Disconnecting(active),
+                Outcome::Revoked(Err(_)) | Outcome::WorkerUnavailable,
             ) if *active == stamp => {
-                self.disconnected(oauth::Error::Revocation.message());
+                self.revocation_failed();
             }
             (Phase::Connected { browse, .. }, Outcome::Page(result))
                 if browse.stamp == stamp && browse.result.is_none() =>
@@ -380,9 +432,9 @@ impl Panel {
     pub(super) fn view(&self) -> View<'_> {
         let status = match self.phase {
             Phase::Unavailable => "unavailable",
-            Phase::Disconnected => "disconnected",
+            Phase::Disconnected | Phase::RevocationFailed => "disconnected",
             Phase::Connecting { .. } => "connecting",
-            Phase::Cancelling(_) => "cancelling",
+            Phase::Cancelling(_) | Phase::RevokingCancelledSignIn(_) => "cancelling",
             Phase::Connected { .. } => "connected",
             Phase::Disconnecting(_) => "disconnecting",
         };
