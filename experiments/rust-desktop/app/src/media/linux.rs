@@ -74,7 +74,14 @@ const INTERFACES: &str = r#"
 </node>
 "#;
 
+#[derive(Clone, Copy)]
+pub(crate) enum SessionKind {
+    LocalAudio,
+    OnlineQueue,
+}
+
 pub(crate) struct Backend {
+    kind: SessionKind,
     connection: DBusConnection,
     registrations: Vec<RegistrationId>,
     name: Option<String>,
@@ -82,7 +89,7 @@ pub(crate) struct Backend {
 }
 
 impl Backend {
-    pub(crate) fn new(dispatch: impl Fn(Request) + 'static) -> Option<Self> {
+    pub(crate) fn new(kind: SessionKind, dispatch: impl Fn(Request) + 'static) -> Option<Self> {
         // Keep session bus loss from terminating the app or changing GTK's shared connection.
         let address =
             gio::dbus_address_get_for_bus_sync(gio::BusType::Session, Cancellable::NONE).ok()?;
@@ -97,6 +104,7 @@ impl Backend {
         connection.set_exit_on_close(false);
 
         let mut backend = Self {
+            kind,
             connection,
             registrations: Vec::new(),
             name: None,
@@ -115,7 +123,7 @@ impl Backend {
                         "This media player cannot be raised or closed over D-Bus.",
                     );
                 })
-                .property(|_, _, _, _, property| root_property(property))
+                .property(move |_, _, _, _, property| root_property(kind, property))
                 .build()
                 .ok()?,
         );
@@ -154,7 +162,7 @@ impl Backend {
                     invocation.return_value(None);
                 })
                 .property(move |_, _, _, _, property| {
-                    player_property(properties.borrow().as_ref(), property)
+                    player_property(kind, properties.borrow().as_ref(), property)
                 })
                 .build()
                 .ok()?,
@@ -177,7 +185,7 @@ impl Backend {
     pub(crate) fn update(&mut self, next: Option<State>) {
         let previous = self.state.replace(next);
         let next = self.state.borrow();
-        let changed = changed_properties(previous.as_ref(), next.as_ref());
+        let changed = changed_properties(self.kind, previous.as_ref(), next.as_ref());
         if !changed.is_empty() {
             let _ = self.connection.emit_signal(
                 None,
@@ -208,6 +216,7 @@ fn seeked_position(previous: Option<&State>, next: Option<&State>) -> Option<i64
 }
 
 fn changed_properties(
+    kind: SessionKind,
     previous: Option<&State>,
     next: Option<&State>,
 ) -> HashMap<&'static str, Variant> {
@@ -218,9 +227,9 @@ fn changed_properties(
                 // GLib compares dictionary entries in order and Rust maps can iterate differently.
                 metadata_identity(previous) != metadata_identity(next)
             } else {
-                player_property(previous, property) != player_property(next, property)
+                player_property(kind, previous, property) != player_property(kind, next, property)
             };
-            changed.then(|| (property, player_property(next, property)))
+            changed.then(|| (property, player_property(kind, next, property)))
         })
         .collect()
 }
@@ -256,17 +265,26 @@ fn bus_call(connection: &DBusConnection, method: &str, arguments: Variant) -> Op
         .ok()
 }
 
-fn root_property(property: &str) -> Variant {
+fn root_property(kind: SessionKind, property: &str) -> Variant {
     match property {
         "CanQuit" | "CanRaise" | "HasTrackList" => false.to_variant(),
-        "Identity" => "Pear Local Audio".to_variant(),
+        "Identity" => match kind {
+            SessionKind::LocalAudio => "Pear Local Audio",
+            SessionKind::OnlineQueue => "Pear Desktop Rust Preview",
+        }
+        .to_variant(),
         "SupportedUriSchemes" | "SupportedMimeTypes" => Vec::<&str>::new().to_variant(),
         _ => unreachable!("GDBus validates the property against the registered interface"),
     }
 }
 
-fn player_property(state: Option<&State>, property: &str) -> Variant {
+fn player_property(kind: SessionKind, state: Option<&State>, property: &str) -> Variant {
     let can_control = state.is_some_and(|state| state.can_control);
+    let (minimum_rate, maximum_rate) = match kind {
+        SessionKind::LocalAudio => (0.7_f64, 1.3_f64),
+        // These bounds match the rates accepted by the online IFrame player.
+        SessionKind::OnlineQueue => (0.25, 4.0),
+    };
     match property {
         "PlaybackStatus" => match state.map(|state| state.status) {
             Some(Status::Playing) => "Playing",
@@ -275,8 +293,8 @@ fn player_property(state: Option<&State>, property: &str) -> Variant {
         }
         .to_variant(),
         "Rate" => state.map_or(1.0, |state| state.speed).to_variant(),
-        "MinimumRate" => 0.7_f64.to_variant(),
-        "MaximumRate" => 1.3_f64.to_variant(),
+        "MinimumRate" => minimum_rate.to_variant(),
+        "MaximumRate" => maximum_rate.to_variant(),
         "Metadata" => metadata(state),
         "Volume" => state.map_or(1.0, |state| state.volume).to_variant(),
         "Position" => micros(state.map_or(0, |state| state.position_ms)).to_variant(),
@@ -322,7 +340,35 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
+    fn mpris_identity_and_rate_bounds_match_the_session() {
+        for (kind, identity, minimum, maximum) in [
+            (SessionKind::LocalAudio, "Pear Local Audio", 0.7, 1.3),
+            (
+                SessionKind::OnlineQueue,
+                "Pear Desktop Rust Preview",
+                0.25,
+                4.0,
+            ),
+        ] {
+            assert_eq!(
+                root_property(kind, "Identity").get::<String>().as_deref(),
+                Some(identity)
+            );
+            assert_eq!(
+                player_property(kind, None, "MinimumRate").get::<f64>(),
+                Some(minimum)
+            );
+            assert_eq!(
+                player_property(kind, None, "MaximumRate").get::<f64>(),
+                Some(maximum)
+            );
+            assert_eq!(player_property(kind, None, "Rate").get::<f64>(), Some(1.0));
+        }
+    }
+
+    #[test]
     fn mpris_uses_microseconds_and_object_paths_without_exposing_file_locations() {
+        let kind = SessionKind::LocalAudio;
         let mut state = State {
             generation: 1,
             metadata: Arc::new(Metadata {
@@ -354,15 +400,15 @@ mod tests {
         assert_eq!(first["mpris:length"].get::<i64>(), Some(5_500_000));
         assert!(first["mpris:trackid"].get::<ObjectPath>().is_some());
         assert_eq!(
-            player_property(Some(&state), "Position").get::<i64>(),
+            player_property(kind, Some(&state), "Position").get::<i64>(),
             Some(1_234_000)
         );
         assert_eq!(
-            player_property(Some(&state), "CanSeek").get::<bool>(),
+            player_property(kind, Some(&state), "CanSeek").get::<bool>(),
             Some(false)
         );
         assert_eq!(
-            player_property(Some(&state), "CanGoNext").get::<bool>(),
+            player_property(kind, Some(&state), "CanGoNext").get::<bool>(),
             Some(true)
         );
         state.generation += 1;
@@ -384,14 +430,18 @@ mod tests {
         );
         assert_ne!(fields(&state)["mpris:trackid"], first["mpris:trackid"]);
         assert_eq!(
-            player_property(Some(&state), "CanGoNext").get::<bool>(),
+            player_property(kind, Some(&state), "CanGoNext").get::<bool>(),
             Some(false)
         );
-        assert_eq!(player_property(None, "CanPlay").get::<bool>(), Some(false));
+        assert_eq!(
+            player_property(kind, None, "CanPlay").get::<bool>(),
+            Some(false)
+        );
     }
 
     #[test]
     fn position_ticks_do_not_republish_metadata() {
+        let kind = SessionKind::LocalAudio;
         let original = State {
             generation: 1,
             metadata: Arc::new(Metadata {
@@ -412,7 +462,7 @@ mod tests {
         let mut tick = original.clone();
         for step in 1..=20 {
             tick.position_ms = original.position_ms + step;
-            assert!(changed_properties(Some(&original), Some(&tick)).is_empty());
+            assert!(changed_properties(kind, Some(&original), Some(&tick)).is_empty());
             assert_eq!(seeked_position(Some(&original), Some(&tick)), None);
         }
         tick.position_revision += 1;
@@ -422,7 +472,7 @@ mod tests {
         );
         tick.generation += 1;
         assert_eq!(seeked_position(Some(&original), Some(&tick)), None);
-        let changed = changed_properties(Some(&original), Some(&tick));
+        let changed = changed_properties(kind, Some(&original), Some(&tick));
         assert_eq!(changed.len(), 1);
         assert!(changed.contains_key("Metadata"));
     }

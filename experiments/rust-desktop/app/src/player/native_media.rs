@@ -48,7 +48,11 @@ impl Projection {
             } else {
                 0
             };
-            let speed = if sample.state == Some(3) { 0.0 } else { rate };
+            let speed = if cfg!(target_os = "macos") && sample.state == Some(3) {
+                0.0
+            } else {
+                rate
+            };
             Some((
                 item,
                 duration,
@@ -85,7 +89,7 @@ impl Projection {
         }
         binding.status = match item.sample.state {
             Some(1) => media::Status::Playing,
-            Some(3) => binding.status,
+            Some(3) if cfg!(target_os = "macos") => binding.status,
             Some(0) => media::Status::Stopped,
             _ => media::Status::Paused,
         };
@@ -136,6 +140,7 @@ pub(super) struct Session {
     events: EventLoopProxy<PlayerEvent>,
     projection: Projection,
     backend: Option<media::Backend>,
+    attempted: bool,
 }
 
 impl Session {
@@ -144,16 +149,26 @@ impl Session {
             events,
             projection: Projection::default(),
             backend: None,
+            attempted: false,
         }
     }
 
     pub(super) fn update(&mut self, item: Option<Item<'_>>) {
         let state = self.projection.update(item);
-        if state.is_some() && self.backend.is_none() {
+        if state.is_some() && !self.attempted {
+            self.attempted = true;
             let events = self.events.clone();
-            self.backend = media::Backend::new(move |request| {
+            let dispatch = move |request| {
                 let _ = events.send_event(PlayerEvent::SystemMedia(request));
-            });
+            };
+            #[cfg(target_os = "macos")]
+            {
+                self.backend = media::Backend::new(dispatch);
+            }
+            #[cfg(target_os = "linux")]
+            {
+                self.backend = media::Backend::new(media::SessionKind::OnlineQueue, dispatch);
+            }
         }
         if let Some(backend) = &mut self.backend {
             backend.update(state);
@@ -266,6 +281,9 @@ mod tests {
         buffering.sample_age = Duration::from_millis(800);
         let held = projection.update(Some(buffering)).unwrap();
         assert_eq!(held.position_ms, 3500);
-        assert_eq!(held.speed, 0.0);
+        #[cfg(target_os = "macos")]
+        assert_eq!((held.speed, held.status), (0.0, media::Status::Playing));
+        #[cfg(target_os = "linux")]
+        assert_eq!((held.speed, held.status), (1.25, media::Status::Paused));
     }
 }

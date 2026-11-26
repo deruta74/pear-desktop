@@ -124,7 +124,7 @@ impl Transport {
         self.snapshot.as_ref()
     }
 
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(any(target_os = "macos", target_os = "linux", test))]
     pub(super) fn fresh_snapshot(&self, now: Instant) -> Option<(&Snapshot, Instant)> {
         let sampled_at = self.sampled_at?;
         let age = now.checked_duration_since(sampled_at)?;
@@ -134,7 +134,7 @@ impl Transport {
             .map(|snapshot| (snapshot, sampled_at))
     }
 
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(any(target_os = "macos", target_os = "linux", test))]
     pub(super) fn native_playback_available(&self, expected_id: &str, now: Instant) -> bool {
         !self.refresh_controls
             && self
@@ -142,7 +142,7 @@ impl Transport {
                 .is_some_and(|(state, _)| state.allows_playback_for(expected_id))
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub(super) fn perform_native_playback(
         &mut self,
         view: &WebView,

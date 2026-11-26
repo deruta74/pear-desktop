@@ -385,7 +385,9 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
     };
     #[cfg(target_os = "windows")]
     let mut media = media::Backend::new(&window, dispatch_media);
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    let mut media = media::Backend::new(media::SessionKind::LocalAudio, dispatch_media);
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     let mut media = media::Backend::new(dispatch_media);
     #[cfg(target_os = "macos")]
     let mut media: Option<media::Backend> = None;

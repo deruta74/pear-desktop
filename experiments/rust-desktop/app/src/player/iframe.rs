@@ -264,7 +264,7 @@ fn wrapper_eval(script: &str) -> String {
 pub(super) enum Action {
     Play,
     Pause,
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(any(target_os = "macos", target_os = "linux", test))]
     NativePlayback {
         expected_id: String,
         playing: bool,
@@ -284,7 +284,7 @@ impl Action {
         Ok(match self {
             Self::Play => "window.pearIframePlayer?.play()".into(),
             Self::Pause => "window.pearIframePlayer?.pause()".into(),
-            #[cfg(any(target_os = "macos", test))]
+            #[cfg(any(target_os = "macos", target_os = "linux", test))]
             Self::NativePlayback {
                 expected_id,
                 playing,
@@ -292,7 +292,7 @@ impl Action {
                 let method = if playing { "play" } else { "pause" };
                 format!("window.pearIframePlayer?.{method}({expected_id:?})")
             }
-            #[cfg(any(target_os = "macos", test))]
+            #[cfg(any(target_os = "macos", target_os = "linux", test))]
             Self::NativePlayback { .. } => return Err("Invalid YouTube video ID.".into()),
             Self::Seek(seconds) if seconds <= MAX_SECONDS => {
                 format!("window.pearIframePlayer?.seek({seconds})")
@@ -349,7 +349,7 @@ pub(super) struct Snapshot {
 }
 
 impl Snapshot {
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(any(target_os = "macos", target_os = "linux", test))]
     pub(super) fn allows_playback_for(&self, expected_id: &str) -> bool {
         self.native_playback_confirmed
             && self.ready

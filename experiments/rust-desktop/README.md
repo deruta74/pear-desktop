@@ -53,7 +53,7 @@ With the experimental player active, **View → Play Next Automatically** can ad
 
 **View → Playback Speed** lists the speeds supported for the current video.
 
-On macOS, Now Playing offers play and pause for a queue video after you start it in the visible player. These controls remain available when the queue panel is hidden.
+On macOS, Now Playing offers play and pause for a queue video after you start it in the visible player. Linux exposes the same controls through MPRIS. These controls remain available when the queue panel is hidden.
 
 On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. Automatic advance started the next video in the same player and saved it as the current item. On Ubuntu ARM64, the example video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
 

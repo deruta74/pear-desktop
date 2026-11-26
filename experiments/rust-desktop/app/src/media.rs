@@ -10,7 +10,7 @@ mod tests;
 mod windows;
 
 #[cfg(target_os = "linux")]
-pub(crate) use linux::Backend;
+pub(crate) use linux::{Backend, SessionKind};
 #[cfg(target_os = "macos")]
 pub(crate) use macos::Backend;
 #[cfg(target_os = "windows")]
