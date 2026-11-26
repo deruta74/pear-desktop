@@ -66,15 +66,6 @@ const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
 const IFRAME_MENU_LABEL: &str = "Experimental Playback Controls";
 const AUTO_ADVANCE_LABEL: &str = "Play Next Automatically";
 
-const EMPTY_PLAYER: &str = r#"<!doctype html><html lang="en"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
-<title>Player</title><style>
-:root{color-scheme:dark;background:#121714;color:#e5ebe0;font:17px system-ui}
-body{min-height:100vh;display:grid;place-content:center;text-align:center;margin:0}
-h1{font-size:30px;letter-spacing:-.04em;margin:0}
-</style><main><h1>Add a video to start listening</h1></main></html>"#;
-
 enum PlayerEvent {
     Menu(MenuEvent),
     Command(ControlMessage),
@@ -266,22 +257,11 @@ fn show_video(
     layout: &Layout,
     window: &Window,
     queue_visible: bool,
-    id: Option<&str>,
+    id: &str,
     generation: u64,
     events: tao::event_loop::EventLoopProxy<PlayerEvent>,
     mode: LaunchMode,
 ) -> Result<WebView> {
-    let Some(id) = id else {
-        let view = layout.build(
-            window,
-            |builder| isolated_builder(builder).with_navigation_handler(|url| url == "about:blank"),
-            Pane::Video,
-            queue_visible,
-        )?;
-        view.load_html(EMPTY_PLAYER)?;
-        return Ok(view);
-    };
-
     let problem_events = events.clone();
     let report_problem = move |message| {
         let _ = problem_events.send_event(PlayerEvent::VideoProblem(generation, message));
@@ -549,7 +529,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     );
     let toggle_queue = MenuItem::new(
         "Hide Queue",
-        approved,
+        false,
         accelerator(CMD_OR_CTRL | Modifiers::SHIFT, Code::KeyL),
     );
     let add_video = MenuItem::new("Add Video", approved, accelerator(CMD_OR_CTRL, Code::KeyL));
@@ -621,29 +601,38 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                      generation,
                      queue_visible,
                      mode| {
-        show_video(
-            layout,
-            window,
-            queue_visible,
-            library.state().current.as_deref(),
-            generation,
-            loader.clone(),
-            mode,
-        )
+        library
+            .state()
+            .current
+            .as_deref()
+            .map(|id| {
+                show_video(
+                    layout,
+                    window,
+                    queue_visible,
+                    id,
+                    generation,
+                    loader.clone(),
+                    mode,
+                )
+            })
+            .transpose()
     };
     let mut queue_visible = true;
     let mut generation = 0;
     let (mut current_player, mut player_error) = if approved {
         match load(&layout, &window, &library, generation, queue_visible, mode) {
-            Ok(video) => (Some(video), None),
+            Ok(video) => (video, None),
             Err(error) => (None, Some(format!("Could not open the player: {error}"))),
         }
     } else {
         (None, None)
     };
+    toggle_queue.set_enabled(current_player.is_some());
     layout.arrange(&window, current_player.as_ref(), &controls, queue_visible)?;
-    let mut load_deadline = (current_player.is_some() && library.state().current.is_some())
-        .then(|| Instant::now() + LOAD_TIMEOUT);
+    let mut load_deadline = current_player
+        .as_ref()
+        .map(|_| Instant::now() + LOAD_TIMEOUT);
     let mut loading_slow = false;
     let mut titled_generation = None;
     let mut controls_ready = false;
@@ -786,6 +775,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 let adding = event.id == *add_video.id();
                 let show = opening_legal || adding || !queue_visible;
+                if !show && current_player.is_none() {
+                    return;
+                }
                 if show != queue_visible {
                     match layout.arrange(&window, current_player.as_ref(), &controls, show) {
                         Ok(()) => {
@@ -988,7 +980,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 show_legal = false;
                                 legal_problem = None;
                                 reload.set_enabled(true);
-                                toggle_queue.set_enabled(true);
                                 add_video.set_enabled(true);
                                 toggle_iframe.set_enabled(preferences.is_some());
                                 toggle_advance.set_enabled(preferences.is_some() && mode.iframe_player);
@@ -1096,6 +1087,16 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             error = Some("Playback controls are unavailable for this video.".into());
                         }
                     }
+                    command @ Command::ShuffleUpcoming {} => {
+                        if auto_advance.pending() {
+                            error = Some("Waiting for the next video to start.".into());
+                        } else {
+                            match library.apply(command) {
+                                Ok(_) => auto_advance.retarget_after_shuffle(library.state()),
+                                Err(reason) => error = Some(reason.to_string()),
+                            }
+                        }
+                    }
                     command => {
                         let cancel_switch = auto_advance.pending()
                             && matches!(&command, Command::Select { id }
@@ -1181,14 +1182,20 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             drop(current_player.take());
             match load(&layout, &window, &library, generation, queue_visible, mode) {
                 Ok(video) => {
-                    current_player = Some(video);
+                    current_player = video;
                     player_error = None;
-                    if library.state().current.is_some() {
-                        load_deadline = Some(Instant::now() + LOAD_TIMEOUT);
-                    }
+                    load_deadline = current_player.as_ref().map(|_| Instant::now() + LOAD_TIMEOUT);
                 }
                 Err(reason) => player_error = Some(format!("Could not open the player: {reason}")),
             }
+            if current_player.is_none() && !queue_visible {
+                queue_visible = true;
+                toggle_queue.set_text("Hide Queue");
+                if let Err(reason) = controls.evaluate_script("window.setPearPanelVisible?.(true);") {
+                    eprintln!("Could not restore the queue controls: {reason}");
+                }
+            }
+            toggle_queue.set_enabled(current_player.is_some());
             if let Err(reason) = layout.arrange(&window, current_player.as_ref(), &controls, queue_visible) {
                 eprintln!("Could not arrange the player: {reason}");
             }

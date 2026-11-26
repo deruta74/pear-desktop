@@ -11,9 +11,10 @@
     <main id="pear-panel" class="panel" hidden inert>
       <header class="panel-header">
         <h1>Pear</h1>
+        <p id="preferences-problem" class="feedback" aria-live="polite"></p>
       </header>
 
-      <section class="selection" aria-labelledby="selection-heading">
+      <section class="selection" aria-labelledby="selection-heading" hidden>
         <div class="selection-heading">
           <h2 id="selection-heading">Now playing</h2>
           <span id="position" class="position"></span>
@@ -35,9 +36,7 @@
               class="selection-title"
               dir="auto"
               aria-live="polite"
-            >
-              No video selected
-            </p>
+            ></p>
           </div>
         </div>
         <div class="playback-actions">
@@ -145,7 +144,6 @@
         <p id="audio-problem" class="feedback error" aria-live="polite"></p>
         <p id="player-problem" class="feedback error" role="alert"></p>
         <p id="metadata-problem" class="feedback" aria-live="polite"></p>
-        <p id="preferences-problem" class="feedback" aria-live="polite"></p>
       </section>
 
       <form id="add-video">
@@ -180,18 +178,31 @@
               aria-live="polite"
             ></span>
           </div>
-          <input
-            id="queue-filter"
-            class="queue-filter"
-            type="search"
-            aria-label="Filter queue"
-            aria-controls="queue-items"
-            placeholder="Filter queue"
-            autocomplete="off"
-            spellcheck="false"
-            maxlength="180"
-            hidden
-          />
+          <div class="queue-tools">
+            <button
+              id="shuffle-upcoming"
+              class="queue-shuffle"
+              type="button"
+              aria-label="Shuffle upcoming"
+              aria-controls="queue-items"
+              title="Shuffle upcoming"
+              hidden
+            >
+              Shuffle
+            </button>
+            <input
+              id="queue-filter"
+              class="queue-filter"
+              type="search"
+              aria-label="Filter queue"
+              aria-controls="queue-items"
+              placeholder="Filter queue"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="180"
+              hidden
+            />
+          </div>
         </div>
         <p id="queue-empty" class="queue-empty" hidden>
           Add a YouTube video to start your queue.

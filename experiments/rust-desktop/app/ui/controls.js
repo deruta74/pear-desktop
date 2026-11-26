@@ -33,6 +33,7 @@ const queuePanel = document.getElementById('queue-panel');
 const count = document.getElementById('queue-count');
 const empty = document.getElementById('queue-empty');
 const filter = document.getElementById('queue-filter');
+const shuffle = document.getElementById('shuffle-upcoming');
 const viewSwitcherTemplate = document.getElementById('view-switcher-template');
 const catalogTemplate = document.getElementById('catalog-template');
 const lyricsTemplate = document.getElementById('lyrics-template');
@@ -142,6 +143,13 @@ function interruptsLyricsClock(command) {
   }
 }
 
+function updateShuffleAvailability() {
+  shuffle.setAttribute(
+    'aria-disabled',
+    String(Boolean(pending) || lyricsSwitchingActive),
+  );
+}
+
 function send(command, context = 'queue') {
   if (pending) return;
   if (
@@ -208,6 +216,7 @@ function send(command, context = 'queue') {
     updateLegalControls();
     return;
   }
+  updateShuffleAvailability();
   if (catalogView) updateCatalog(renderedCatalog);
   if (lyricsView) updateLyrics(renderedLyrics);
   if (libraryView) updateLibrary(renderedLibrary);
@@ -1521,9 +1530,7 @@ window.renderPearState = (
   const selectionChanged =
     renderedState !== null && current !== renderedState.current;
   const active = document.activeElement;
-  const selectionLabel = hasSelection
-    ? currentTitle || current
-    : 'No video selected';
+  const selectionLabel = hasSelection ? currentTitle || current : '';
   if (selection.textContent !== selectionLabel) {
     selection.textContent = selectionLabel;
     selection.title = hasSelection ? selectionLabel : '';
@@ -1532,7 +1539,8 @@ window.renderPearState = (
   updateSelectionAttribution(selectedMetadata?.channel.trim());
   if (!panel.hidden)
     updateSelectionArtwork(current, selectedMetadata?.thumbnailUrl);
-  selectionPanel.toggleAttribute('data-current', hasSelection);
+  selectionPanel.hidden = !hasSelection;
+  panel.toggleAttribute('data-empty', !hasSelection);
   position.textContent = hasSelection
     ? `${index + 1} of ${entries.length}`
     : '';
@@ -1557,6 +1565,9 @@ window.renderPearState = (
     current !== renderedState.current;
   if (changed) updateQueue(entries, current, entryTitles);
   renderedState = { entries, current, entryTitles };
+  shuffle.hidden = !hasSelection || entries.length - index - 1 < 2;
+  if (active === shuffle && shuffle.hidden)
+    (filter.hidden ? source : filter).focus({ preventScroll: true });
 
   let confirmation = '';
   if (!error && command?.type === 'add') {
@@ -1581,6 +1592,13 @@ window.renderPearState = (
     if (movedIndex >= 0 && movedIndex !== acknowledged.entryIndex) {
       confirmation = `Moved to position ${movedIndex + 1} of ${entries.length}.`;
     }
+  }
+  if (
+    !error &&
+    command?.type === 'shuffle_upcoming' &&
+    entries.some((id, i) => id !== oldEntries[i])
+  ) {
+    confirmation = 'Shuffled upcoming videos.';
   }
   if (!error && context === 'library') {
     if (command.type === 'save_playlist') confirmation = 'Playlist saved.';
@@ -1625,6 +1643,7 @@ window.renderPearState = (
   }
   if (selectionChanged) renderedTransport = null;
   lyricsSwitchingActive = Boolean(lyricsSwitching);
+  updateShuffleAvailability();
   if (selectionChanged || playerProblem || lyricsSwitchingActive)
     cancelLyricsClock();
   const catalogWasFocused = updateCatalog(catalog, browserSearch === true);
@@ -1700,6 +1719,10 @@ filter.addEventListener('keydown', (event) => {
     filter.value = '';
     filter.dispatchEvent(new Event('input'));
   }
+});
+shuffle.addEventListener('click', () => {
+  if (!shuffle.hidden && shuffle.getAttribute('aria-disabled') !== 'true')
+    send({ type: 'shuffle_upcoming' });
 });
 previous.addEventListener('click', () => send({ type: 'previous' }));
 playToggle.addEventListener('click', () => {

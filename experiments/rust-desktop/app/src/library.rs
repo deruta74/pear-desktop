@@ -38,6 +38,7 @@ pub enum Command {
     },
     Previous {},
     Next {},
+    ShuffleUpcoming {},
     Ready {},
     AcceptLegal {
         revision: u32,
@@ -203,6 +204,24 @@ impl Library {
                     return Ok(false);
                 };
                 state.current = Some(id.clone());
+            }
+            Command::ShuffleUpcoming {} => {
+                let Some(current) = &state.current else {
+                    return Ok(false);
+                };
+                let start = entry_index(&state.entries, current)? + 1;
+                let upcoming = &mut state.entries[start..];
+                if upcoming.len() < 2 {
+                    return Ok(false);
+                }
+                // Discard the original permutation so a shuffle always changes the order.
+                let original = &self.state.entries[start..];
+                loop {
+                    fastrand::shuffle(upcoming);
+                    if upcoming != original {
+                        break;
+                    }
+                }
             }
             Command::Ready {}
             | Command::AcceptLegal { .. }
@@ -540,6 +559,38 @@ mod tests {
         assert_eq!(queue.state().titles[FIRST], "Current title");
         assert_eq!(queue.state().titles[SECOND], "Another track");
         assert!(Library::load(path).unwrap().state() == queue.state());
+    }
+
+    #[test]
+    fn shuffle_upcoming_keeps_the_played_prefix_and_persists_without_reloading() {
+        const FOURTH: &str = "fourthVideo";
+        const FIFTH: &str = "fifthVideo_";
+        let dir = TestDirectory::new();
+        let path = dir.queue_path();
+        let mut queue = Library::load(path.clone()).unwrap();
+        let shuffle = || serde_json::from_str(r#"{"type":"shuffle_upcoming"}"#).unwrap();
+
+        assert!(!queue.apply(shuffle()).unwrap());
+        assert!(!path.exists());
+        for id in [FIRST, SECOND, THIRD, FOURTH, FIFTH] {
+            queue.apply(add(id)).unwrap();
+        }
+        queue.remember_title(FOURTH, "An upcoming video").unwrap();
+        queue.apply(select(FOURTH)).unwrap();
+        let before = fs::read(&path).unwrap();
+        assert!(!queue.apply(shuffle()).unwrap());
+        assert_eq!(fs::read(&path).unwrap(), before);
+        queue.apply(select(THIRD)).unwrap();
+
+        assert!(!queue.apply(shuffle()).unwrap());
+        let persisted = Library::load(path).unwrap();
+        assert!(persisted.state() == queue.state());
+        assert_eq!(persisted.state().current.as_deref(), Some(THIRD));
+        assert_eq!(
+            persisted.state().entries,
+            [FIRST, SECOND, THIRD, FIFTH, FOURTH]
+        );
+        assert_eq!(persisted.state().titles[FOURTH], "An upcoming video");
     }
 
     struct TestDirectory(PathBuf);
