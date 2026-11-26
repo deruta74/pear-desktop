@@ -1730,6 +1730,34 @@ playToggle.addEventListener('click', () => {
     send({ type: 'set_playback', playing: !renderedTransport.playing });
   }
 });
+document.addEventListener('keydown', (event) => {
+  if (
+    event.code !== 'Space' ||
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.repeat ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    pending ||
+    panel.hidden ||
+    !legalPanel.hidden ||
+    playToggle.disabled ||
+    playToggle.hidden
+  )
+    return;
+  const target = event.target;
+  if (
+    target instanceof Element &&
+    target.closest(
+      'input, textarea, button, select, a, [contenteditable], [tabindex]:not([tabindex="-1"])',
+    )
+  )
+    return;
+  event.preventDefault();
+  playToggle.click();
+});
 next.addEventListener('click', () => send({ type: 'next' }));
 openBrowser.addEventListener('click', () => send({ type: 'open_browser' }));
 

@@ -282,6 +282,30 @@ const readyTransport = {
   blocked: false,
 };
 
+test('uses Space for playback only outside editable controls and after the official first play', async (t) => {
+  const page = await panel(t);
+  await state(page, [first], first);
+  const heading = page.getByRole('heading', { name: 'Pear', exact: true });
+  await transport(page, { ...readyTransport, hasPlayed: false });
+  await heading.click();
+  await page.keyboard.press('Space');
+  expect(await messages(page)).toHaveLength(1);
+
+  await transport(page, { ...readyTransport, playing: true });
+  const link = page.getByRole('textbox', { name: 'YouTube link or video ID' });
+  await link.fill('My link draft');
+  await page.keyboard.press('Space');
+  await expect(link).toHaveValue('My link draft ');
+  expect(await messages(page)).toHaveLength(1);
+
+  await heading.click();
+  await page.keyboard.press('Space');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'set_playback', playing: false },
+  });
+});
+
 test('makes available audio output controls usable before the first play', async (t) => {
   const page = await panel(t);
   await page.setViewportSize({ width: 384, height: 520 });
