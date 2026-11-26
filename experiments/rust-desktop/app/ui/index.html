@@ -8,7 +8,7 @@
     <script src="/controls.js" defer></script>
   </head>
   <body>
-    <main class="panel">
+    <main id="pear-panel" class="panel" hidden inert>
       <header class="panel-header">
         <h1>Pear</h1>
       </header>
@@ -373,6 +373,80 @@
           ></ol>
         </section>
       </template>
+    </main>
+
+    <main
+      id="legal-panel"
+      class="legal-panel"
+      aria-labelledby="legal-heading"
+      hidden
+    >
+      <article class="legal-content">
+        <header>
+          <h1 id="legal-heading" tabindex="-1">Terms &amp; Privacy</h1>
+          <p>
+            Pear Desktop Rust Preview uses YouTube API Services. By using this
+            preview, you agree to be bound by the YouTube Terms of Service.
+          </p>
+        </header>
+
+        <section aria-labelledby="legal-local">
+          <h2 id="legal-local">On this device</h2>
+          <p>
+            Pear stores your queue, selected video, known titles, playlists,
+            playback preference, and agreement in its local profile. You can
+            remove queue entries and playlists in Pear. To erase the profile,
+            close Pear and delete its profile directory.
+          </p>
+        </section>
+
+        <section aria-labelledby="legal-youtube">
+          <h2 id="legal-youtube">YouTube and Google</h2>
+          <p>
+            When you select or restore a video, Pear shares its ID with YouTube
+            to load the embedded player and fetch details and artwork. Details
+            use YouTube oEmbed or the YouTube Data API with a key you configure.
+            Searches you submit send your search text to YouTube and use the
+            configured key’s API quota.
+          </p>
+          <p>
+            Pear uses separate private WebViews for the controls and player.
+            YouTube and Google may receive your IP address and playback
+            activity, use cookies or similar technologies, and serve videos,
+            artwork, or ads. Links you open in your browser use that browser’s
+            session.
+          </p>
+        </section>
+
+        <section aria-labelledby="legal-lyrics">
+          <h2 id="legal-lyrics">Lyrics</h2>
+          <p>
+            When you choose Find lyrics, Pear sends the track title, artist, and
+            duration when available to LRCLIB, which also receives your IP
+            address. Pear keeps lyrics in memory and clears them when you change
+            videos or quit.
+          </p>
+        </section>
+
+        <div class="legal-links">
+          <button id="legal-youtube-terms" type="button">
+            YouTube Terms of Service
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+          <button id="legal-google-privacy" type="button">
+            Google Privacy Policy
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p id="legal-problem" class="feedback error" role="alert"></p>
+        <footer class="legal-actions">
+          <button id="decline-legal" type="button">Quit</button>
+          <button id="accept-legal" class="add-button" type="button">
+            Agree and continue
+          </button>
+          <button id="close-legal" type="button" hidden>Close</button>
+        </footer>
+      </article>
     </main>
   </body>
 </html>

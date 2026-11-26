@@ -67,6 +67,150 @@ function messages(page) {
   return page.evaluate(() => window.pearMessages);
 }
 
+function legalState(overrides = {}) {
+  return {
+    accepted: false,
+    show: true,
+    revision: 3,
+    problem: null,
+    ...overrides,
+  };
+}
+
+test('requires deliberate agreement before mounting playback or requesting artwork', async (t) => {
+  const page = await panel(t);
+  const artwork = page.locator('#selection-artwork');
+  const queueForm = page.locator('#add-video');
+  const heading = page.getByRole('heading', { name: 'Terms & Privacy' });
+  const agree = page.getByRole('button', { name: 'Agree and continue' });
+  const quit = page.getByRole('button', { name: 'Quit' });
+  const url = `https://i.ytimg.com/vi/${first}/hqdefault.jpg`;
+  const artworkRequests = [];
+  await page.route(url, (route) => {
+    artworkRequests.push(route.request().url());
+    return route.abort();
+  });
+  const render = (legal, error = null, sequence) =>
+    state(page, [first], first, error, null, sequence, {
+      legal,
+      metadata: { title: 'Saved video', channel: 'Artist', thumbnailUrl: url },
+    });
+  await expect(queueForm).toBeHidden();
+  await render(legalState({ show: false }));
+  await expect(heading).toBeFocused();
+  await expect(queueForm).toBeHidden();
+  await expect(page.locator('#queue-items').getByRole('listitem')).toHaveCount(
+    0,
+  );
+  await expect(artwork).not.toHaveAttribute('src');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => {
+    window.focusPearAdd();
+    document
+      .getElementById('add-video')
+      .dispatchEvent(new Event('submit', { cancelable: true }));
+  });
+  await expect(heading).toBeFocused();
+  expect(await messages(page)).toHaveLength(1);
+  expect(artworkRequests).toEqual([]);
+
+  await agree.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'accept_legal',
+    revision: 3,
+  });
+  await render(legalState(), null, null);
+  await expect(agree).toBeDisabled();
+  await render(legalState(), 'Could not save the agreement.');
+  await expect(page.getByRole('alert')).toHaveText(
+    'Could not save the agreement.',
+  );
+  await expect(heading).toBeVisible();
+  await expect(quit).toBeEnabled();
+  await agree.press('Enter');
+  await render(legalState({ accepted: true, show: false }));
+  await expect(heading).toBeHidden();
+  await expect(
+    page.getByRole('textbox', { name: 'YouTube link or video ID' }),
+  ).toBeFocused();
+  await expect(page.locator('#selection-id')).toHaveText('Saved video');
+  await expect(page.getByRole('status')).not.toContainText('Loading queue');
+  await expect.poll(() => artworkRequests).toEqual([url]);
+});
+
+test('reopens Terms & Privacy without losing drafts or navigating the panel to external links', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const accepted = legalState({ accepted: true, show: false });
+  const render = (legal, sequence) =>
+    state(page, [first], first, null, null, sequence, {
+      legal,
+      catalog: searchState(),
+    });
+  await render(accepted);
+  const source = page.getByRole('textbox', {
+    name: 'YouTube link or video ID',
+  });
+  await source.fill('My queue draft');
+  await page.getByRole('button', { name: 'Search' }).click();
+  const query = page.getByRole('searchbox', { name: 'Search YouTube' });
+  await query.fill('My search draft');
+  await render({ ...accepted, show: true }, null);
+  await expect(
+    page.getByRole('heading', { name: 'Terms & Privacy' }),
+  ).toBeFocused();
+  await expect(query).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: 'Agree and continue' }),
+  ).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Quit' })).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+  const region = page.getByRole('main', { name: 'Terms & Privacy' });
+  expect(
+    await region.evaluate((node) => node.scrollHeight - node.clientHeight),
+  ).toBeGreaterThan(0);
+
+  for (const [label, link] of [
+    ['YouTube Terms of Service', 'youtube_terms'],
+    ['Google Privacy Policy', 'google_privacy'],
+  ]) {
+    const button = page.getByRole('button', { name: label });
+    await button.press('Enter');
+    expect((await messages(page)).at(-1).command).toEqual({
+      type: 'open_legal_link',
+      link,
+    });
+    await render({ ...accepted, show: true });
+    await expect(button).toBeFocused();
+    await expect(button).toBeInViewport();
+    expect(page.url()).toBe(`${origin}/`);
+  }
+  await page.getByRole('button', { name: 'Close' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'close_legal',
+  });
+  await render(accepted);
+  await expect(query).toBeFocused();
+  await expect(query).toHaveValue('My search draft');
+  await page.getByRole('button', { name: 'Queue' }).click();
+  await expect(source).toHaveValue('My queue draft');
+});
+
+test('offers Quit before agreement without accepting or dismissing the disclosure', async (t) => {
+  const page = await panel(t);
+  await state(page, [], null, null, null, 1, { legal: legalState() });
+  await page.getByRole('button', { name: 'Quit' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'decline_legal',
+  });
+  await expect(
+    page.getByRole('heading', { name: 'Terms & Privacy' }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close' })).toBeHidden();
+});
+
 async function state(
   page,
   entries,
@@ -83,6 +227,7 @@ async function state(
     lyrics,
     savedPlaylists,
     preferencesProblem,
+    legal,
   } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
@@ -107,6 +252,7 @@ async function state(
         lyrics,
         savedPlaylists,
         preferencesProblem,
+        legal,
       },
       error,
       notice,

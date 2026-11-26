@@ -31,6 +31,13 @@ const catalogTemplate = document.getElementById('catalog-template');
 const lyricsTemplate = document.getElementById('lyrics-template');
 const libraryTemplate = document.getElementById('library-template');
 const panel = catalogTemplate.parentElement;
+const legalPanel = document.getElementById('legal-panel');
+const legalHeading = document.getElementById('legal-heading');
+const legalProblemText = document.getElementById('legal-problem');
+const acceptLegal = document.getElementById('accept-legal');
+const declineLegal = document.getElementById('decline-legal');
+const closeLegal = document.getElementById('close-legal');
+const legalButtons = legalPanel.querySelectorAll('button');
 const encoder = new TextEncoder();
 // The native transport polls once per second.
 const LYRIC_SAMPLE_INTERVAL_MS = 1000;
@@ -57,8 +64,16 @@ let lyricCueDeadline = null;
 let pearPanelVisible = true;
 let focusAddOnReady = false;
 let editingPosition = false;
+let renderedLegal = null;
+let legalCommandProblem = '';
+let focusBeforeLegal = null;
 
 function commandProblem(message, context) {
+  if (context === 'legal') {
+    legalCommandProblem = message;
+    updateLegalControls();
+    return;
+  }
   if (context === 'queue') {
     errorText.textContent = message;
     statusText.textContent = '';
@@ -111,7 +126,14 @@ function interruptsLyricsClock(command) {
 
 function send(command, context = 'queue') {
   if (pending) return;
+  if (
+    context === 'legal'
+      ? legalPanel.hidden
+      : panel.hidden && command.type !== 'ready'
+  )
+    return;
 
+  if (context === 'legal') legalCommandProblem = '';
   if (context === 'search') catalogSearchError = '';
   if (context === 'search' || context === 'result-add')
     catalogAddFeedback = null;
@@ -155,14 +177,57 @@ function send(command, context = 'queue') {
     pending = null;
     add.removeAttribute('aria-disabled');
     commandProblem(
-      'Could not connect to the queue. Close and reopen the window to try again.',
+      context === 'legal'
+        ? 'Could not connect to Pear. Close and reopen the window to try again.'
+        : 'Could not connect to the queue. Close and reopen the window to try again.',
       context,
     );
+    return;
+  }
+  if (context === 'legal') {
+    updateLegalControls();
     return;
   }
   if (catalogView) updateCatalog(renderedCatalog);
   if (lyricsView) updateLyrics(renderedLyrics);
   if (libraryView) updateLibrary(renderedLibrary);
+}
+
+function updateLegalControls() {
+  const accepted = Boolean(renderedLegal?.accepted);
+  acceptLegal.hidden = declineLegal.hidden = accepted;
+  closeLegal.hidden = !accepted;
+  const disabled = String(Boolean(pending));
+  for (const button of legalButtons) {
+    if (button.getAttribute('aria-disabled') !== disabled)
+      button.setAttribute('aria-disabled', disabled);
+  }
+  const problem = legalCommandProblem || renderedLegal?.problem || '';
+  if (legalProblemText.textContent !== problem)
+    legalProblemText.textContent = problem;
+}
+
+function updateLegal(legal) {
+  const wasVisible = !legalPanel.hidden;
+  const visible = Boolean(legal && (!legal.accepted || legal.show));
+  renderedLegal = legal ?? null;
+
+  if (visible && !wasVisible) {
+    const active = document.activeElement;
+    focusBeforeLegal = panel.contains(active) ? active : null;
+    editingPosition = false;
+    cancelLyricsClock();
+  }
+  if (!visible) legalCommandProblem = '';
+  panel.hidden = visible;
+  panel.toggleAttribute('inert', visible);
+  legalPanel.hidden = !visible;
+  if (visible) updateLegalControls();
+  if (visible && !wasVisible) {
+    legalPanel.scrollTop = 0;
+    legalHeading.focus({ preventScroll: true });
+  }
+  return wasVisible && !visible;
 }
 
 function formatTime(seconds) {
@@ -243,6 +308,7 @@ function updateTransport() {
 }
 
 window.renderPearTransport = (transport) => {
+  if (panel.hidden && !renderedLegal?.accepted) return;
   const clockChanged =
     transport?.positionMs !== renderedTransport?.positionMs ||
     transport?.clockRunning !== renderedTransport?.clockRunning ||
@@ -256,7 +322,7 @@ window.renderPearTransport = (transport) => {
 };
 
 function lyricsPanelVisible() {
-  return pearPanelVisible && !document.hidden;
+  return pearPanelVisible && !panel.hidden && !document.hidden;
 }
 
 function updateLyricsVisibility() {
@@ -519,6 +585,7 @@ function updateViews() {
 }
 
 function showView(view) {
+  if (panel.hidden) return;
   if (activeView === 'lyrics' && view !== 'lyrics') cancelLyricsClock();
   activeView = view;
   updateViews();
@@ -526,6 +593,10 @@ function showView(view) {
 }
 
 function focusQueueAdd() {
+  if (panel.hidden) {
+    if (legalPanel.hidden) focusAddOnReady = true;
+    return;
+  }
   focusAddOnReady = source.disabled;
   showView('queue');
 }
@@ -1260,6 +1331,7 @@ window.renderPearState = (
     lyrics,
     savedPlaylists,
     preferencesProblem,
+    legal,
   },
   error = null,
   notice = null,
@@ -1275,10 +1347,16 @@ window.renderPearState = (
 
   const command = acknowledged?.command;
   const context = acknowledged?.context ?? 'queue';
+  if (context === 'legal') legalCommandProblem = error ?? '';
+  const restoreFocus = updateLegal(legal);
   if (command?.type === 'ready') {
     source.disabled = false;
     add.disabled = false;
-    if (focusAddOnReady) focusQueueAdd();
+  }
+  if (legal && !legal.accepted) {
+    updateSelectionArtwork(null, null);
+    renderedTransport = null;
+    return;
   }
 
   const index = entries.indexOf(current);
@@ -1300,7 +1378,8 @@ window.renderPearState = (
   }
   selection.classList.toggle('video-id', hasSelection && !currentTitle);
   updateSelectionAttribution(selectedMetadata?.channel.trim());
-  updateSelectionArtwork(current, selectedMetadata?.thumbnailUrl);
+  if (!panel.hidden)
+    updateSelectionArtwork(current, selectedMetadata?.thumbnailUrl);
   selectionPanel.toggleAttribute('data-current', hasSelection);
   position.textContent = hasSelection
     ? `${index + 1} of ${entries.length}`
@@ -1374,12 +1453,14 @@ window.renderPearState = (
     lyricsError = acknowledged.current === current ? (error ?? '') : '';
   } else if (context === 'library') {
     libraryFeedback = { message: error || confirmation, error: Boolean(error) };
-  } else if (acknowledged || error !== null) {
+  } else if (context !== 'legal' && (acknowledged || error !== null)) {
     errorText.textContent = error ?? '';
   }
-  statusText.textContent = [context === 'queue' ? confirmation : '', notice]
-    .filter(Boolean)
-    .join(' ');
+  if (context !== 'legal' || command.type === 'accept_legal' || notice) {
+    statusText.textContent = [context === 'queue' ? confirmation : '', notice]
+      .filter(Boolean)
+      .join(' ');
+  }
   if (selectionChanged) renderedTransport = null;
   if (selectionChanged || playerProblem) cancelLyricsClock();
   const catalogWasFocused = updateCatalog(catalog);
@@ -1402,7 +1483,35 @@ window.renderPearState = (
     preferencesProblemText.textContent = preferencesProblem ?? '';
   }
   if (selectionChanged || problemChanged) updateTransport();
+  if (restoreFocus) {
+    const previousFocus = focusBeforeLegal;
+    focusBeforeLegal = null;
+    previousFocus?.focus({ preventScroll: true });
+    if (document.activeElement !== previousFocus) primaryInput().focus();
+  }
+  if (!panel.hidden && focusAddOnReady) focusQueueAdd();
 };
+
+acceptLegal.addEventListener('click', () => {
+  if (renderedLegal && !renderedLegal.accepted) {
+    send({ type: 'accept_legal', revision: renderedLegal.revision }, 'legal');
+  }
+});
+declineLegal.addEventListener('click', () => {
+  if (renderedLegal && !renderedLegal.accepted)
+    send({ type: 'decline_legal' }, 'legal');
+});
+closeLegal.addEventListener('click', () => {
+  if (renderedLegal?.accepted) send({ type: 'close_legal' }, 'legal');
+});
+document.getElementById('legal-youtube-terms').addEventListener('click', () => {
+  send({ type: 'open_legal_link', link: 'youtube_terms' }, 'legal');
+});
+document
+  .getElementById('legal-google-privacy')
+  .addEventListener('click', () => {
+    send({ type: 'open_legal_link', link: 'google_privacy' }, 'legal');
+  });
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();

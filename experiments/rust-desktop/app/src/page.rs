@@ -13,6 +13,7 @@ impl PreviewPage {
     pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Self, &'static str> {
         match args.next().as_deref() {
             None => Ok(Self::Music),
+            #[cfg(feature = "benchmark")]
             Some("--site-probe") if args.next().is_none() => Ok(Self::Music),
             #[cfg(feature = "benchmark")]
             Some("--benchmark-url") => {

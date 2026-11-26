@@ -1,5 +1,6 @@
 //! The desktop queue separates its local controls from the remote video.
 mod catalog;
+mod consent;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod iframe;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -34,7 +35,7 @@ use serde::{Deserialize, Serialize};
 use tao::{
     dpi::LogicalSize,
     event::{Event, StartCause, WindowEvent},
-    event_loop::{ControlFlow, EventLoopBuilder},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     window::{Window, WindowBuilder},
 };
 use wry::{
@@ -113,12 +114,21 @@ struct QueueView<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     catalog: Option<&'a catalog::View>,
     saved_playlists: playlists::View<'a>,
+    legal: LegalView<'a>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     preferences_problem: Option<&'static str>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     lyrics: Option<&'a lyrics_lookup::View>,
+}
+
+#[derive(Serialize)]
+struct LegalView<'a> {
+    accepted: bool,
+    show: bool,
+    revision: u32,
+    problem: Option<&'a str>,
 }
 
 #[derive(Clone, Copy)]
@@ -146,7 +156,7 @@ pub fn launch_mode() -> Result<Option<LaunchMode>> {
         let bundled = NSBundle::mainBundle()
             .bundleIdentifier()
             .is_some_and(|id| id.to_string() == APP_ID);
-        if (queue || smoke || iframe_player) && !bundled {
+        if (args.is_empty() || queue || smoke || iframe_player) && !bundled {
             return Err("The native queue requires the Pear Desktop macOS app bundle.".into());
         }
         if bundled && args.is_empty() {
@@ -422,12 +432,45 @@ fn player_flow(
     deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
 }
 
+fn start_youtube_clients(
+    events: &EventLoopProxy<PlayerEvent>,
+    current: Option<&str>,
+) -> (Option<catalog::Catalog>, Option<metadata_lookup::Lookup>) {
+    let keyed = metadata::Client::from_env();
+    let catalog = keyed.as_ref().and_then(|client| {
+        match catalog::Catalog::new(client.clone(), events.clone()) {
+            Ok(catalog) => Some(catalog),
+            Err(_) => {
+                eprintln!("Could not start YouTube search.");
+                None
+            }
+        }
+    });
+    let details = keyed.unwrap_or_else(metadata::Client::public_embed);
+    let lookup = match metadata_lookup::Lookup::new(details, events.clone()) {
+        Ok(mut lookup) => {
+            lookup.select(current);
+            Some(lookup)
+        }
+        Err(_) => {
+            eprintln!("Could not start YouTube video details lookup.");
+            None
+        }
+    };
+    (catalog, lookup)
+}
+
 pub fn run(mode: LaunchMode) -> Result<()> {
     let (queue_path, queue_lock) = queue_path_and_lock()?;
     let data_dir = queue_path
         .parent()
         .ok_or("Queue directory is unavailable")?
         .to_owned();
+    let mut consent = consent::Consent::load(data_dir.join("consent.json"));
+    // Benchmark builds use a disposable profile and never record agreement.
+    let mut approved = mode.smoke || consent.accepted();
+    let mut show_legal = !approved;
+    let mut legal_problem = None;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut mode = mode;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -462,20 +505,25 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         true,
         accelerator(CMD_OR_CTRL, Code::KeyQ),
     );
-    let reload = MenuItem::new("Reload Player", true, accelerator(CMD_OR_CTRL, Code::KeyR));
+    let reload = MenuItem::new(
+        "Reload Player",
+        approved,
+        accelerator(CMD_OR_CTRL, Code::KeyR),
+    );
     let toggle_queue = MenuItem::new(
         "Hide Queue",
-        true,
+        approved,
         accelerator(CMD_OR_CTRL | Modifiers::SHIFT, Code::KeyL),
     );
-    let add_video = MenuItem::new("Add Video", true, accelerator(CMD_OR_CTRL, Code::KeyL));
+    let add_video = MenuItem::new("Add Video", approved, accelerator(CMD_OR_CTRL, Code::KeyL));
+    let legal = MenuItem::new("Terms and Privacy", true, None);
     let app_menu = Submenu::with_items("Pear Desktop", true, &[&quit])?;
     let file_menu = Submenu::with_items("File", true, &[&add_video])?;
     let view_menu = Submenu::with_items("View", true, &[&toggle_queue, &reload])?;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let toggle_iframe = CheckMenuItem::new(
         IFRAME_MENU_LABEL,
-        preferences.is_some(),
+        approved && preferences.is_some(),
         mode.iframe_player,
         None,
     );
@@ -491,7 +539,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             &PredefinedMenuItem::select_all(None),
         ],
     )?;
-    let menu = Menu::with_items(&[&app_menu, &file_menu, &edit_menu, &view_menu])?;
+    let help_menu = Submenu::with_items("Help", true, &[&legal])?;
+    let menu = Menu::with_items(&[&app_menu, &file_menu, &edit_menu, &view_menu, &help_menu])?;
     attach_menu(&window, &menu)?;
     let menu_proxy = event_loop.create_proxy();
     MenuEvent::set_event_handler(Some(Arc::new(move |event| {
@@ -535,40 +584,26 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     };
     let mut queue_visible = true;
     let mut generation = 0;
-    let (mut current_player, mut player_error) =
+    let (mut current_player, mut player_error) = if approved {
         match load(&layout, &window, &library, generation, queue_visible, mode) {
             Ok(video) => (Some(video), None),
             Err(error) => (None, Some(format!("Could not open the player: {error}"))),
-        };
+        }
+    } else {
+        (None, None)
+    };
+    layout.arrange(&window, current_player.as_ref(), &controls, queue_visible)?;
     let mut load_deadline = (current_player.is_some() && library.state().current.is_some())
         .then(|| Instant::now() + LOAD_TIMEOUT);
     let mut loading_slow = false;
     let mut titled_generation = None;
     let mut controls_ready = false;
-    let client = (!mode.smoke).then(metadata::Client::from_env).flatten();
-    let mut catalog = client.as_ref().and_then(|client| {
-        match catalog::Catalog::new(client.clone(), event_loop.create_proxy()) {
-            Ok(catalog) => Some(catalog),
-            Err(_) => {
-                eprintln!("Could not start YouTube search.");
-                None
-            }
-        }
-    });
-    let mut lookup = (!mode.smoke)
-        .then(|| client.unwrap_or_else(metadata::Client::public_embed))
-        .and_then(
-            |client| match metadata_lookup::Lookup::new(client, event_loop.create_proxy()) {
-                Ok(mut lookup) => {
-                    lookup.select(library.state().current.as_deref());
-                    Some(lookup)
-                }
-                Err(_) => {
-                    eprintln!("Could not start YouTube video details lookup.");
-                    None
-                }
-            },
-        );
+    let service_events = event_loop.create_proxy();
+    let (mut catalog, mut lookup) = if approved && !mode.smoke {
+        start_youtube_clients(&service_events, library.state().current.as_deref())
+    } else {
+        (None, None)
+    };
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -583,7 +618,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         }
     };
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let mut lyrics = if mode.iframe_player && !mode.smoke {
+    let mut lyrics = if approved && mode.iframe_player && !mode.smoke {
         lyrics_worker()
     } else {
         None
@@ -609,6 +644,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         let mut reload_player = false;
         let mut error = None;
         let mut acknowledged_sequence = None;
+        let mut focus_add_field = false;
         let mut verify_controls = false;
         let update_queue = match event {
             Event::WindowEvent {
@@ -635,11 +671,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 return;
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *reload.id() => {
+                if !approved {
+                    return;
+                }
                 reload_player = true;
                 true
             }
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *toggle_iframe.id() => {
+                if !approved {
+                    return;
+                }
                 let Some(preferences) = &mut preferences else { return };
                 let enabled = toggle_iframe.is_checked();
                 if enabled == mode.iframe_player {
@@ -671,10 +713,14 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 true
             }
             Event::UserEvent(PlayerEvent::Menu(event))
-                if event.id == *toggle_queue.id() || event.id == *add_video.id() =>
+                if event.id == *toggle_queue.id() || event.id == *add_video.id() || event.id == *legal.id() =>
             {
+                let opening_legal = event.id == *legal.id();
+                if !approved && !opening_legal {
+                    return;
+                }
                 let adding = event.id == *add_video.id();
-                let show = adding || !queue_visible;
+                let show = opening_legal || adding || !queue_visible;
                 if show != queue_visible {
                     match layout.arrange(&window, current_player.as_ref(), &controls, show) {
                         Ok(()) => {
@@ -699,8 +745,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                 }
-                if adding && let Err(reason) = focus_add(&controls) {
-                    error = Some(format!("Could not focus the video field: {reason}"));
+                if opening_legal {
+                    show_legal = true;
+                    if let Err(reason) = controls.focus() {
+                        eprintln!("Could not focus Terms and Privacy: {reason}");
+                    }
+                } else if adding {
+                    show_legal = false;
+                    legal_problem = None;
+                    focus_add_field = true;
                 }
                 true
             }
@@ -813,6 +866,51 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         verify_controls = mode.smoke && !controls_ready;
                         controls_ready = true;
                     }
+                    Command::OpenLegalLink { link } => {
+                        legal_problem = match open::that_detached(link.url()) {
+                            Ok(()) => None,
+                            Err(reason) => {
+                                eprintln!("Could not open the policy link: {reason}");
+                                Some("Could not open the policy link in your browser.")
+                            }
+                        };
+                    }
+                    Command::AcceptLegal { revision } => {
+                        if !approved {
+                            if let Err(reason) = consent.accept(revision) {
+                                eprintln!("Could not save privacy agreement: {reason}");
+                                legal_problem = Some("Could not save your agreement. Try again.");
+                            } else {
+                                approved = true;
+                                show_legal = false;
+                                legal_problem = None;
+                                reload.set_enabled(true);
+                                toggle_queue.set_enabled(true);
+                                add_video.set_enabled(true);
+                                #[cfg(any(target_os = "macos", target_os = "linux"))]
+                                toggle_iframe.set_enabled(preferences.is_some());
+                                (catalog, lookup) = start_youtube_clients(&service_events, library.state().current.as_deref());
+                                #[cfg(any(target_os = "macos", target_os = "linux"))]
+                                if mode.iframe_player {
+                                    lyrics = lyrics_worker();
+                                }
+                                reload_player = true;
+                            }
+                        }
+                    }
+                    Command::CloseLegal {} => {
+                        if approved {
+                            show_legal = false;
+                            legal_problem = None;
+                        }
+                    }
+                    Command::DeclineLegal {} => {
+                        if !approved {
+                            *flow = ControlFlow::Exit;
+                            return;
+                        }
+                    }
+                    _ if !approved => {}
                     Command::OpenBrowser {} => {
                         if let Some(id) = &library.state().current
                             && let Err(reason) =
@@ -895,6 +993,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 Err(reason) => player_error = Some(format!("Could not open the player: {reason}")),
             }
+            if let Err(reason) = layout.arrange(&window, current_player.as_ref(), &controls, queue_visible) {
+                eprintln!("Could not arrange the player: {reason}");
+            }
         }
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -949,6 +1050,12 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
                     catalog: catalog.as_ref().map(catalog::Catalog::view),
                     saved_playlists: playlists.view(),
+                    legal: LegalView {
+                        accepted: approved,
+                        show: show_legal,
+                        revision: consent::REVISION,
+                        problem: legal_problem,
+                    },
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     preferences_problem,
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -963,8 +1070,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 eprintln!("Could not update the queue controls: {error}");
             }
         }
+        if focus_add_field && let Err(reason) = focus_add(&controls) {
+            eprintln!("Could not focus the video field: {reason}");
+        }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
-        if controls_ready && let Some(transport) = &mut transport
+        if approved && controls_ready && let Some(transport) = &mut transport
             && let Err(reason) = transport.render(&controls, library.state().current.is_some())
         {
             eprintln!("Could not update the playback controls: {reason}");
@@ -1041,6 +1151,27 @@ mod tests {
         ] {
             assert!(command(invalid).is_none(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn opens_only_named_policy_links_from_local_controls() {
+        let request = |link: &str| {
+            Request::builder()
+                .uri(CONTROLS_URL)
+                .body(format!(
+                    r#"{{"sequence":1,"command":{{"type":"open_legal_link","link":"{link}"}}}}"#
+                ))
+                .unwrap()
+        };
+        let Some(ControlMessage {
+            command: Command::OpenLegalLink { link },
+            ..
+        }) = controls_command(&request("youtube_terms"))
+        else {
+            panic!("Expected a YouTube policy link command");
+        };
+        assert_eq!(link.url(), "https://www.youtube.com/t/terms");
+        assert!(controls_command(&request("https://example.invalid")).is_none());
     }
 
     #[test]

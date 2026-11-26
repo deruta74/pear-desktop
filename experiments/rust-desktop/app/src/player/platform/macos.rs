@@ -19,7 +19,7 @@ impl Layout {
         pane: Pane,
         queue_visible: bool,
     ) -> crate::Result<WebView> {
-        let (video_bounds, controls_bounds) = child_bounds(window, queue_visible);
+        let (video_bounds, controls_bounds) = child_bounds(window, queue_visible, true);
         let bounds = match pane {
             Pane::Video => video_bounds,
             Pane::Controls => controls_bounds,
@@ -36,7 +36,8 @@ impl Layout {
         controls: &WebView,
         queue_visible: bool,
     ) -> crate::Result<()> {
-        let (player_bounds, controls_bounds) = child_bounds(window, queue_visible);
+        let (player_bounds, controls_bounds) =
+            child_bounds(window, queue_visible, player.is_some());
         if !queue_visible {
             controls.set_visible(false)?;
         }

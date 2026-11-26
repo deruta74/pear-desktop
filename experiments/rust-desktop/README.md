@@ -12,6 +12,8 @@ open "$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
 
 The script builds an ad hoc signed local app. The queue accepts YouTube and YouTube Music watch links, short links, Shorts, embed links and raw video IDs. Select a row or use the previous and next controls to switch videos. Move a row up or down to change playback order without restarting the current video. The queue saves video titles as it encounters them in the player and uses IDs until their titles are known. **Open in browser** opens the selected video's YouTube watch page. Use **View → Reload Player** to retry a slow or stopped player. **⌘L** focuses the link field and reveals the queue when hidden. **⇧⌘L** shows or hides the queue without interrupting the current video. The queue stores video IDs, known titles, and the selected entry in `~/Library/Application Support/com.pear-desktop.rust-preview/queue.json`.
 
+On first launch, read the terms and privacy policy and choose **Agree and continue** to enable YouTube playback and lookups. **Help → Terms and Privacy** reopens the policy at any time. The local profile records the accepted policy revision.
+
 Paste one link or ID per line to add several videos together. Enter submits, and Shift+Enter inserts a line. The queue skips duplicates and identifies invalid lines before saving the batch. Use **Filter queue** to find an entry by title or ID while the current video plays. Press Escape in the filter field to show the full queue again.
 
 Open **Library** to save the current queue as a local playlist. Open a saved playlist to rename it, choose a track, or add its tracks to the queue while the current video plays. The library stores playlists in `playlists.json` next to `queue.json`.
@@ -51,7 +53,7 @@ To enable **Search**, store a developer key restricted to YouTube Data API v3 in
 
 ## Run the queue on Linux or Windows
 
-The preview opens the queue by default on Linux and Windows. To build it on Debian or Ubuntu, install `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`, a C toolchain and `pkg-config`. To build on Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app checks that both native WebView2 controllers support InPrivate mode before loading a page.
+The preview opens the queue by default on Linux and Windows. To build it on Debian or Ubuntu, install `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`, a C toolchain and `pkg-config`. To build on Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app confirms that each native WebView2 controller started in InPrivate mode before loading its page.
 
 ```sh
 cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview
@@ -61,10 +63,10 @@ The queue file is `com.pear-desktop.rust-preview/queue.json` under `$XDG_DATA_HO
 
 On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed the controls acknowledgement and title persistence. The example video played in the VM, with audio verified on a PulseAudio test sink. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. On a Windows x64 runner, the native WebView2 queue opened, completed the controls handshake, and reached the official embed in an onscreen window. The embed did not expose a visible Play control on that runner. Windows video and audio playback still need verification. [Windows verification run](https://github.com/deruta74/pear-desktop/actions/runs/45744454411)
 
-Pass `--site-probe` to run the original system WebView compatibility experiment from Cargo:
+The development build includes a separate system WebView compatibility probe:
 
 ```sh
-cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --site-probe
+cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview --features benchmark -- --site-probe
 ```
 
 ### Official YouTube Embed probe

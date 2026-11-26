@@ -39,6 +39,14 @@ pub enum Command {
     Previous {},
     Next {},
     Ready {},
+    AcceptLegal {
+        revision: u32,
+    },
+    CloseLegal {},
+    DeclineLegal {},
+    OpenLegalLink {
+        link: LegalLink,
+    },
     OpenBrowser {},
     Search {
         query: String,
@@ -58,6 +66,22 @@ pub enum Command {
     },
     #[serde(untagged)]
     Playlist(playlists::Command),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LegalLink {
+    YoutubeTerms,
+    GooglePrivacy,
+}
+
+impl LegalLink {
+    pub fn url(&self) -> &'static str {
+        match self {
+            Self::YoutubeTerms => "https://www.youtube.com/t/terms",
+            Self::GooglePrivacy => "https://www.google.com/policies/privacy",
+        }
+    }
 }
 
 #[derive(Clone, Default, Deserialize, PartialEq, Eq, Serialize)]
@@ -172,6 +196,10 @@ impl Library {
                 state.current = Some(id.clone());
             }
             Command::Ready {}
+            | Command::AcceptLegal { .. }
+            | Command::CloseLegal {}
+            | Command::DeclineLegal {}
+            | Command::OpenLegalLink { .. }
             | Command::OpenBrowser {}
             | Command::Search { .. }
             | Command::Playlist(_) => {
