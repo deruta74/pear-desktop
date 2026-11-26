@@ -18,6 +18,8 @@ On first launch, choose **Open local audio** to play WAV, FLAC, MP3, and Ogg Opu
 
 Choose **Add links** and paste one link or ID per line to add several videos together. Enter submits, and Shift+Enter inserts a line. The queue skips duplicates and identifies invalid lines before saving the batch. Use **Filter queue** to find an entry by title or ID. Press Escape in the filter field to show the full queue again. **Play next** moves a queued video or adds a search result immediately after the current video while playback continues.
 
+Use the arrows beside Pear to revisit earlier Queue, Search, Lyrics, and Library views. With the panel focused, press **⌘[** or **⌘]** on macOS, or **Alt+Left** or **Alt+Right** on Windows and Linux. Pear keeps up to 32 destinations for the current window session.
+
 Open **Library** to save the current queue as a local playlist. Open a saved playlist to rename it, choose a track, or add its tracks to the queue while the current video plays. The library stores playlists in `playlists.json` next to `queue.json`.
 
 In **Queue**, choose **Add links**, then open **Play a YouTube playlist** and paste a public YouTube or YouTube Music playlist link. Choose **Play playlist in Pear**, then press Play in the visible YouTube player. This works without a YouTube Data API key. Use the embedded player’s controls for the playlist. Choose **Return to queue** to restore the selected queue video, or select another queue entry to switch directly. **Open in browser** opens the same playlist if playback is unavailable in Pear. On macOS, this feature uses the bundled app.

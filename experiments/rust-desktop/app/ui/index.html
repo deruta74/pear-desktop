@@ -10,7 +10,28 @@
   <body>
     <main id="pear-panel" class="panel" hidden inert>
       <header class="panel-header">
-        <h1>Pear</h1>
+        <div class="panel-title">
+          <h1>Pear</h1>
+          <div
+            id="view-history"
+            class="view-history"
+            role="group"
+            aria-label="Panel history"
+            hidden
+          >
+            <button id="history-back" type="button" aria-label="Back" disabled>
+              ‹
+            </button>
+            <button
+              id="history-forward"
+              type="button"
+              aria-label="Forward"
+              disabled
+            >
+              ›
+            </button>
+          </div>
+        </div>
         <p id="preferences-problem" class="feedback" aria-live="polite"></p>
       </header>
 

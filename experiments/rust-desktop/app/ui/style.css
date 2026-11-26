@@ -84,6 +84,7 @@ button[aria-disabled='true'] {
 
 .panel[hidden],
 .selection[hidden],
+.view-history[hidden],
 .legal-panel[hidden],
 .legal-panel [hidden] {
   display: none;
@@ -167,6 +168,25 @@ button[aria-disabled='true'] {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem;
+}
+
+.panel-title,
+.view-history {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.panel-title {
+  gap: 0.5rem;
+}
+
+.view-history button {
+  min-width: 1.5rem;
+  min-height: 1.75rem;
+  padding: 0;
+  font-size: 1.125rem;
+  line-height: 1;
 }
 
 .panel-header h1 {
@@ -533,7 +553,7 @@ button.play-toggle:enabled:active {
 
 .view-switcher {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(4rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(3.25rem, 1fr));
   gap: 0.25rem;
   padding: 0.25rem;
   border-radius: 0.875rem;

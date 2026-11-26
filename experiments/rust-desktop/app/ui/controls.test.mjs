@@ -23,7 +23,7 @@ before(async () => {
 
 after(() => browser?.close());
 
-async function panel(t, { withoutObjectHasOwn = false } = {}) {
+async function panel(t, { withoutObjectHasOwn = false, platform } = {}) {
   const page = await browser.newPage({ viewport: { width: 370, height: 600 } });
   t.after(() => page.close());
   await page.route('**/*', async (route) => {
@@ -48,13 +48,18 @@ async function panel(t, { withoutObjectHasOwn = false } = {}) {
       },
     });
   });
-  await page.addInitScript((withoutObjectHasOwn) => {
-    if (withoutObjectHasOwn) delete Object.hasOwn;
-    window.pearMessages = [];
-    window.ipc = {
-      postMessage: (message) => window.pearMessages.push(JSON.parse(message)),
-    };
-  }, withoutObjectHasOwn);
+  await page.addInitScript(
+    ({ withoutObjectHasOwn, platform }) => {
+      if (withoutObjectHasOwn) delete Object.hasOwn;
+      if (platform)
+        Object.defineProperty(navigator, 'platform', { value: platform });
+      window.pearMessages = [];
+      window.ipc = {
+        postMessage: (message) => window.pearMessages.push(JSON.parse(message)),
+      };
+    },
+    { withoutObjectHasOwn, platform },
+  );
   const response = await page.goto(origin);
   expect(response.status()).toBe(200);
   expect(await messages(page)).toEqual([
@@ -76,6 +81,170 @@ function legalState(overrides = {}) {
     ...overrides,
   };
 }
+
+test('navigates the four panel views without changing drafts or playback', async (t) => {
+  const page = await panel(t);
+  await state(page, [first, second], first, null, null, undefined, {
+    catalog: searchState(),
+    lyrics: lyricsState(),
+    savedPlaylists: savedPlaylists(),
+  });
+  await transport(page, { ...readyTransport, playing: true });
+  const nav = page.getByRole('navigation');
+  const tab = (name) => nav.getByRole('button', { name });
+  const back = page.getByRole('button', { name: 'Back', exact: true });
+  const forward = page.getByRole('button', { name: 'Forward', exact: true });
+  const source = page.locator('#video-source');
+  const query = page.locator('#catalog-query');
+  const originalDocument = await page.evaluateHandle(() => document.body);
+  const browserHistoryLength = await page.evaluate(() => history.length);
+
+  await expect(back).toBeDisabled();
+  await expect(forward).toBeDisabled();
+  await page.getByRole('button', { name: 'Add links' }).click();
+  await source.fill('Queue draft');
+  await tab('Search').click();
+  await query.fill('Search draft');
+  await tab('Lyrics').click();
+  await tab('Library').click();
+  await tab('Library').click();
+
+  await back.click();
+  await expect(tab('Lyrics')).toHaveAttribute('aria-pressed', 'true');
+  await expect(back).toBeFocused();
+  await back.press('Enter');
+  await expect(tab('Search')).toHaveAttribute('aria-pressed', 'true');
+  await expect(query).toHaveValue('Search draft');
+  await back.press('Enter');
+  await expect(tab('Queue')).toHaveAttribute('aria-pressed', 'true');
+  await expect(source).toHaveValue('Queue draft');
+  await expect(back).toBeDisabled();
+  await expect(tab('Queue')).toBeFocused();
+
+  await forward.click();
+  await expect(tab('Search')).toHaveAttribute('aria-pressed', 'true');
+  await tab('Library').click();
+  await expect(forward).toBeDisabled();
+  await back.click();
+  await expect(tab('Search')).toHaveAttribute('aria-pressed', 'true');
+  await forward.click();
+  await expect(tab('Library')).toHaveAttribute('aria-pressed', 'true');
+  await expect(tab('Library')).toBeFocused();
+  await expect(
+    page.getByRole('button', { name: 'Pause video', exact: true }),
+  ).toBeVisible();
+  expect(await messages(page)).toHaveLength(1);
+  expect(
+    await page.evaluate((body) => body === document.body, originalDocument),
+  ).toBe(true);
+  expect(new URL(page.url()).href).toBe(origin + '/');
+  expect(await page.evaluate(() => history.length)).toBe(browserHistoryLength);
+});
+
+for (const platform of ['MacIntel', 'Win32']) {
+  test(`handles panel shortcuts and browser keys on ${platform}`, async (t) => {
+    const page = await panel(t, { platform });
+    const render = (legal) =>
+      state(page, [first], first, null, null, null, {
+        legal,
+        catalog: searchState(),
+      });
+    const accepted = legalState({ accepted: true, show: false });
+    await render(accepted);
+    const nav = page.getByRole('navigation');
+    const search = nav.getByRole('button', { name: 'Search' });
+    const queueTab = nav.getByRole('button', { name: 'Queue' });
+    const query = page.locator('#catalog-query');
+    const key = (value, options = {}) =>
+      page.evaluate(
+        ({ value, options }) =>
+          document.activeElement.dispatchEvent(
+            new KeyboardEvent('keydown', {
+              key: value,
+              bubbles: true,
+              cancelable: true,
+              ...options,
+            }),
+          ),
+        { value, options },
+      );
+    const mac = platform === 'MacIntel';
+    const backShortcut = mac ? 'Meta+[' : 'Alt+ArrowLeft';
+    const forwardShortcut = mac ? 'Meta+]' : 'Alt+ArrowRight';
+
+    await search.click();
+    await query.fill('A draft');
+    await page.keyboard.press(backShortcut);
+    await expect(queueTab).toHaveAttribute('aria-pressed', 'true');
+    await expect(queueTab).toBeFocused();
+    await page.keyboard.press(forwardShortcut);
+    await expect(query).toBeVisible();
+    await expect(query).toHaveValue('A draft');
+
+    await query.focus();
+    await nav.dispatchEvent('wheel', { deltaX: 300, deltaY: 0 });
+    await expect(query).toBeFocused();
+    await key('BrowserBack', { repeat: true });
+    await key('BrowserBack', { isComposing: true });
+    await key('BrowserBack', { metaKey: true });
+    await expect(query).toBeFocused();
+    await page.evaluate(() => window.setPearPanelVisible(false));
+    await key('BrowserBack');
+    await page.evaluate(() => window.setPearPanelVisible(true));
+    await expect(query).toBeFocused();
+
+    await render({ ...accepted, show: true });
+    await key('BrowserBack');
+    await render(accepted);
+    await expect(query).toBeFocused();
+    await key('BrowserBack');
+    await expect(queueTab).toHaveAttribute('aria-pressed', 'true');
+    await key('BrowserForward');
+    await expect(search).toHaveAttribute('aria-pressed', 'true');
+    await expect(query).toHaveValue('A draft');
+    expect(await messages(page)).toHaveLength(1);
+  });
+}
+
+test('keeps recent panel destinations and skips destinations that become unavailable', async (t) => {
+  const page = await panel(t);
+  const render = (catalog, lyrics) =>
+    state(page, [first], first, null, null, null, { catalog, lyrics });
+  await render(searchState(), lyricsState());
+  const nav = page.getByRole('navigation');
+  const tab = (name) => nav.getByRole('button', { name });
+  const back = page.getByRole('button', { name: 'Back', exact: true });
+  const forward = page.getByRole('button', { name: 'Forward', exact: true });
+
+  await tab('Search').click();
+  await tab('Lyrics').click();
+  await tab('Queue').click();
+  await render(undefined, lyricsState());
+  await back.click();
+  await expect(tab('Lyrics')).toHaveAttribute('aria-pressed', 'true');
+  await back.click();
+  await expect(tab('Queue')).toHaveAttribute('aria-pressed', 'true');
+  await expect(back).toBeDisabled();
+  await forward.click();
+  await expect(tab('Lyrics')).toHaveAttribute('aria-pressed', 'true');
+
+  const steps = await page.evaluate(() => {
+    const queue = document.getElementById('show-queue');
+    const lyrics = document.getElementById('show-lyrics');
+    const back = document.getElementById('history-back');
+    for (let index = 0; index < 40; index++) {
+      (index % 2 ? lyrics : queue).click();
+    }
+    let steps = 0;
+    while (!back.disabled && steps < 40) {
+      back.click();
+      steps++;
+    }
+    return steps;
+  });
+  expect(steps).toBe(31);
+  expect(await messages(page)).toHaveLength(1);
+});
 
 test('requires deliberate agreement before mounting playback or requesting artwork', async (t) => {
   const page = await panel(t);

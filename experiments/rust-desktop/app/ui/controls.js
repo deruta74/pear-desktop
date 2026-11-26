@@ -34,6 +34,9 @@ const count = document.getElementById('queue-count');
 const empty = document.getElementById('queue-empty');
 const filter = document.getElementById('queue-filter');
 const shuffle = document.getElementById('shuffle-upcoming');
+const historyControls = document.getElementById('view-history');
+const historyBack = document.getElementById('history-back');
+const historyForward = document.getElementById('history-forward');
 const viewSwitcherTemplate = document.getElementById('view-switcher-template');
 const catalogTemplate = document.getElementById('catalog-template');
 const lyricsTemplate = document.getElementById('lyrics-template');
@@ -58,6 +61,19 @@ const queueInputs = document.getElementById('queue-inputs');
 const addLinks = document.getElementById('show-queue-inputs');
 // The native transport polls once per second.
 const LYRIC_SAMPLE_INTERVAL_MS = 1000;
+const VIEW_HISTORY_LIMIT = 32;
+const macShortcuts = navigator.platform.startsWith('Mac');
+
+historyBack.title = macShortcuts ? 'Back (⌘[)' : 'Back (Alt+←)';
+historyForward.title = macShortcuts ? 'Forward (⌘])' : 'Forward (Alt+→)';
+historyBack.setAttribute(
+  'aria-keyshortcuts',
+  macShortcuts ? 'Meta+[' : 'Alt+ArrowLeft',
+);
+historyForward.setAttribute(
+  'aria-keyshortcuts',
+  macShortcuts ? 'Meta+]' : 'Alt+ArrowRight',
+);
 
 let nextSequence = 1;
 let pending = null;
@@ -65,6 +81,8 @@ let renderedState = null;
 let renderedTransport = null;
 let playingPublicPlaylist = false;
 let activeView = 'queue';
+const viewHistory = [activeView];
+let viewHistoryIndex = 0;
 let viewSwitcher = null;
 let renderedCatalog = null;
 let renderedBrowserSearch = false;
@@ -453,12 +471,12 @@ window.renderPearTransport = (transport) => {
   updateLyricsTiming();
 };
 
-function lyricsPanelVisible() {
+function controlsVisible() {
   return pearPanelVisible && !panel.hidden && !document.hidden;
 }
 
 function updateLyricsVisibility() {
-  if (!lyricsPanelVisible()) cancelLyricsClock();
+  if (!controlsVisible()) cancelLyricsClock();
   updateLyricsTiming();
 }
 
@@ -663,17 +681,38 @@ function updateQueue(entries, current, entryTitles, nextId) {
   }
 }
 
-function updateViews() {
-  if (
-    (activeView === 'search' && !catalogView) ||
-    (activeView === 'lyrics' && !lyricsView) ||
-    (activeView === 'library' && !libraryView)
+function viewAvailable(view) {
+  return (
+    view === 'queue' ||
+    (view === 'search' && catalogView) ||
+    (view === 'lyrics' && lyricsView) ||
+    (view === 'library' && libraryView)
+  );
+}
+
+function historyDestination(step) {
+  for (
+    let index = viewHistoryIndex + step;
+    index >= 0 && index < viewHistory.length;
+    index += step
   ) {
+    const view = viewHistory[index];
+    if (view !== activeView && viewAvailable(view)) return index;
+  }
+  return -1;
+}
+
+function updateViews() {
+  if (!viewAvailable(activeView)) {
     activeView = 'queue';
+    viewHistory[viewHistoryIndex] = activeView;
   }
 
   const hasOptionalView = Boolean(catalogView || lyricsView || libraryView);
   const active = document.activeElement;
+  historyControls.hidden = !hasOptionalView;
+  historyBack.disabled = historyDestination(-1) < 0;
+  historyForward.disabled = historyDestination(1) < 0;
   let restoreFocus = false;
   if (hasOptionalView && !viewSwitcher) {
     viewSwitcher =
@@ -733,17 +772,74 @@ function updateViews() {
     if (lyricsView.form.hidden) lyricsView.gap.removeAttribute('data-running');
   }
   if (libraryView) libraryView.element.hidden = activeView !== 'library';
-  if (restoreFocus) primaryInput().focus();
+  if (restoreFocus || (historyControls.contains(active) && !viewSwitcher))
+    primaryInput().focus();
   updateLyricsTiming();
 }
 
-function showView(view) {
-  if (panel.hidden) return;
+function activateView(view) {
   if (activeView === 'lyrics' && view !== 'lyrics') cancelLyricsClock();
   activeView = view;
   updateViews();
+}
+
+function showView(view) {
+  if (!controlsVisible() || !viewAvailable(view)) return;
+  if (view !== activeView) {
+    viewHistory.length = viewHistoryIndex + 1;
+    viewHistory.push(view);
+    if (viewHistory.length > VIEW_HISTORY_LIMIT) viewHistory.shift();
+    viewHistoryIndex = viewHistory.length - 1;
+    activateView(view);
+  }
   primaryInput().focus();
 }
+
+function traverseViewHistory(step) {
+  if (!controlsVisible()) return;
+  const index = historyDestination(step);
+  if (index < 0) return;
+  const focused = document.activeElement;
+  viewHistoryIndex = index;
+  activateView(viewHistory[index]);
+  if (focused === document.body || focused?.closest('[hidden], :disabled')) {
+    viewSwitcher?.querySelector('[aria-pressed="true"]')?.focus({
+      preventScroll: true,
+    });
+  }
+}
+
+historyBack.addEventListener('click', () => traverseViewHistory(-1));
+historyForward.addEventListener('click', () => traverseViewHistory(1));
+
+document.addEventListener('keydown', (event) => {
+  if (
+    !controlsVisible() ||
+    event.defaultPrevented ||
+    event.repeat ||
+    event.isComposing ||
+    event.ctrlKey ||
+    event.shiftKey
+  )
+    return;
+
+  const browserKey = !event.metaKey && !event.altKey;
+  const shortcut = macShortcuts
+    ? event.metaKey && !event.altKey
+    : event.altKey && !event.metaKey;
+  const backKey = macShortcuts ? '[' : 'ArrowLeft';
+  const forwardKey = macShortcuts ? ']' : 'ArrowRight';
+  const back =
+    (browserKey && event.key === 'BrowserBack') ||
+    (shortcut && event.key === backKey);
+  const forward =
+    (browserKey && event.key === 'BrowserForward') ||
+    (shortcut && event.key === forwardKey);
+  if (back || forward) {
+    event.preventDefault();
+    traverseViewHistory(back ? -1 : 1);
+  }
+});
 
 function updateQueueInputs(emptyQueue = renderedState?.entries.length === 0) {
   const active = document.activeElement;
@@ -1684,7 +1780,7 @@ function receiveLyricsClock(transport) {
   if (
     !transport?.clockRunning ||
     transport.blocked ||
-    !lyricsPanelVisible() ||
+    !controlsVisible() ||
     playerProblemText.textContent ||
     editingPosition ||
     interruptsLyricsClock(pending?.command)
@@ -1738,7 +1834,7 @@ function updateLyricsTiming() {
     !view ||
     view.lines.hidden ||
     !view.timedLines.length ||
-    !lyricsPanelVisible()
+    !controlsVisible()
   ) {
     scheduleLyricCue(null);
     view?.gap.removeAttribute('data-running');
