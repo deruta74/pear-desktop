@@ -64,6 +64,14 @@ pub enum Command {
     Seek {
         position: u32,
     },
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    SetVolume {
+        volume: u8,
+    },
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    SetMuted {
+        muted: bool,
+    },
     #[serde(untagged)]
     Playlist(playlists::Command),
 }
@@ -206,7 +214,11 @@ impl Library {
                 return Ok(false);
             }
             #[cfg(any(target_os = "macos", target_os = "linux"))]
-            Command::SetPlayback { .. } | Command::Seek { .. } | Command::FindLyrics { .. } => {
+            Command::SetPlayback { .. }
+            | Command::Seek { .. }
+            | Command::SetVolume { .. }
+            | Command::SetMuted { .. }
+            | Command::FindLyrics { .. } => {
                 return Ok(false);
             }
         }

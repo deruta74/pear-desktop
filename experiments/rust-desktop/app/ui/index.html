@@ -77,25 +77,72 @@
             id="open-browser"
             class="browser-button"
             type="button"
+            aria-label="Open in browser"
+            title="Open in browser"
             disabled
           >
-            Open in browser
+            <span class="browser-label">Open in browser</span>
             <span class="external-icon" aria-hidden="true"></span>
           </button>
+          <button
+            id="show-audio-controls"
+            class="icon-button"
+            type="button"
+            aria-label="Volume controls"
+            title="Volume controls"
+            aria-expanded="false"
+            aria-controls="audio-controls"
+            hidden
+          >
+            <span class="volume-icon" aria-hidden="true"></span>
+          </button>
         </div>
-        <div id="transport-timeline" class="transport-timeline" hidden>
-          <span id="elapsed" aria-hidden="true"></span>
-          <input
-            id="playback-position"
-            type="range"
-            min="0"
-            step="1"
-            aria-label="Playback position"
-            disabled
-          />
-          <span id="duration" aria-hidden="true"></span>
+        <div class="transport-details">
+          <div
+            id="audio-controls"
+            class="audio-controls"
+            role="group"
+            aria-label="Audio output"
+            hidden
+          >
+            <div id="volume-control" class="volume-control" hidden>
+              <label for="playback-volume">Volume</label>
+              <input
+                id="playback-volume"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                disabled
+              />
+              <span id="volume-value" aria-hidden="true"></span>
+            </div>
+            <button
+              id="playback-mute"
+              class="mute-toggle"
+              type="button"
+              aria-pressed="false"
+              hidden
+              disabled
+            >
+              Mute
+            </button>
+          </div>
+          <div id="transport-timeline" class="transport-timeline" hidden>
+            <span id="elapsed" aria-hidden="true"></span>
+            <input
+              id="playback-position"
+              type="range"
+              min="0"
+              step="1"
+              aria-label="Playback position"
+              disabled
+            />
+            <span id="duration" aria-hidden="true"></span>
+          </div>
         </div>
         <p id="transport-hint" class="feedback" aria-live="polite"></p>
+        <p id="audio-problem" class="feedback error" aria-live="polite"></p>
         <p id="player-problem" class="feedback error" role="alert"></p>
         <p id="metadata-problem" class="feedback" aria-live="polite"></p>
         <p id="preferences-problem" class="feedback" aria-live="polite"></p>

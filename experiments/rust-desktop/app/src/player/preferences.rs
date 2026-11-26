@@ -6,6 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use super::iframe::AudioOutput;
 use crate::library::write_atomic;
 
 const MAX_FILE_BYTES: u64 = 4096;
@@ -19,6 +20,8 @@ struct SavedPreferences {
     iframe_player: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     auto_advance: bool,
+    #[serde(default, skip_serializing_if = "output_unset")]
+    output: AudioOutput,
 }
 
 pub(crate) struct Preferences {
@@ -48,6 +51,10 @@ impl Preferences {
         self.saved.auto_advance
     }
 
+    pub(super) fn audio_output(&self) -> AudioOutput {
+        self.saved.output
+    }
+
     pub(crate) fn problem(&self) -> Option<&'static str> {
         self.problem
     }
@@ -56,13 +63,21 @@ impl Preferences {
         &mut self,
         iframe_player: bool,
         auto_advance: bool,
+        output: AudioOutput,
     ) -> io::Result<()> {
         if let Some(problem) = self.problem {
             return Err(io::Error::new(io::ErrorKind::InvalidData, problem));
         }
+        if output.volume.is_some_and(|volume| volume > 100) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Volume must be between 0 and 100.",
+            ));
+        }
         let saved = SavedPreferences {
             iframe_player,
             auto_advance,
+            output,
         };
         if saved == self.saved {
             return Ok(());
@@ -72,6 +87,10 @@ impl Preferences {
         self.saved = saved;
         Ok(())
     }
+}
+
+fn output_unset(output: &AudioOutput) -> bool {
+    *output == AudioOutput::default()
 }
 
 fn read_saved(path: &Path) -> Result<SavedPreferences, &'static str> {
@@ -104,6 +123,33 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn restores_the_requested_audio_output_and_preserves_the_other_choices() {
+        let directory = TestDirectory::new();
+        let mut preferences = Preferences::load(directory.path());
+        let output = AudioOutput {
+            volume: Some(37),
+            muted: Some(false),
+        };
+        preferences.set_playback(true, true, output).unwrap();
+        let restored = Preferences::load(directory.path());
+        assert!(restored.iframe_player() && restored.auto_advance());
+        assert!(restored.audio_output() == output);
+        assert!(
+            preferences
+                .set_playback(
+                    false,
+                    false,
+                    AudioOutput {
+                        volume: Some(101),
+                        muted: None
+                    }
+                )
+                .is_err()
+        );
+        assert!(Preferences::load(directory.path()).audio_output() == output);
+    }
 
     struct TestDirectory(PathBuf);
 
@@ -144,12 +190,16 @@ mod tests {
         assert_eq!(preferences.problem(), None);
         assert!(!path.exists());
 
-        preferences.set_playback(true, false).unwrap();
+        preferences
+            .set_playback(true, false, AudioOutput::default())
+            .unwrap();
         assert!(preferences.iframe_player());
         let mut restored = Preferences::load(path.clone());
         assert!(restored.iframe_player());
         assert_eq!(restored.problem(), None);
-        restored.set_playback(false, false).unwrap();
+        restored
+            .set_playback(false, false, AudioOutput::default())
+            .unwrap();
         assert!(!Preferences::load(path).iframe_player());
     }
 
@@ -161,7 +211,9 @@ mod tests {
         let mut preferences = Preferences::load(path.clone());
         assert!(!preferences.iframe_player());
         assert_eq!(preferences.problem(), None);
-        preferences.set_playback(true, false).unwrap();
+        preferences
+            .set_playback(true, false, AudioOutput::default())
+            .unwrap();
         let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
         assert_eq!(saved, serde_json::json!({ "iframe_player": true }));
     }
@@ -185,8 +237,16 @@ mod tests {
             let problem = preferences.problem().unwrap();
             assert!(!problem.contains("private value"));
             assert!(!problem.contains(path.to_str().unwrap()));
-            assert!(preferences.set_playback(false, false).is_err());
-            assert!(preferences.set_playback(true, false).is_err());
+            assert!(
+                preferences
+                    .set_playback(false, false, AudioOutput::default())
+                    .is_err()
+            );
+            assert!(
+                preferences
+                    .set_playback(true, false, AudioOutput::default())
+                    .is_err()
+            );
             assert_eq!(fs::read(&path).unwrap(), original);
         }
     }
@@ -199,7 +259,11 @@ mod tests {
         let mut preferences = Preferences::load(path.clone());
         assert!(!preferences.iframe_player());
         assert!(preferences.problem().is_some());
-        assert!(preferences.set_playback(true, false).is_err());
+        assert!(
+            preferences
+                .set_playback(true, false, AudioOutput::default())
+                .is_err()
+        );
         assert!(path.is_dir());
     }
 
@@ -209,18 +273,26 @@ mod tests {
         let path = directory.path();
         let backup = directory.0.join("saved.json");
         let mut preferences = Preferences::load(path.clone());
-        preferences.set_playback(true, false).unwrap();
+        preferences
+            .set_playback(true, false, AudioOutput::default())
+            .unwrap();
         fs::rename(&path, &backup).unwrap();
         fs::create_dir(&path).unwrap();
 
-        assert!(preferences.set_playback(false, false).is_err());
+        assert!(
+            preferences
+                .set_playback(false, false, AudioOutput::default())
+                .is_err()
+        );
         assert!(preferences.iframe_player());
         assert_eq!(preferences.problem(), None);
         assert!(Preferences::load(backup.clone()).iframe_player());
 
         fs::remove_dir(&path).unwrap();
         fs::rename(backup, &path).unwrap();
-        preferences.set_playback(false, false).unwrap();
+        preferences
+            .set_playback(false, false, AudioOutput::default())
+            .unwrap();
         assert!(!Preferences::load(path).iframe_player());
     }
 }

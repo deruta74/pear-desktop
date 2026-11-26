@@ -16,6 +16,13 @@ const previous = document.getElementById('previous');
 const playToggle = document.getElementById('play-toggle');
 const next = document.getElementById('next');
 const openBrowser = document.getElementById('open-browser');
+const audioToggle = document.getElementById('show-audio-controls');
+const audioControls = document.getElementById('audio-controls');
+const audioProblem = document.getElementById('audio-problem');
+const volumeControl = document.getElementById('volume-control');
+const volume = document.getElementById('playback-volume');
+const volumeValue = document.getElementById('volume-value');
+const mute = document.getElementById('playback-mute');
 const transportHint = document.getElementById('transport-hint');
 const timeline = document.getElementById('transport-timeline');
 const seek = document.getElementById('playback-position');
@@ -65,6 +72,8 @@ let lyricCueDeadline = null;
 let pearPanelVisible = true;
 let focusAddOnReady = false;
 let editingPosition = false;
+let audioExpanded = false;
+let editingVolume = false;
 let renderedLegal = null;
 let legalCommandProblem = '';
 let focusBeforeLegal = null;
@@ -83,6 +92,11 @@ function commandProblem(message, context) {
   if (context === 'lyrics') {
     lyricsError = message;
     updateLyrics(renderedLyrics);
+    return;
+  }
+  if (context === 'audio') {
+    audioProblem.textContent = message;
+    updateAudioOutput();
     return;
   }
   if (context === 'library') {
@@ -140,6 +154,7 @@ function send(command, context = 'queue') {
     catalogAddFeedback = null;
   if (context === 'lyrics') lyricsError = '';
   if (context === 'library') libraryFeedback = null;
+  if (context === 'audio') audioProblem.textContent = '';
   const sequence = nextSequence;
   const message = JSON.stringify({ sequence, command });
   if (message.length > 4096 || encoder.encode(message).length > 4096) {
@@ -192,6 +207,7 @@ function send(command, context = 'queue') {
   if (catalogView) updateCatalog(renderedCatalog);
   if (lyricsView) updateLyrics(renderedLyrics);
   if (libraryView) updateLibrary(renderedLibrary);
+  updateAudioOutput();
 }
 
 function updateLegalControls() {
@@ -217,6 +233,7 @@ function updateLegal(legal) {
     const active = document.activeElement;
     focusBeforeLegal = panel.contains(active) ? active : null;
     editingPosition = false;
+    editingVolume = false;
     cancelLyricsClock();
   }
   if (!visible) legalCommandProblem = '';
@@ -248,6 +265,62 @@ function updateElapsed() {
   const accessibleTime = `${time} of ${duration.textContent}`;
   if (seek.getAttribute('aria-valuetext') !== accessibleTime) {
     seek.setAttribute('aria-valuetext', accessibleTime);
+  }
+}
+
+function updateVolumeValue() {
+  const percent = `${volume.valueAsNumber}%`;
+  if (volumeValue.textContent === percent) return;
+  volumeValue.textContent = percent;
+  volume.setAttribute('aria-valuetext', percent);
+}
+
+function updateAudioOutput() {
+  const transport = renderedTransport;
+  const level = transport?.volume;
+  const hasVolume = Number.isInteger(level) && level >= 0 && level <= 100;
+  const hasMute = typeof transport?.muted === 'boolean';
+  const canAdjust = Boolean(
+    transport?.ready && !transport.blocked && !playerProblemText.textContent,
+  );
+  const active = document.activeElement;
+
+  audioToggle.hidden = !hasVolume && !hasMute;
+  audioControls.hidden = audioToggle.hidden || !audioExpanded;
+  audioToggle.parentElement.toggleAttribute('data-audio', !audioToggle.hidden);
+  audioControls.parentElement.toggleAttribute(
+    'data-paired',
+    !audioControls.hidden && !timeline.hidden,
+  );
+  audioToggle.setAttribute('aria-expanded', String(!audioControls.hidden));
+  volumeControl.hidden = !hasVolume;
+  mute.hidden = !hasMute;
+  volume.disabled = !canAdjust || !hasVolume;
+  mute.disabled = !canAdjust || !hasMute;
+  const busy = Boolean(pending);
+  volume.setAttribute('aria-disabled', String(volume.disabled || busy));
+  mute.setAttribute('aria-disabled', String(mute.disabled || busy));
+  if (hasMute) mute.setAttribute('aria-pressed', String(transport.muted));
+
+  if (volume.disabled || pending) editingVolume = false;
+  if (hasVolume && !editingVolume) {
+    const preview =
+      volume.disabled || pending?.command.type !== 'set_volume'
+        ? level
+        : pending.command.volume;
+    if (volume.valueAsNumber !== preview) volume.valueAsNumber = preview;
+    updateVolumeValue();
+  }
+
+  const lostFocus =
+    (active === volume && (volume.disabled || audioControls.hidden)) ||
+    (active === mute && (mute.disabled || audioControls.hidden)) ||
+    (active === audioToggle && audioToggle.hidden);
+  if (lostFocus && !panel.hidden) {
+    const fallback = openBrowser.disabled ? primaryInput() : openBrowser;
+    (audioToggle.hidden ? fallback : audioToggle).focus({
+      preventScroll: true,
+    });
   }
 }
 
@@ -306,6 +379,7 @@ function updateTransport() {
     const fallback = openBrowser.disabled ? primaryInput() : openBrowser;
     (canPlay ? playToggle : fallback).focus({ preventScroll: true });
   }
+  updateAudioOutput();
 }
 
 window.renderPearTransport = (transport) => {
@@ -1460,10 +1534,16 @@ window.renderPearState = (
     lyricsError = acknowledged.current === current ? (error ?? '') : '';
   } else if (context === 'library') {
     libraryFeedback = { message: error || confirmation, error: Boolean(error) };
+  } else if (context === 'audio') {
+    audioProblem.textContent = error ?? '';
   } else if (context !== 'legal' && (acknowledged || error !== null)) {
     errorText.textContent = error ?? '';
   }
-  if (context !== 'legal' || command.type === 'accept_legal' || notice) {
+  if (
+    (context !== 'legal' && context !== 'audio') ||
+    command?.type === 'accept_legal' ||
+    notice
+  ) {
     statusText.textContent = [context === 'queue' ? confirmation : '', notice]
       .filter(Boolean)
       .join(' ');
@@ -1492,6 +1572,7 @@ window.renderPearState = (
     preferencesProblemText.textContent = preferencesProblem ?? '';
   }
   if (selectionChanged || problemChanged) updateTransport();
+  else if (acknowledged) updateAudioOutput();
   if (restoreFocus) {
     const previousFocus = focusBeforeLegal;
     focusBeforeLegal = null;
@@ -1553,6 +1634,50 @@ playToggle.addEventListener('click', () => {
 });
 next.addEventListener('click', () => send({ type: 'next' }));
 openBrowser.addEventListener('click', () => send({ type: 'open_browser' }));
+
+audioToggle.addEventListener('click', () => {
+  audioExpanded = !audioExpanded;
+  if (!audioExpanded) editingVolume = false;
+  updateAudioOutput();
+});
+audioControls.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || event.isComposing) return;
+  event.preventDefault();
+  audioExpanded = false;
+  editingVolume = false;
+  updateAudioOutput();
+  audioToggle.focus();
+});
+mute.addEventListener('click', () => {
+  if (!mute.disabled)
+    send({ type: 'set_muted', muted: !renderedTransport.muted }, 'audio');
+});
+volume.addEventListener('input', () => {
+  if (volume.disabled || pending) {
+    updateAudioOutput();
+    return;
+  }
+  editingVolume = true;
+  updateVolumeValue();
+});
+volume.addEventListener('change', () => {
+  editingVolume = false;
+  if (volume.disabled || pending) {
+    updateAudioOutput();
+    return;
+  }
+  if (volume.valueAsNumber !== renderedTransport.volume) {
+    send({ type: 'set_volume', volume: volume.valueAsNumber }, 'audio');
+  }
+});
+function cancelVolumePreview() {
+  if (!editingVolume) return;
+  editingVolume = false;
+  updateAudioOutput();
+}
+volume.addEventListener('pointercancel', cancelVolumePreview);
+volume.addEventListener('blur', cancelVolumePreview);
+window.addEventListener('blur', cancelVolumePreview);
 
 seek.addEventListener('pointerdown', () => {
   editingPosition = true;

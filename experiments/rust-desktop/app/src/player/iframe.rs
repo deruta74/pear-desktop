@@ -1,7 +1,7 @@
 //! Local wrapper for the official YouTube IFrame API in the video pane.
 #[cfg(target_os = "macos")]
 use objc2_foundation::{NSBundle, NSString, NSURL};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 #[cfg(target_os = "linux")]
 use webkit2gtk::WebViewExt as _;
@@ -17,8 +17,45 @@ use crate::{Result, library::valid_id};
 const WRAPPER_PATH: &str = "/iframe-player.html";
 const HTML: &str = include_str!("../../ui/iframe-player.html");
 const MAX_SNAPSHOT_BYTES: usize = 512;
+const MAX_VOLUME: u8 = 100;
 // A generous bound for long-running live streams as well as ordinary videos.
 const MAX_SECONDS: u32 = 31 * 24 * 60 * 60;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct AudioOutput {
+    #[serde(
+        default,
+        deserialize_with = "deserialize_volume",
+        serialize_with = "serialize_volume"
+    )]
+    pub volume: Option<u8>,
+    pub muted: Option<bool>,
+}
+
+fn deserialize_volume<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<u8>, D::Error> {
+    let volume = Option::<u8>::deserialize(deserializer)?;
+    if volume.is_some_and(|value| value > MAX_VOLUME) {
+        return Err(serde::de::Error::custom(
+            "Volume must be between 0 and 100.",
+        ));
+    }
+    Ok(volume)
+}
+
+fn serialize_volume<S: serde::Serializer>(
+    volume: &Option<u8>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    if volume.is_some_and(|value| value > MAX_VOLUME) {
+        return Err(serde::ser::Error::custom(
+            "Volume must be between 0 and 100.",
+        ));
+    }
+    volume.serialize(serializer)
+}
 
 pub(super) struct Page {
     embed_url: Url,
@@ -48,7 +85,7 @@ impl Page {
         url == wrapper_url()
     }
 
-    pub(super) fn load(&self, view: &WebView) -> Result<()> {
+    pub(super) fn load(&self, view: &WebView, output: AudioOutput) -> Result<()> {
         #[cfg(target_os = "macos")]
         if !NSBundle::mainBundle()
             .bundleIdentifier()
@@ -58,13 +95,7 @@ impl Page {
         }
 
         let url = wrapper_url();
-        let html = HTML
-            .replace("{WRAPPER_URL}", &url)
-            .replace("{EMBED_PATH}", self.embed_url.path())
-            .replace(
-                "{PLAYER_URL}",
-                &self.embed_url.as_str().replace('&', "&amp;"),
-            );
+        let html = self.html(&url, output)?;
         #[cfg(target_os = "macos")]
         {
             let base = NSURL::URLWithString(&NSString::from_str(&url))
@@ -84,6 +115,28 @@ impl Page {
         view.webview().load_html(&html, Some(&url));
 
         Ok(())
+    }
+
+    fn html(&self, url: &str, output: AudioOutput) -> Result<String> {
+        if output.volume.is_some_and(|value| value > MAX_VOLUME) {
+            return Err("The IFrame volume is out of range.".into());
+        }
+        let volume = output
+            .volume
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let muted = output
+            .muted
+            .map_or("", |value| if value { "true" } else { "false" });
+        Ok(HTML
+            .replace("{WRAPPER_URL}", url)
+            .replace("{INITIAL_VOLUME}", &volume)
+            .replace("{INITIAL_MUTED}", muted)
+            .replace("{EMBED_PATH}", self.embed_url.path())
+            .replace(
+                "{PLAYER_URL}",
+                &self.embed_url.as_str().replace('&', "&amp;"),
+            ))
     }
 
     // Start polling only after Wry reports the navigation committed.
@@ -134,6 +187,8 @@ pub(super) enum Action {
     Play,
     Pause,
     Seek(u32),
+    SetVolume(u8),
+    SetMuted(bool),
     Advance { from: String, to: String },
 }
 
@@ -146,6 +201,11 @@ impl Action {
                 format!("window.pearIframePlayer?.seek({seconds})")
             }
             Self::Seek(_) => return Err("The IFrame seek position is out of range.".into()),
+            Self::SetVolume(volume) if volume <= MAX_VOLUME => {
+                format!("window.pearIframePlayer?.setVolume({volume})")
+            }
+            Self::SetVolume(_) => return Err("The IFrame volume is out of range.".into()),
+            Self::SetMuted(muted) => format!("window.pearIframePlayer?.setMuted({muted})"),
             Self::Advance { from, to } if from != to && valid_id(&from) && valid_id(&to) => {
                 format!("window.pearIframePlayer?.advance({from:?},{to:?})")
             }
@@ -162,6 +222,9 @@ pub(super) struct Snapshot {
     pub(super) video_id: Option<String>,
     #[serde(default)]
     pub(super) source_replayed: bool,
+    #[serde(default, deserialize_with = "deserialize_volume")]
+    pub(super) volume: Option<u8>,
+    pub(super) muted: Option<bool>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
     pub(super) state: Option<i32>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
@@ -220,6 +283,8 @@ impl Snapshot {
                 .zip(snapshot.duration)
                 .is_some_and(|(position, duration)| position > duration)
             || (!snapshot.ready && has_playback)
+            || ((!snapshot.ready || snapshot.error.is_some() || snapshot.source_replayed)
+                && (snapshot.volume.is_some() || snapshot.muted.is_some()))
             || (snapshot.source_replayed
                 && (!snapshot.ready
                     || snapshot.video_id.is_none()
@@ -367,6 +432,87 @@ mod tests {
             invalid[key] = value;
             assert!(Snapshot::parse(&invalid.to_string()).is_none(), "{key}");
         }
+    }
+
+    #[test]
+    fn validates_and_renders_local_audio_output() {
+        let configured = AudioOutput {
+            volume: Some(0),
+            muted: Some(false),
+        };
+        assert_eq!(
+            serde_json::from_str::<AudioOutput>(r#"{"volume":0,"muted":false}"#).unwrap(),
+            configured,
+        );
+        assert_eq!(
+            serde_json::to_string(&configured).unwrap(),
+            r#"{"volume":0,"muted":false}"#,
+        );
+        assert_eq!(
+            serde_json::from_str::<AudioOutput>("{}").unwrap(),
+            AudioOutput::default()
+        );
+        assert!(serde_json::from_str::<AudioOutput>(r#"{"volume":101}"#).is_err());
+        assert!(serde_json::from_str::<AudioOutput>(r#"{"muted":true,"extra":0}"#).is_err());
+        assert!(
+            serde_json::to_string(&AudioOutput {
+                volume: Some(101),
+                muted: None
+            })
+            .is_err()
+        );
+
+        let page = Page::new(ID).unwrap();
+        let html = page.html(WRAPPER, configured).unwrap();
+        assert!(html.contains(r#"data-initial-volume="0" data-initial-muted="false""#));
+        let html = page.html(WRAPPER, AudioOutput::default()).unwrap();
+        assert!(html.contains(r#"data-initial-volume="" data-initial-muted="""#));
+        assert!(
+            page.html(
+                WRAPPER,
+                AudioOutput {
+                    volume: Some(101),
+                    muted: None
+                }
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn builds_bounded_audio_output_commands() {
+        assert_eq!(
+            Action::SetVolume(0).command().unwrap(),
+            "window.pearIframePlayer?.setVolume(0)"
+        );
+        assert_eq!(
+            Action::SetVolume(100).command().unwrap(),
+            "window.pearIframePlayer?.setVolume(100)"
+        );
+        assert!(Action::SetVolume(101).command().is_err());
+        assert_eq!(
+            Action::SetMuted(false).command().unwrap(),
+            "window.pearIframePlayer?.setMuted(false)"
+        );
+    }
+
+    #[test]
+    fn parses_audio_output_without_first_play_and_rejects_stale_output() {
+        let mut snapshot: serde_json::Value = serde_json::from_str(STARTING).unwrap();
+        let old = Snapshot::parse(&snapshot.to_string()).unwrap();
+        assert_eq!((old.volume, old.muted), (None, None));
+        snapshot["volume"] = serde_json::json!(37);
+        snapshot["muted"] = serde_json::json!(false);
+        assert!(Snapshot::parse(&snapshot.to_string()).is_none());
+        snapshot["ready"] = serde_json::json!(true);
+        let audio = Snapshot::parse(&snapshot.to_string()).unwrap();
+        assert!(!audio.has_played);
+        assert_eq!((audio.volume, audio.muted), (Some(37), Some(false)));
+        snapshot["error"] = serde_json::json!(100);
+        assert!(Snapshot::parse(&snapshot.to_string()).is_none());
+        snapshot["error"] = serde_json::Value::Null;
+        snapshot["volume"] = serde_json::json!(101);
+        assert!(Snapshot::parse(&snapshot.to_string()).is_none());
     }
 
     #[test]

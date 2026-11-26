@@ -143,6 +143,8 @@ pub struct LaunchMode {
     smoke: bool,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     iframe_player: bool,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    audio_output: iframe::AudioOutput,
 }
 
 pub fn launch_mode() -> Result<Option<LaunchMode>> {
@@ -170,6 +172,7 @@ pub fn launch_mode() -> Result<Option<LaunchMode>> {
             return Ok(Some(LaunchMode {
                 smoke: false,
                 iframe_player: false,
+                audio_output: iframe::AudioOutput::default(),
             }));
         }
     }
@@ -182,6 +185,8 @@ pub fn launch_mode() -> Result<Option<LaunchMode>> {
         smoke,
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         iframe_player,
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        audio_output: iframe::AudioOutput::default(),
     }))
 }
 
@@ -322,7 +327,7 @@ fn show_video(
         )?;
         #[cfg(target_os = "linux")]
         platform::observe_video(&view, &iframe::wrapper_url(), report_problem);
-        page.load(&view)?;
+        page.load(&view, mode.audio_output)?;
         return Ok(view);
     }
     let url = embed_url(id);
@@ -500,6 +505,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         mode.iframe_player |= preferred_iframe;
+        mode.audio_output = preferences.as_ref().map_or_else(
+            iframe::AudioOutput::default,
+            preferences::Preferences::audio_output,
+        );
         if let Some(problem) = preferences_problem {
             eprintln!("{problem}");
         }
@@ -678,6 +687,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         let mut verify_controls = false;
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         let mut advance_resolution = None;
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        let mut save_options = false;
         let update_queue = match event {
             Event::WindowEvent {
                 window_id, event, ..
@@ -718,7 +729,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 if !approved {
                     return;
                 }
-                let Some(preferences) = &mut preferences else { return };
+                if preferences.is_none() {
+                    return;
+                }
                 let enabled = toggle_iframe.is_checked();
                 let next_automatically = toggle_advance.is_checked();
                 if enabled == mode.iframe_player && next_automatically == automatic {
@@ -727,16 +740,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 if event.id == *toggle_iframe.id() {
                     preferred_iframe = enabled;
                 }
-                if let Err(reason) = preferences.set_playback(preferred_iframe, next_automatically) {
-                    eprintln!("Could not save playback preferences: {reason}");
-                    preferences_problem = Some("Playback preferences changed for this session. They could not be saved.");
-                    toggle_iframe.set_text(format!("{IFRAME_MENU_LABEL} (This Session)"));
-                    toggle_advance.set_text(format!("{AUTO_ADVANCE_LABEL} (This Session)"));
-                } else {
-                    preferences_problem = None;
-                    toggle_iframe.set_text(IFRAME_MENU_LABEL);
-                    toggle_advance.set_text(AUTO_ADVANCE_LABEL);
-                }
+                save_options = true;
                 automatic = next_automatically;
                 if !automatic && auto_advance.cancel() {
                     reload_player = true;
@@ -857,6 +861,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 let previous_status = (transport.ready(), transport.is_stale());
                 let now = Instant::now();
                 if !transport.receive(sequence, &response, now) { return; }
+                let confirmed = transport.confirmed_output(now);
+                let output = iframe::AudioOutput {
+                    volume: confirmed.volume.or(mode.audio_output.volume),
+                    muted: confirmed.muted.or(mode.audio_output.muted),
+                };
+                if output != mode.audio_output {
+                    mode.audio_output = output;
+                    save_options = true;
+                }
                 let sample = transport.observed_at(now);
                 advance_resolution = auto_advance.resolve(library.state(), sample, now);
                 let foreground_automatic = automatic
@@ -1020,7 +1033,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
-                    command @ (Command::SetPlayback { .. } | Command::Seek { .. }) => {
+                    command @ (Command::SetPlayback { .. }
+                        | Command::Seek { .. }
+                        | Command::SetVolume { .. }
+                        | Command::SetMuted { .. }) => {
                         if auto_advance.pending() {
                             error = Some("Waiting for the next video to start.".into());
                         } else if let (Some(transport), Some(video)) = (&mut transport, &current_player) {
@@ -1028,6 +1044,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 Command::SetPlayback { playing: true } => iframe::Action::Play,
                                 Command::SetPlayback { playing: false } => iframe::Action::Pause,
                                 Command::Seek { position } => iframe::Action::Seek(position),
+                                Command::SetVolume { volume } => iframe::Action::SetVolume(volume),
+                                Command::SetMuted { muted } => iframe::Action::SetMuted(muted),
                                 _ => unreachable!("only transport commands enter this arm"),
                             };
                             if mode.smoke {
@@ -1036,6 +1054,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                     iframe::Action::Pause => "pause",
                                     iframe::Action::Seek(_) => "seek",
                                 iframe::Action::Advance { .. } => "advance",
+                                    iframe::Action::SetVolume(_) => "volume",
+                                    iframe::Action::SetMuted(_) => "mute",
                                 };
                                 println!("PEAR_QUEUE_TRANSPORT_COMMAND {name}");
                             }
@@ -1066,7 +1086,22 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         };
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if save_options && let Some(preferences) = &mut preferences {
+            if let Err(reason) = preferences.set_playback(preferred_iframe, automatic, mode.audio_output) {
+                eprintln!("Could not save playback preferences: {reason}");
+                preferences_problem = Some("Playback preferences changed for this session. They could not be saved.");
+                toggle_iframe.set_text(format!("{IFRAME_MENU_LABEL} (This Session)"));
+                toggle_advance.set_text(format!("{AUTO_ADVANCE_LABEL} (This Session)"));
+            } else {
+                preferences_problem = None;
+                toggle_iframe.set_text(IFRAME_MENU_LABEL);
+                toggle_advance.set_text(AUTO_ADVANCE_LABEL);
+            }
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let update_queue = {
+            let update_queue = update_queue || save_options;
             if !reload_player && update_queue && advance_resolution.is_none() {
                 advance_resolution = auto_advance.resolve(library.state(), None, Instant::now());
             }

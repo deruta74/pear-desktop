@@ -41,6 +41,8 @@ Press Play in the visible YouTube player first. The queue panel then exposes pau
 
 With the experimental player active, **View → Play Next Automatically** can advance the queue when the current video ends and the window is in the foreground. The option starts off. If YouTube blocks the transition, Pear opens the next video for you to start with its Play button.
 
+**Volume controls** can adjust the embedded player before playback when YouTube exposes volume and mute. Pear remembers changes confirmed by the player and reapplies them when it opens another video.
+
 On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. Automatic advance started the next video in the same player and saved it as the current item. On Ubuntu ARM64, the example video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
 
 ### Synced lyrics

@@ -280,6 +280,114 @@ const readyTransport = {
   blocked: false,
 };
 
+test('makes available audio output controls usable before the first play', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  await state(page, [first], first);
+  const toggle = page.getByRole('button', { name: 'Volume controls' });
+  const volume = page.getByRole('slider', { name: 'Volume' });
+  const mute = page.getByRole('button', { name: 'Mute', exact: true });
+
+  await transport(page, { ...readyTransport, volume: null, muted: null });
+  await expect(toggle).toBeHidden();
+  await transport(page, {
+    ...readyTransport,
+    hasPlayed: false,
+    volume: 42,
+    muted: null,
+  });
+  await toggle.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(volume).toBeEnabled();
+  await expect(volume).toHaveValue('42');
+  await expect(mute).toBeHidden();
+
+  await transport(page, {
+    ...readyTransport,
+    hasPlayed: false,
+    volume: 42,
+    muted: false,
+  });
+  await expect(mute).toBeEnabled();
+  await mute.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'set_muted',
+    muted: true,
+  });
+  await expect(volume).toBeDisabled();
+  await expect(mute).toBeDisabled();
+  await state(page, [first], first);
+  await transport(page, {
+    ...readyTransport,
+    hasPlayed: false,
+    volume: 42,
+    muted: true,
+  });
+  await expect(mute).toHaveAttribute('aria-pressed', 'true');
+  await expect(mute).toBeFocused();
+
+  await transport(page, {
+    ...readyTransport,
+    blocked: true,
+    volume: 42,
+    muted: true,
+  });
+  await expect(volume).toBeDisabled();
+  await expect(mute).toBeDisabled();
+  await transport(page, { ...readyTransport, volume: 42, muted: true });
+  await state(page, [first], first, null, null, null, {
+    playerProblem: 'No audio output.',
+  });
+  await expect(volume).toBeDisabled();
+  await expect(mute).toBeDisabled();
+
+  await transport(page, null);
+  await expect(toggle).toBeHidden();
+  await expect(volume).toBeHidden();
+});
+
+test('sends one volume change per drag and reconciles the preview with transport samples', async (t) => {
+  const page = await panel(t);
+  await state(page, [first], first);
+  const sample = (volume) =>
+    transport(page, { ...readyTransport, volume, muted: false });
+  await sample(32);
+  await page.getByRole('button', { name: 'Volume controls' }).click();
+  const slider = page.getByRole('slider', { name: 'Volume' });
+  const { x, y, width, height } = await slider.boundingBox();
+  await page.mouse.move(x + width / 2, y + height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x + (width * 3) / 4, y + height / 2, { steps: 4 });
+  const preview = Number(await slider.inputValue());
+  expect(preview).toBeGreaterThan(32);
+  await sample(35);
+  await expect(slider).toHaveValue(String(preview));
+  await expect(slider).toHaveAttribute('aria-valuetext', `${preview}%`);
+  expect(await messages(page)).toHaveLength(1);
+
+  await page.mouse.up();
+  expect(await messages(page)).toEqual([
+    { sequence: 1, command: { type: 'ready' } },
+    { sequence: 2, command: { type: 'set_volume', volume: preview } },
+  ]);
+  await sample(preview - 1);
+  await expect(slider).toHaveValue(String(preview));
+  await expect(slider).toBeDisabled();
+  await state(page, [first], first);
+  await expect(slider).toHaveValue(String(preview - 1));
+  await expect(slider).toBeEnabled();
+
+  await slider.press('ArrowRight');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'set_volume',
+    volume: preview,
+  });
+  await state(page, [first], first, 'Could not change volume.');
+  await expect(page.getByText('Could not change volume.')).toBeVisible();
+  await expect(slider).toHaveValue(String(preview - 1));
+  await expect(slider).toBeFocused();
+});
+
 test('exposes experimental playback only after the video pane starts playing', async (t) => {
   const page = await panel(t);
   await page.setViewportSize({ width: 384, height: 520 });
@@ -305,7 +413,7 @@ test('exposes experimental playback only after the video pane starts playing', a
   await expect(pause).toBeEnabled();
   await expect(timeline).toBeVisible();
   const actions = await page
-    .locator('.playback-actions button')
+    .locator('.playback-actions button:visible')
     .evaluateAll((buttons) =>
       buttons.map((button) => button.getBoundingClientRect().top),
     );
@@ -1073,7 +1181,8 @@ test('fits Queue and Search rows at the minimum panel size alongside playback co
     },
     catalog,
   });
-  await transport(page, readyTransport);
+  await transport(page, { ...readyTransport, volume: 42, muted: false });
+  await page.getByRole('button', { name: 'Volume controls' }).press('Enter');
   const queueList = page.getByRole('list', { name: 'Queue' });
   assertVisibleQueueRow(
     await queueList.boundingBox(),
@@ -1313,6 +1422,31 @@ async function timedLyricsPane(t) {
   };
 }
 
+test('volume and mute commands keep the current lyric clock advancing', async (t) => {
+  const { page, lyrics, entries, activeLine, activeWord, sample } =
+    await timedLyricsPane(t);
+  await sample(1000, { volume: 40, muted: false });
+  await expect(activeWord).toHaveText('One');
+  await page.getByRole('button', { name: 'Volume controls' }).press('Enter');
+  await page.getByRole('button', { name: 'Mute', exact: true }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'set_muted',
+    muted: true,
+  });
+  await page.clock.runFor(225);
+  await expect(activeWord).toHaveText('two');
+  await state(page, entries, first, null, null, null, { lyrics });
+  await expect(page.getByRole('slider', { name: 'Volume' })).toBeDisabled();
+  await state(page, entries, first, null, null, undefined, { lyrics });
+  await page.getByRole('slider', { name: 'Volume' }).press('ArrowRight');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'set_volume',
+    volume: 41,
+  });
+  await page.clock.runFor(300);
+  await expect(activeLine).toHaveText('Second line');
+});
+
 test('advances subsecond lyric cues from one sample and stops at the clock and duration bounds', async (t) => {
   const { page, lyrics, entries, activeLine, activeWord, sample } =
     await timedLyricsPane(t);
@@ -1410,12 +1544,16 @@ test('fits a complete lyric line at the minimum panel size with all views and lo
     ...readyTransport,
     positionMs: 9000,
     clockRunning: true,
+    volume: 42,
+    muted: false,
   });
   const tab = page
     .getByRole('navigation')
     .getByRole('button', { name: 'Lyrics' });
   await expect(tab).toBeVisible();
   await tab.click();
+  await page.getByRole('button', { name: 'Volume controls' }).press('Enter');
+  await expect(page.getByRole('slider', { name: 'Volume' })).toBeVisible();
   const list = page.getByRole('list', { name: 'Lyrics' });
   assertVisibleQueueRow(
     await list.boundingBox(),
@@ -1620,7 +1758,8 @@ test('keeps Library rows scrollable and preserves focus on unrelated updates at 
       metadata: { title: long, channel: long },
     });
   await render(snapshot);
-  await transport(page, readyTransport);
+  await transport(page, { ...readyTransport, volume: 42, muted: false });
+  await page.getByRole('button', { name: 'Volume controls' }).press('Enter');
   await page.getByRole('button', { name: 'Library' }).click();
   const list = page.getByRole('list', { name: 'Saved playlists' });
   const row = list.getByRole('button', { name: 'Playlist 9', exact: true });
