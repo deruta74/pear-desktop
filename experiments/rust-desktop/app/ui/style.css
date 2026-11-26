@@ -146,6 +146,15 @@ label {
   color: var(--muted);
 }
 
+.selection-attribution {
+  overflow: hidden;
+  margin-block-start: 0.25rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .video-id {
   font-family: var(--mono);
   letter-spacing: normal;

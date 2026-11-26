@@ -74,20 +74,26 @@ async function state(
   error = null,
   notice = null,
   sequence,
-  { titles, playerProblem } = {},
+  { titles, playerProblem, metadata, metadataProblem } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
   return page.evaluate(
-    ({ entries, current, error, notice, sequence, titles, playerProblem }) => {
+    ({ queueState, error, notice, sequence, playerProblem }) => {
       window.renderPearState(
-        { entries, current, titles },
+        queueState,
         error,
         notice,
         sequence,
         playerProblem,
       );
     },
-    { entries, current, error, notice, sequence, titles, playerProblem },
+    {
+      queueState: { entries, current, titles, metadata, metadataProblem },
+      error,
+      notice,
+      sequence,
+      playerProblem,
+    },
   );
 }
 
@@ -489,6 +495,101 @@ test('renders literal titles and ID fallbacks without Object.hasOwn', async (t) 
   await expect(
     page.getByRole('button', { name: `Select ${second}` }),
   ).toBeVisible();
+});
+
+test('renders selected YouTube metadata as searchable literal text and clears it with the selection', async (t) => {
+  const page = await panel(t);
+  const entries = [first, second];
+  const titles = { [first]: 'Saved title' };
+  const metadata = {
+    title: '<b>Official piano & strings</b>',
+    channel: '<i>Artist & friends</i>',
+  };
+  const currentTitle = page.locator('#selection-id');
+  const attribution = page.getByText('YouTube · <i>Artist & friends</i>', {
+    exact: true,
+  });
+  const filter = page.getByRole('searchbox', { name: 'Filter queue' });
+  const officialRow = page.getByRole('button', {
+    name: 'Select <b>Official piano & strings</b>',
+  });
+
+  await state(page, entries, first, null, null, 1, { titles, metadata });
+  await expect(currentTitle).toHaveText('<b>Official piano & strings</b>');
+  await expect(officialRow).toHaveText('<b>Official piano & strings</b>');
+  await expect(attribution).toBeVisible();
+  await expect(page.locator('.selection b, .selection i')).toHaveCount(0);
+  await filter.fill('official piano');
+  await expect(page.getByRole('listitem')).toHaveCount(1);
+  await expect(officialRow).toBeVisible();
+
+  await state(page, entries, second, null, null, null, { titles });
+  await expect(currentTitle).toHaveText(second);
+  await expect(page.locator('.selection-attribution')).toHaveCount(0);
+  await expect(page.getByText('No matching videos.')).toBeVisible();
+  await filter.fill('saved title');
+  await expect(
+    page.getByRole('button', { name: 'Select Saved title' }),
+  ).toBeVisible();
+
+  await state(page, entries, first, null, null, null, { titles, metadata });
+  await state(page, entries, first, null, null, null, {
+    titles,
+    metadata: null,
+  });
+  await expect(currentTitle).toHaveText('Saved title');
+  await expect(page.locator('.selection-attribution')).toHaveCount(0);
+});
+
+test('shows a supplied metadata problem independently of playback and queue feedback', async (t) => {
+  const page = await panel(t);
+  const metadataProblem = 'YouTube video details are unavailable.';
+  const problemText = page.getByText(metadataProblem, { exact: true });
+  const playerAlert = page
+    .getByRole('region', { name: 'Current video' })
+    .getByRole('alert');
+  const queueStatus = page.getByRole('status');
+
+  await state(page, [first], first);
+  await transport(page, readyTransport);
+  await expect(problemText).toHaveCount(0);
+
+  await state(page, [first], first, null, 'Queue loaded.', null, {
+    metadataProblem,
+  });
+  await expect(problemText).toBeVisible();
+  await expect(problemText).toHaveAttribute('aria-live', 'polite');
+  await expect(playerAlert).toBeEmpty();
+  await expect(queueStatus).toHaveText('Queue loaded.');
+  await expect(page.getByRole('button', { name: 'Play video' })).toBeEnabled();
+
+  await state(page, [first], first, null, null, null, {
+    metadataProblem: null,
+  });
+  await expect(problemText).toHaveCount(0);
+});
+
+test('fits a queue row at the minimum panel size while displaying long YouTube metadata', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const entries = [first, second, third];
+  await state(page, entries, first, null, null, 1, {
+    metadata: {
+      title: 'A long video title that takes multiple lines '.repeat(5),
+      channel: 'A channel with a long display name '.repeat(8),
+    },
+  });
+  await transport(page, readyTransport);
+  const attribution = page.getByText(/^YouTube · A channel/);
+  await expect(attribution).toBeVisible();
+  expect(
+    await attribution.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    ),
+  ).toBe(true);
+  const list = await page.locator('#queue-items').boundingBox();
+  const row = await page.locator('#queue-items > li').first().boundingBox();
+  assertVisibleQueueRow(list, row);
 });
 
 test('updates the player alert independently from queue acknowledgements and validation', async (t) => {

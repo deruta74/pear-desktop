@@ -6,6 +6,7 @@ const add = document.getElementById('add-button');
 const errorText = document.getElementById('queue-error');
 const statusText = document.getElementById('queue-status');
 const playerProblemText = document.getElementById('player-problem');
+const metadataProblemText = document.getElementById('metadata-problem');
 const selection = document.getElementById('selection-id');
 const selectionPanel = selection.closest('.selection');
 const position = document.getElementById('position');
@@ -153,6 +154,24 @@ function videoTitle(titles, id) {
   return typeof title === 'string' ? title.trim() : '';
 }
 
+function updateSelectionAttribution(channel) {
+  let attribution = selectionPanel.querySelector('.selection-attribution');
+  if (!channel) {
+    attribution?.remove();
+    return;
+  }
+  if (!attribution) {
+    attribution = document.createElement('p');
+    attribution.className = 'selection-attribution';
+    selection.after(attribution);
+  }
+  const label = `YouTube · ${channel}`;
+  if (attribution.textContent !== label) {
+    attribution.textContent = label;
+    attribution.title = label;
+  }
+}
+
 function rowAction(type, label, id, icon, disabled = false) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -286,7 +305,7 @@ function updateQueue(entries, current, entryTitles) {
 }
 
 window.renderPearState = (
-  { entries, current, titles },
+  { entries, current, titles, metadata, metadataProblem },
   error = null,
   notice = null,
   acknowledgedSequence = null,
@@ -307,7 +326,10 @@ window.renderPearState = (
 
   const index = entries.indexOf(current);
   const hasSelection = index !== -1;
+  const selectedMetadata = hasSelection ? metadata : null;
+  const officialTitle = selectedMetadata?.title.trim();
   const entryTitles = entries.map((id) => videoTitle(titles, id));
+  if (officialTitle) entryTitles[index] = officialTitle;
   const currentTitle = entryTitles[index];
   const selectionChanged =
     renderedState !== null && current !== renderedState.current;
@@ -320,6 +342,7 @@ window.renderPearState = (
     selection.title = hasSelection ? selectionLabel : '';
   }
   selection.classList.toggle('video-id', hasSelection && !currentTitle);
+  updateSelectionAttribution(selectedMetadata?.channel.trim());
   selectionPanel.toggleAttribute('data-current', hasSelection);
   position.textContent = hasSelection
     ? `${index + 1} of ${entries.length}`
@@ -374,6 +397,10 @@ window.renderPearState = (
   const problem = playerProblem ?? '';
   const problemChanged = playerProblemText.textContent !== problem;
   if (problemChanged) playerProblemText.textContent = problem;
+  const providerProblem = metadataProblem ?? '';
+  if (metadataProblemText.textContent !== providerProblem) {
+    metadataProblemText.textContent = providerProblem;
+  }
   if (selectionChanged) renderedTransport = null;
   if (selectionChanged || problemChanged) updateTransport();
   statusText.textContent = [confirmation, notice].filter(Boolean).join(' ');

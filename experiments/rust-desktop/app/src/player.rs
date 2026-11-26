@@ -1,6 +1,8 @@
 //! The desktop queue separates its local controls from the remote video.
 #[cfg(target_os = "macos")]
 mod iframe;
+mod metadata;
+mod metadata_lookup;
 mod platform;
 #[cfg(target_os = "macos")]
 mod transport;
@@ -18,7 +20,7 @@ use muda::{
 };
 #[cfg(target_os = "macos")]
 use objc2_foundation::NSBundle;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tao::{
     dpi::LogicalSize,
     event::{Event, StartCause, WindowEvent},
@@ -35,7 +37,7 @@ use wry::{PageLoadEvent, WebViewBuilderExtDarwin};
 
 use crate::{
     Result, TITLE, attach_menu,
-    library::{Command, Library},
+    library::{Command, Library, QueueState},
 };
 
 use platform::{APP_ID, Layout, Pane};
@@ -66,6 +68,7 @@ enum PlayerEvent {
     Command(ControlMessage),
     TitleChanged(u64, String),
     VideoProblem(u64, &'static str),
+    Metadata(String, metadata_lookup::Response),
     #[cfg(target_os = "macos")]
     TransportCommitted(u64),
     #[cfg(target_os = "macos")]
@@ -77,6 +80,17 @@ enum PlayerEvent {
 struct ControlMessage {
     sequence: std::num::NonZeroU32,
     command: Command,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QueueView<'a> {
+    #[serde(flatten)]
+    queue: &'a QueueState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<&'a metadata::Metadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata_problem: Option<&'static str>,
 }
 
 pub struct LaunchMode {
@@ -301,7 +315,7 @@ fn focus_add(controls: &WebView) -> wry::Result<()> {
 
 fn render(
     controls: &WebView,
-    library: &Library,
+    queue: QueueView<'_>,
     error: Option<&str>,
     notice: Option<&str>,
     acknowledged_sequence: Option<std::num::NonZeroU32>,
@@ -309,7 +323,7 @@ fn render(
     verify_controls: bool,
 ) -> Result<()> {
     // JSON encodes every argument as data. This script only runs in the local view.
-    let state = serde_json::to_string(library.state())?;
+    let state = serde_json::to_string(&queue)?;
     let error = serde_json::to_string(&error)?;
     let notice = serde_json::to_string(&notice)?;
     let ack = serde_json::to_string(&acknowledged_sequence)?;
@@ -333,14 +347,15 @@ fn render(
 
 fn player_flow(
     load: Option<Instant>,
+    metadata: Option<Instant>,
     #[cfg(target_os = "macos")] transport: Option<&transport::Transport>,
 ) -> ControlFlow {
+    let deadlines = load.into_iter().chain(metadata);
     #[cfg(target_os = "macos")]
-    let load = load
-        .into_iter()
-        .chain(transport.and_then(transport::Transport::deadline))
-        .min();
-    load.map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
+    let deadlines = deadlines.chain(transport.and_then(transport::Transport::deadline));
+    deadlines
+        .min()
+        .map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
 }
 
 pub fn run(mode: LaunchMode) -> Result<()> {
@@ -437,6 +452,21 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut loading_slow = false;
     let mut titled_generation = None;
     let mut controls_ready = false;
+    let mut lookup = (!mode.smoke)
+        .then(metadata::Client::from_env)
+        .flatten()
+        .and_then(
+            |client| match metadata_lookup::Lookup::new(client, event_loop.create_proxy()) {
+                Ok(mut lookup) => {
+                    lookup.select(library.state().current.as_deref());
+                    Some(lookup)
+                }
+                Err(_) => {
+                    eprintln!("Could not start YouTube video details lookup.");
+                    None
+                }
+            },
+        );
     #[cfg(target_os = "macos")]
     let mut transport = iframe_player.then(transport::Transport::default);
     #[cfg(target_os = "macos")]
@@ -446,6 +476,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         let _keep_alive = (&menu, &queue_lock);
         *flow = player_flow(
             load_deadline,
+            lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
             #[cfg(target_os = "macos")]
             transport.as_ref(),
         );
@@ -536,6 +567,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 true
             }
+            Event::UserEvent(PlayerEvent::Metadata(id, response)) => lookup
+                .as_mut()
+                .is_some_and(|lookup| lookup.receive(&id, response, Instant::now())),
             #[cfg(target_os = "macos")]
             Event::UserEvent(PlayerEvent::TransportCommitted(id)) if id == generation => {
                 if let Some(transport) = &mut transport {
@@ -565,6 +599,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                 let now = Instant::now();
+                let metadata_changed = lookup.as_mut().is_some_and(|lookup| lookup.tick(now));
                 #[cfg(target_os = "macos")]
                 let expired = transport.as_mut().is_some_and(|transport| transport.expire(now));
                 #[cfg(target_os = "macos")]
@@ -586,7 +621,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 #[cfg(target_os = "macos")]
                 let overdue = overdue || expired;
-                overdue
+                overdue || metadata_changed
             }
             Event::UserEvent(PlayerEvent::Command(message)) => {
                 acknowledged_sequence = Some(message.sequence);
@@ -638,6 +673,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             if let Some(transport) = &mut transport {
                 transport.reset(false);
             }
+            if let Some(lookup) = &mut lookup {
+                lookup.select(library.state().current.as_deref());
+            }
             // Remove the old WebView before creating the next one so its audio stops
             // even if the new WebView fails to initialize.
             drop(current_player.take());
@@ -655,6 +693,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
 
         *flow = player_flow(
             load_deadline,
+            lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
             #[cfg(target_os = "macos")]
             transport.as_ref(),
         );
@@ -676,7 +715,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             };
             if let Err(error) = render(
                 &controls,
-                &library,
+                QueueView {
+                    queue: library.state(),
+                    metadata: lookup.as_ref().and_then(metadata_lookup::Lookup::metadata),
+                    metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
+                },
                 error.as_deref(),
                 notice,
                 acknowledged_sequence,

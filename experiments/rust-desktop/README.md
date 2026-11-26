@@ -27,9 +27,13 @@ app="$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
 
 Press Play in the visible YouTube player first. Once playback starts, the queue panel can pause, resume, and seek through the official IFrame Player API. The mode uses the same local queue and displays previously saved titles. Open new entries in the default player to capture their titles. The example video was paused, scrubbed to another position, and resumed from the queue panel on macOS.
 
+### Optional video details
+
+To show the public title and channel for the selected video, store a developer key restricted to YouTube Data API v3 in a private text file. Set `PEAR_YOUTUBE_API_KEY_FILE` in the launch environment to the file path. Pear looks up only the selected video ID and keeps the result in memory for up to one day or until selection changes. The standard player and queue work without a key. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/videos/list)
+
 ## Run the queue on Linux or Windows
 
-The queue is opt-in while these platforms are being tested. On Linux, install the GTK 3 and WebKitGTK 4.1 development packages (`libgtk-3-dev` and `libwebkit2gtk-4.1-dev` on Debian or Ubuntu), plus a C toolchain and `pkg-config`. On Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app checks that both native WebView2 controllers support InPrivate mode before loading a page.
+The queue is opt-in while these platforms are being tested. On Debian or Ubuntu, install `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`, a C toolchain and `pkg-config`. On Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app checks that both native WebView2 controllers support InPrivate mode before loading a page.
 
 ```sh
 cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --queue
@@ -37,7 +41,7 @@ cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-d
 
 The queue file is `com.pear-desktop.rust-preview/queue.json` under `$XDG_DATA_HOME` (or `~/.local/share`) on Linux and under `%LOCALAPPDATA%` on Windows. To test with a fresh queue, set `PEAR_PREVIEW_QUEUE_DIR` to a separate absolute directory. **View → Hide Queue** and **File → Add Video** are available from the native menus.
 
-On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed the controls acknowledgement and title persistence. The example video played in the VM, with audio verified on a PulseAudio test sink. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. Windows x64 passed an MSVC cross-target type check. Windows runtime testing is pending.
+On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed the controls acknowledgement and title persistence. The example video played in the VM, with audio verified on a PulseAudio test sink. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. On a Windows x64 runner, the native WebView2 queue opened and completed the controls handshake. Windows video and audio playback still need verification.
 
 Omit `--queue` to run the original system WebView compatibility experiment from Cargo:
 
