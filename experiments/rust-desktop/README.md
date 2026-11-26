@@ -1,6 +1,6 @@
 # Pear Desktop Rust preview
 
-Pear Desktop Rust Preview 0.3.0 is a macOS player for individual YouTube videos. It accepts a video link or ID, keeps a local queue across launches, and opens the selected video in the official YouTube player. Playback starts from the player's own Play button.
+Pear Desktop Rust Preview accepts individual YouTube links or IDs, keeps a local queue across launches, and opens the selected video in the official YouTube player. Playback starts from the player's own Play button.
 
 ## Run the macOS app
 
@@ -12,11 +12,23 @@ open "$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
 
 The script builds an ad hoc signed local app. The queue accepts YouTube and YouTube Music watch links, short links, Shorts, embed links and raw video IDs. Select a row or use the previous and next controls to switch videos. Move a row up or down to change playback order without restarting the current video. The queue saves video titles as it encounters them in the player and uses IDs until their titles are known. **Open in browser** opens the selected video's YouTube watch page. Use **View → Reload Player** to retry a slow or stopped player. **⌘L** focuses the link field and reveals the queue when hidden. **⇧⌘L** shows or hides the queue without interrupting the current video. The queue stores video IDs, known titles, and the selected entry in `~/Library/Application Support/com.pear-desktop.rust-preview/queue.json`.
 
-The local controls and the official player use separate ephemeral WebViews. Only the bundled controls can send queue commands to Rust. The player loads the selected embed with the native app's Referer and uses the website's default controls and media requests. It can play videos whose owners allow embedding in the current region.
+The local controls and the official player use separate private WebViews. Only the bundled controls can send queue commands to Rust. The player loads the selected embed with the native app's Referer and uses the website's controls and media requests. It can play videos whose owners allow embedding in the current region.
 
 **Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
 
-The unbundled `cargo run` path remains the original system WebView compatibility experiment. The built macOS app uses the queue. The other desktop targets still use the existing experiment.
+## Run the queue on Linux or Windows
+
+The queue is opt-in while these platforms are being tested. On Linux, install the GTK 3 and WebKitGTK 4.1 development packages (`libgtk-3-dev` and `libwebkit2gtk-4.1-dev` on Debian or Ubuntu), plus a C toolchain and `pkg-config`. On Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app checks that both native WebView2 controllers support InPrivate mode before loading a page.
+
+```sh
+cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --queue
+```
+
+The queue file is `com.pear-desktop.rust-preview/queue.json` under `$XDG_DATA_HOME` (or `~/.local/share`) on Linux and under `%LOCALAPPDATA%` on Windows. To test with a fresh queue, set `PEAR_PREVIEW_QUEUE_DIR` to a separate absolute directory. **View → Hide Queue** and **File → Add Video** are available from the native menus.
+
+On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed that the bundled controls received their Rust acknowledgement and that YouTube's example video title appeared and persisted. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. Windows x64 passed an MSVC cross-target type check. Native Windows behavior and live Linux audio still need runtime checks.
+
+Omit `--queue` to run the original system WebView compatibility experiment from Cargo:
 
 ```sh
 cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview
@@ -40,7 +52,7 @@ Node 24 runs the checked-in JavaScript worklet as the oracle for the host Rust p
 cargo test --locked --manifest-path experiments/rust-desktop/Cargo.toml --workspace --all-features
 ```
 
-A native Linux ARM64 build loaded the local benchmark page in WebKitGTK under Xvfb. On macOS, the Windows x64 target passed `cargo check`. Windows runtime behavior and live Linux playback still require native tests.
+A native Linux ARM64 build loaded the local benchmark page in WebKitGTK under Xvfb.
 
 The queue frontend tests exercise the controls and IPC acknowledgements using the repository's installed Playwright Chromium.
 

@@ -1565,6 +1565,7 @@ dependencies = [
 name = "pear-desktop-preview"
 version = "0.3.0"
 dependencies = [
+ "gtk",
  "muda",
  "objc2-foundation",
  "open",
@@ -1572,8 +1573,10 @@ dependencies = [
  "serde_json",
  "tao",
  "url",
+ "webkit2gtk",
  "webview2-com",
  "windows-core",
+ "windows-sys 0.61.2",
  "wry",
 ]
 

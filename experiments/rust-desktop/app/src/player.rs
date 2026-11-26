@@ -1,4 +1,5 @@
-//! The bundled macOS player separates its local controls from the remote video.
+//! The desktop queue separates its local controls from the remote video.
+mod platform;
 use std::{
     borrow::Cow,
     fs::{self, File, OpenOptions},
@@ -11,29 +12,39 @@ use muda::{
     Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
     accelerator::{Accelerator, CMD_OR_CTRL, Code, Modifiers},
 };
+#[cfg(target_os = "macos")]
 use objc2_foundation::NSBundle;
 use serde::Deserialize;
 use tao::{
-    dpi::{LogicalPosition, LogicalSize},
+    dpi::LogicalSize,
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder},
     window::{Window, WindowBuilder},
 };
 use wry::{
-    NewWindowResponse, PageLoadEvent, PermissionResponse, Rect, WebView, WebViewBuilder,
-    WebViewBuilderExtDarwin,
+    NewWindowResponse, PermissionResponse, WebView, WebViewBuilder,
     http::{HeaderMap, HeaderValue, Request, Response, header},
 };
+
+#[cfg(target_os = "macos")]
+use wry::WebViewBuilderExtDarwin;
 
 use crate::{
     Result, TITLE, attach_menu,
     library::{Command, Library},
 };
 
-const BUNDLE_ID: &str = "com.pear-desktop.rust-preview";
-const CONTROLS_URL: &str = "pear-queue://app.local/";
+use platform::{APP_ID, Layout, Pane};
+
+const CONTROLS_ASSET_URL: &str = "pear-queue://app.local/";
+#[cfg(not(target_os = "windows"))]
+const CONTROLS_URL: &str = CONTROLS_ASSET_URL;
+#[cfg(target_os = "windows")]
+const CONTROLS_URL: &str = "https://pear-queue.app.local/";
+#[cfg(not(target_os = "windows"))]
 const CONTROLS_CSP: &str = "default-src 'none'; script-src pear-queue:; style-src pear-queue:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
-const PANEL_WIDTH: f64 = 384.0;
+#[cfg(target_os = "windows")]
+const CONTROLS_CSP: &str = "default-src 'none'; script-src https://pear-queue.app.local; style-src https://pear-queue.app.local; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const MAX_IPC_BYTES: usize = 4096;
 const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -49,9 +60,8 @@ h1{font-size:30px;letter-spacing:-.04em;margin:0}
 enum PlayerEvent {
     Menu(MenuEvent),
     Command(ControlMessage),
-    Loaded(u64),
     TitleChanged(u64, String),
-    PlayerStopped(u64),
+    VideoProblem(u64, &'static str),
 }
 
 #[derive(Deserialize)]
@@ -61,26 +71,36 @@ struct ControlMessage {
     command: Command,
 }
 
-pub fn is_bundle_launch() -> bool {
-    std::env::args_os().len() == 1
-        && NSBundle::mainBundle()
+pub struct LaunchMode {
+    smoke: bool,
+}
+
+pub fn launch_mode() -> Result<Option<LaunchMode>> {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let queue = args.len() == 1 && args[0] == "--queue";
+    let smoke = cfg!(feature = "benchmark") && args.len() == 1 && args[0] == "--queue-smoke";
+    #[cfg(target_os = "macos")]
+    {
+        let bundled = NSBundle::mainBundle()
             .bundleIdentifier()
-            .is_some_and(|id| id.to_string() == BUNDLE_ID)
+            .is_some_and(|id| id.to_string() == APP_ID);
+        if (queue || smoke) && !bundled {
+            return Err("The native queue requires the Pear Desktop macOS app bundle.".into());
+        }
+        if bundled && args.is_empty() {
+            return Ok(Some(LaunchMode { smoke: false }));
+        }
+    }
+    if smoke && std::env::var_os("PEAR_PREVIEW_QUEUE_DIR").is_none() {
+        return Err(
+            "Set PEAR_PREVIEW_QUEUE_DIR to a disposable directory for smoke testing.".into(),
+        );
+    }
+    Ok((queue || smoke).then_some(LaunchMode { smoke }))
 }
 
 fn queue_path_and_lock() -> Result<(PathBuf, File)> {
-    let data_dir = match std::env::var_os("PEAR_PREVIEW_QUEUE_DIR") {
-        Some(directory) => {
-            let directory = PathBuf::from(directory);
-            if !directory.is_absolute() {
-                return Err("PEAR_PREVIEW_QUEUE_DIR must be an absolute path.".into());
-            }
-            directory
-        }
-        None => PathBuf::from(std::env::var_os("HOME").ok_or("Home directory is unavailable")?)
-            .join("Library/Application Support")
-            .join(BUNDLE_ID),
-    };
+    let data_dir = platform::queue_directory()?;
     fs::create_dir_all(&data_dir)?;
     let lock = OpenOptions::new()
         .create(true)
@@ -97,7 +117,7 @@ fn queue_path_and_lock() -> Result<(PathBuf, File)> {
 fn controls_response(request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
     let asset: Option<(&str, &[u8])> = if request.method() == "GET" {
         match request.uri().to_string().as_str() {
-            CONTROLS_URL => Some((
+            CONTROLS_ASSET_URL => Some((
                 "text/html; charset=utf-8",
                 include_bytes!("../ui/index.html"),
             )),
@@ -135,24 +155,8 @@ fn controls_command(request: &Request<String>) -> Option<ControlMessage> {
     serde_json::from_str(request.body()).ok()
 }
 
-fn pane_bounds(window: &Window, queue_visible: bool) -> (Rect, Rect) {
-    let size = window.inner_size().to_logical::<f64>(window.scale_factor());
-    let panel_width = if queue_visible { PANEL_WIDTH } else { 0.0 };
-    let player_width = (size.width - panel_width).max(0.0);
-    let player = Rect {
-        position: LogicalPosition::new(0.0, 0.0).into(),
-        size: LogicalSize::new(player_width, size.height).into(),
-    };
-    let controls = Rect {
-        position: LogicalPosition::new(player_width, 0.0).into(),
-        size: LogicalSize::new(size.width - player_width, size.height).into(),
-    };
-    (player, controls)
-}
-
-fn isolated_builder(bounds: Rect) -> WebViewBuilder<'static> {
-    WebViewBuilder::new()
-        .with_bounds(bounds)
+fn isolated_builder(builder: WebViewBuilder<'_>) -> WebViewBuilder<'_> {
+    builder
         .with_incognito(true)
         .with_autoplay(false)
         .with_devtools(false)
@@ -178,64 +182,63 @@ fn video_title(document_title: &str) -> Option<&str> {
 }
 
 fn show_video(
+    layout: &Layout,
     window: &Window,
-    bounds: Rect,
+    queue_visible: bool,
     id: Option<&str>,
     generation: u64,
     events: tao::event_loop::EventLoopProxy<PlayerEvent>,
-) -> wry::Result<WebView> {
-    let builder = isolated_builder(bounds);
+) -> Result<WebView> {
     let Some(id) = id else {
-        return builder
-            .with_html(EMPTY_PLAYER)
-            .with_navigation_handler(|url| url == "about:blank")
-            .build_as_child(window);
+        let view = layout.build(
+            window,
+            |builder| isolated_builder(builder).with_navigation_handler(|url| url == "about:blank"),
+            Pane::Video,
+            queue_visible,
+        )?;
+        view.load_html(EMPTY_PLAYER)?;
+        return Ok(view);
     };
 
     let url = embed_url(id);
     let permitted_url = url.clone();
-    let ready_url = url.clone();
+    let title_events = events.clone();
+    let report_problem = move |message| {
+        let _ = events.send_event(PlayerEvent::VideoProblem(generation, message));
+    };
+    #[cfg(target_os = "macos")]
+    let on_stopped = report_problem.clone();
+    let view = layout.build(
+        window,
+        move |builder| {
+            let builder = isolated_builder(builder)
+                .with_navigation_handler(move |candidate| candidate == permitted_url)
+                .with_document_title_changed_handler(move |title| {
+                    if let Some(title) = video_title(&title) {
+                        let _ = title_events
+                            .send_event(PlayerEvent::TitleChanged(generation, title.into()));
+                    }
+                });
+            #[cfg(target_os = "macos")]
+            let builder = builder.with_on_web_content_process_terminate_handler(move || {
+                on_stopped("The video player stopped. Use Reload Player or Open in browser.");
+            });
+            builder
+        },
+        Pane::Video,
+        queue_visible,
+    )?;
+    #[cfg(target_os = "linux")]
+    platform::observe_video(&view, &url, report_problem);
+    #[cfg(target_os = "windows")]
+    platform::observe_video(&view, report_problem)?;
     let mut headers = HeaderMap::new();
     headers.insert(
         header::REFERER,
-        HeaderValue::from_static("https://com.pear-desktop.rust-preview"),
+        HeaderValue::from_str(&format!("https://{APP_ID}"))?,
     );
-    let title_events = events.clone();
-    let stopped_events = events.clone();
-    builder
-        .with_navigation_handler(move |candidate| candidate == permitted_url)
-        .with_document_title_changed_handler(move |title| {
-            if let Some(title) = video_title(&title) {
-                let _ =
-                    title_events.send_event(PlayerEvent::TitleChanged(generation, title.into()));
-            }
-        })
-        .with_on_web_content_process_terminate_handler(move || {
-            let _ = stopped_events.send_event(PlayerEvent::PlayerStopped(generation));
-        })
-        .with_on_page_load_handler(move |event, candidate| {
-            if matches!(event, PageLoadEvent::Finished) && candidate == ready_url {
-                let _ = events.send_event(PlayerEvent::Loaded(generation));
-            }
-        })
-        .with_url_and_headers(url, headers)
-        .build_as_child(window)
-}
-
-fn resize_panes(
-    window: &Window,
-    player: Option<&WebView>,
-    controls: &WebView,
-    queue_visible: bool,
-) -> wry::Result<()> {
-    let (player_bounds, controls_bounds) = pane_bounds(window, queue_visible);
-    let video_result = player.map_or(Ok(()), |player| player.set_bounds(player_bounds));
-    let controls_result = if queue_visible {
-        controls.set_bounds(controls_bounds)
-    } else {
-        Ok(())
-    };
-    video_result.and(controls_result)
+    view.load_url_with_headers(&url, headers)?;
+    Ok(view)
 }
 
 fn focus_add(controls: &WebView) -> wry::Result<()> {
@@ -250,6 +253,7 @@ fn render(
     notice: Option<&str>,
     acknowledged_sequence: Option<std::num::NonZeroU32>,
     player_problem: Option<&str>,
+    verify_controls: bool,
 ) -> Result<()> {
     // JSON encodes every argument as data. This script only runs in the local view.
     let state = serde_json::to_string(library.state())?;
@@ -257,42 +261,53 @@ fn render(
     let notice = serde_json::to_string(&notice)?;
     let ack = serde_json::to_string(&acknowledged_sequence)?;
     let player_problem = serde_json::to_string(&player_problem)?;
-    controls.evaluate_script(&format!(
-        "window.renderPearState({state},{error},{notice},{ack},{player_problem});"
-    ))?;
+    let mut script =
+        format!("window.renderPearState({state},{error},{notice},{ack},{player_problem});");
+    if verify_controls {
+        script.push_str("document.getElementById('video-source').disabled === false;");
+        controls.evaluate_script_with_callback(&script, |result| {
+            if result == "true" {
+                println!("PEAR_QUEUE_READY");
+            } else {
+                eprintln!("Queue smoke check failed: the link field is disabled.");
+            }
+        })?;
+    } else {
+        controls.evaluate_script(&script)?;
+    }
     Ok(())
 }
 
-pub fn run() -> Result<()> {
+pub fn run(mode: LaunchMode) -> Result<()> {
     let (queue_path, queue_lock) = queue_path_and_lock()?;
+    let data_dir = queue_path
+        .parent()
+        .ok_or("Queue directory is unavailable")?
+        .to_owned();
     let mut library = Library::load(queue_path)?;
-    let event_loop = EventLoopBuilder::<PlayerEvent>::with_user_event().build();
+    let mut event_loop_builder = EventLoopBuilder::<PlayerEvent>::with_user_event();
+    platform::configure_event_loop(&mut event_loop_builder)?;
+    let event_loop = event_loop_builder.build();
     let window = WindowBuilder::new()
         .with_title(TITLE)
         .with_inner_size(LogicalSize::new(1180, 700))
         .with_min_inner_size(LogicalSize::new(850, 520))
         .build(&event_loop)?;
 
+    let accelerator =
+        |mods, key| (!cfg!(target_os = "windows")).then(|| Accelerator::new(mods, key));
     let quit = MenuItem::new(
         "Quit Pear Desktop Rust Preview",
         true,
-        Some(Accelerator::new(CMD_OR_CTRL, Code::KeyQ)),
+        accelerator(CMD_OR_CTRL, Code::KeyQ),
     );
-    let reload = MenuItem::new(
-        "Reload Player",
-        true,
-        Some(Accelerator::new(CMD_OR_CTRL, Code::KeyR)),
-    );
+    let reload = MenuItem::new("Reload Player", true, accelerator(CMD_OR_CTRL, Code::KeyR));
     let toggle_queue = MenuItem::new(
         "Hide Queue",
         true,
-        Some(Accelerator::new(CMD_OR_CTRL | Modifiers::SHIFT, Code::KeyL)),
+        accelerator(CMD_OR_CTRL | Modifiers::SHIFT, Code::KeyL),
     );
-    let add_video = MenuItem::new(
-        "Add Video",
-        true,
-        Some(Accelerator::new(CMD_OR_CTRL, Code::KeyL)),
-    );
+    let add_video = MenuItem::new("Add Video", true, accelerator(CMD_OR_CTRL, Code::KeyL));
     let app_menu = Submenu::with_items("Pear Desktop", true, &[&quit])?;
     let file_menu = Submenu::with_items("File", true, &[&add_video])?;
     let view_menu = Submenu::with_items("View", true, &[&toggle_queue, &reload])?;
@@ -313,39 +328,47 @@ pub fn run() -> Result<()> {
         let _ = menu_proxy.send_event(PlayerEvent::Menu(event));
     })));
 
+    let layout = Layout::new(&window, &data_dir)?;
     let controls_proxy = event_loop.create_proxy();
-    let controls = isolated_builder(pane_bounds(&window, true).1)
-        .with_custom_protocol("pear-queue".into(), |_, request| controls_response(request))
-        .with_navigation_handler(|url| url == CONTROLS_URL)
-        .with_ipc_handler(move |request| {
-            if let Some(command) = controls_command(&request) {
-                let _ = controls_proxy.send_event(PlayerEvent::Command(command));
-            }
-        })
-        .with_url(CONTROLS_URL)
-        .build_as_child(&window)?;
-
+    let controls = layout.build(
+        &window,
+        move |builder| {
+            isolated_builder(builder)
+                .with_custom_protocol("pear-queue".into(), |_, request| controls_response(request))
+                .with_navigation_handler(|url| url == CONTROLS_URL)
+                .with_ipc_handler(move |request| {
+                    if let Some(command) = controls_command(&request) {
+                        let _ = controls_proxy.send_event(PlayerEvent::Command(command));
+                    }
+                })
+        },
+        Pane::Controls,
+        true,
+    )?;
+    controls.load_url(CONTROLS_URL)?;
     let loader = event_loop.create_proxy();
-    let load = move |window: &Window, library: &Library, generation, queue_visible| {
-        show_video(
-            window,
-            pane_bounds(window, queue_visible).0,
-            library.state().current.as_deref(),
-            generation,
-            loader.clone(),
-        )
-    };
+    let load =
+        move |layout: &Layout, window: &Window, library: &Library, generation, queue_visible| {
+            show_video(
+                layout,
+                window,
+                queue_visible,
+                library.state().current.as_deref(),
+                generation,
+                loader.clone(),
+            )
+        };
     let mut queue_visible = true;
     let mut generation = 0;
     let (mut current_player, mut player_error) =
-        match load(&window, &library, generation, queue_visible) {
+        match load(&layout, &window, &library, generation, queue_visible) {
             Ok(video) => (Some(video), None),
             Err(error) => (None, Some(format!("Could not open the player: {error}"))),
         };
     let mut load_deadline = (current_player.is_some() && library.state().current.is_some())
         .then(|| Instant::now() + LOAD_TIMEOUT);
     let mut loading_slow = false;
-    let mut loaded_generation = None;
+    let mut titled_generation = None;
     let mut controls_ready = false;
 
     event_loop.run(move |event, _, flow| {
@@ -354,6 +377,7 @@ pub fn run() -> Result<()> {
         let mut reload_player = false;
         let mut error = None;
         let mut acknowledged_sequence = None;
+        let mut verify_controls = false;
 
         match event {
             Event::WindowEvent {
@@ -362,9 +386,12 @@ pub fn run() -> Result<()> {
                 match event {
                     WindowEvent::CloseRequested => *flow = ControlFlow::Exit,
                     WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                        if let Err(error) =
-                            resize_panes(&window, current_player.as_ref(), &controls, queue_visible)
-                        {
+                        if let Err(error) = layout.arrange(
+                            &window,
+                            current_player.as_ref(),
+                            &controls,
+                            queue_visible,
+                        ) {
                             eprintln!("Could not resize the player: {error}");
                         }
                     }
@@ -385,21 +412,19 @@ pub fn run() -> Result<()> {
                 let adding = event.id == *add_video.id();
                 let show = adding || !queue_visible;
                 if show != queue_visible {
-                    match controls.set_visible(show) {
+                    match layout.arrange(&window, current_player.as_ref(), &controls, show) {
                         Ok(()) => {
                             queue_visible = show;
                             toggle_queue.set_text(if show { "Hide Queue" } else { "Show Queue" });
-                            let resized =
-                                resize_panes(&window, current_player.as_ref(), &controls, show);
-                            if let Err(reason) = resized {
-                                error = Some(format!("Could not resize the player: {reason}"));
-                            }
                             if !show && let Some(player) = current_player.as_ref() {
                                 let _ = player.focus();
                             }
                         }
                         Err(reason) => {
-                            error = Some(format!("Could not change the queue view: {reason}"))
+                            let _ = layout.arrange(
+                                &window, current_player.as_ref(), &controls, queue_visible,
+                            );
+                            error = Some(format!("Could not change the queue view: {reason}"));
                         }
                     }
                 }
@@ -408,23 +433,26 @@ pub fn run() -> Result<()> {
                 }
             }
             Event::UserEvent(PlayerEvent::TitleChanged(id, title)) if id == generation => {
+                let first_title = titled_generation != Some(id);
+                if first_title {
+                    if mode.smoke {
+                        println!("PEAR_QUEUE_VIDEO_TITLE");
+                    }
+                    titled_generation = Some(id);
+                    load_deadline = None;
+                    loading_slow = false;
+                }
                 if let Some(current) = library.state().current.clone() {
                     match library.remember_title(&current, &title) {
-                        Ok(true) => {}
-                        Ok(false) => return,
+                        Ok(false) if !first_title => return,
+                        Ok(_) => {}
                         Err(reason) => error = Some(reason.to_string()),
                     }
                 }
             }
-            Event::UserEvent(PlayerEvent::PlayerStopped(id)) if id == generation => {
+            Event::UserEvent(PlayerEvent::VideoProblem(id, message)) if id == generation => {
                 load_deadline = None;
-                player_error =
-                    Some("The video player stopped. Use Reload Player or Open in browser.".into());
-            }
-            Event::UserEvent(PlayerEvent::Loaded(id)) if id == generation => {
-                loaded_generation = Some(id);
-                load_deadline = None;
-                loading_slow = false;
+                player_error = Some(message.into());
             }
             Event::NewEvents(StartCause::ResumeTimeReached { .. })
                 if load_deadline.is_some_and(|deadline| Instant::now() >= deadline) =>
@@ -435,7 +463,10 @@ pub fn run() -> Result<()> {
             Event::UserEvent(PlayerEvent::Command(message)) => {
                 acknowledged_sequence = Some(message.sequence);
                 match message.command {
-                    Command::Ready {} => controls_ready = true,
+                    Command::Ready {} => {
+                        verify_controls = mode.smoke && !controls_ready;
+                        controls_ready = true;
+                    }
                     Command::OpenBrowser {} => {
                         if let Some(id) = &library.state().current
                             && let Err(reason) =
@@ -460,7 +491,7 @@ pub fn run() -> Result<()> {
             // Remove the old WebView before creating the next one so its audio stops
             // even if the new WebView fails to initialize.
             drop(current_player.take());
-            match load(&window, &library, generation, queue_visible) {
+            match load(&layout, &window, &library, generation, queue_visible) {
                 Ok(video) => {
                     current_player = Some(video);
                     player_error = None;
@@ -476,11 +507,11 @@ pub fn run() -> Result<()> {
         if controls_ready {
             let notice = if library.state().current.is_none()
                 || player_error.is_some()
-                || loaded_generation == Some(generation)
+                || titled_generation == Some(generation)
             {
                 None
             } else if loading_slow {
-                Some("This video is taking longer to open. Use Reload Player or Open in browser.")
+                Some("Could not confirm the video loaded. Use Reload Player or Open in browser if playback is unavailable.")
             } else {
                 Some("Opening the YouTube player…")
             };
@@ -491,6 +522,7 @@ pub fn run() -> Result<()> {
                 notice,
                 acknowledged_sequence,
                 player_error.as_deref(),
+                verify_controls,
             ) {
                 eprintln!("Could not update the queue controls: {error}");
             }
@@ -552,14 +584,14 @@ mod tests {
                 .body(vec![])
                 .unwrap()
         };
-        let response = controls_response(request(CONTROLS_URL, "GET"));
+        let response = controls_response(request(CONTROLS_ASSET_URL, "GET"));
         assert_eq!(response.status(), 200);
         assert_eq!(
             response.headers()[header::CONTENT_SECURITY_POLICY],
             CONTROLS_CSP
         );
         assert_eq!(
-            controls_response(request(CONTROLS_URL, "POST")).status(),
+            controls_response(request(CONTROLS_ASSET_URL, "POST")).status(),
             404
         );
         assert_eq!(

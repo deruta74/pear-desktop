@@ -1,8 +1,6 @@
 mod page;
 
-#[cfg(target_os = "macos")]
 mod library;
-#[cfg(target_os = "macos")]
 mod player;
 
 use std::{error::Error, sync::Arc};
@@ -187,14 +185,11 @@ fn run() -> Result<()> {
 }
 
 fn main() {
-    #[cfg(target_os = "macos")]
-    let result = if player::is_bundle_launch() {
-        player::run()
-    } else {
-        run()
+    let result = match player::launch_mode() {
+        Ok(Some(mode)) => player::run(mode),
+        Ok(None) => run(),
+        Err(error) => Err(error),
     };
-    #[cfg(not(target_os = "macos"))]
-    let result = run();
 
     if let Err(error) = result {
         eprintln!("{TITLE}: {error}");
