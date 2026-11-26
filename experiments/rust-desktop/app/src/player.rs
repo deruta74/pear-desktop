@@ -29,9 +29,11 @@ use tao::{
 };
 use wry::{
     NewWindowResponse, PermissionResponse, WebView, WebViewBuilder,
-    http::{HeaderMap, HeaderValue, Request, Response, header},
+    http::{Request, Response, header},
 };
 
+#[cfg(not(target_os = "windows"))]
+use wry::http::{HeaderMap, HeaderValue};
 #[cfg(target_os = "macos")]
 use wry::{PageLoadEvent, WebViewBuilderExtDarwin};
 
@@ -93,8 +95,10 @@ struct QueueView<'a> {
     metadata_problem: Option<&'static str>,
 }
 
+#[derive(Clone, Copy)]
 pub struct LaunchMode {
     smoke: bool,
+    #[cfg(target_os = "macos")]
     iframe_player: bool,
 }
 
@@ -129,6 +133,7 @@ pub fn launch_mode() -> Result<Option<LaunchMode>> {
     }
     Ok((queue || smoke || iframe_player).then_some(LaunchMode {
         smoke,
+        #[cfg(target_os = "macos")]
         iframe_player,
     }))
 }
@@ -222,7 +227,7 @@ fn show_video(
     id: Option<&str>,
     generation: u64,
     events: tao::event_loop::EventLoopProxy<PlayerEvent>,
-    iframe_player: bool,
+    mode: LaunchMode,
 ) -> Result<WebView> {
     let Some(id) = id else {
         let view = layout.build(
@@ -240,7 +245,7 @@ fn show_video(
         let _ = problem_events.send_event(PlayerEvent::VideoProblem(generation, message));
     };
     #[cfg(target_os = "macos")]
-    if iframe_player {
+    if mode.iframe_player {
         let page = Arc::new(iframe::Page::new(id)?);
         let navigation = page.clone();
         let view = layout.build(
@@ -268,8 +273,8 @@ fn show_video(
         page.load(&view)?;
         return Ok(view);
     }
-    #[cfg(not(target_os = "macos"))]
-    let _ = iframe_player;
+    #[cfg(target_os = "linux")]
+    let _ = mode;
     let url = embed_url(id);
     let permitted_url = url.clone();
     let title_events = events.clone();
@@ -294,17 +299,37 @@ fn show_video(
         },
         Pane::Video,
         queue_visible,
-    )?;
+    );
+    #[cfg(target_os = "windows")]
+    if mode.smoke && view.is_err() {
+        println!("PEAR_WINDOWS_VIDEO_SETUP_ERROR stage=controller");
+    }
+    let view = view?;
     #[cfg(target_os = "linux")]
     platform::observe_video(&view, &url, report_problem);
+    let referer = format!("https://{APP_ID}");
     #[cfg(target_os = "windows")]
-    platform::observe_video(&view, report_problem)?;
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::REFERER,
-        HeaderValue::from_str(&format!("https://{APP_ID}"))?,
-    );
-    view.load_url_with_headers(&url, headers)?;
+    {
+        let observer = platform::observe_video(&view, &url, mode.smoke, report_problem);
+        if mode.smoke && observer.is_err() {
+            println!("PEAR_WINDOWS_VIDEO_SETUP_ERROR stage=observer");
+        }
+        observer?;
+        let navigation = platform::load_video_with_referer(&view, &url, &referer);
+        if mode.smoke {
+            match &navigation {
+                Ok(()) => println!("PEAR_WINDOWS_VIDEO_REQUEST_SUBMITTED"),
+                Err(reason) => println!("PEAR_WINDOWS_VIDEO_SETUP_ERROR stage=navigation {reason}"),
+            }
+        }
+        navigation?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::REFERER, HeaderValue::from_str(&referer)?);
+        view.load_url_with_headers(&url, headers)?;
+    }
     Ok(view)
 }
 
@@ -427,7 +452,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     )?;
     controls.load_url(CONTROLS_URL)?;
     let loader = event_loop.create_proxy();
-    let iframe_player = mode.iframe_player;
     let load =
         move |layout: &Layout, window: &Window, library: &Library, generation, queue_visible| {
             show_video(
@@ -437,7 +461,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 library.state().current.as_deref(),
                 generation,
                 loader.clone(),
-                iframe_player,
+                mode,
             )
         };
     let mut queue_visible = true;
@@ -468,7 +492,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             },
         );
     #[cfg(target_os = "macos")]
-    let mut transport = iframe_player.then(transport::Transport::default);
+    let mut transport = mode.iframe_player.then(transport::Transport::default);
     #[cfg(target_os = "macos")]
     let results = event_loop.create_proxy();
 
@@ -618,6 +642,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 if overdue {
                     load_deadline = None;
                     loading_slow = true;
+                    #[cfg(target_os = "windows")]
+                    if mode.smoke && let Some(player) = &current_player {
+                        platform::diagnose_video(player);
+                    }
                 }
                 #[cfg(target_os = "macos")]
                 let overdue = overdue || expired;
