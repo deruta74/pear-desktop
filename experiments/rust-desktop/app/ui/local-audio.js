@@ -90,6 +90,28 @@ open.addEventListener('click', () => {
 play.addEventListener('click', () => {
   if (current) send('set_playing', { playing: !current.playing });
 });
+document.addEventListener('keydown', (event) => {
+  if (
+    event.code !== 'Space' ||
+    !current ||
+    play.disabled ||
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.repeat ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    (event.target instanceof Element &&
+      event.target.closest(
+        'input, textarea, select, button, a, summary, [contenteditable]',
+      ))
+  ) {
+    return;
+  }
+  event.preventDefault();
+  play.click();
+});
 seek.addEventListener('pointerdown', () => {
   scrubbing = true;
 });

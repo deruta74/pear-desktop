@@ -71,6 +71,17 @@ test('opens local audio files and sends playback and exact reverb settings to Ru
   await expect(
     page.getByRole('button', { name: 'Pause', exact: true }),
   ).toBeFocused();
+  await page.getByRole('heading', { name: 'Local audio', exact: true }).click();
+  await page.keyboard.press('Space');
+  expect((await messages()).at(-1)).toEqual({
+    type: 'set_playing',
+    playing: false,
+  });
+  await render({ track, transport });
+  const beforeVolumeEdit = (await messages()).length;
+  await page.getByRole('slider', { name: 'Volume' }).press('Space');
+  expect(await messages()).toHaveLength(beforeVolumeEdit);
+
   const seek = page.getByRole('slider', { name: 'Playback position' });
   await seek.press('End');
   expect((await messages()).at(-1)).toEqual({
