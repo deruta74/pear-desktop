@@ -76,25 +76,20 @@ impl Library {
         let mut state = self.state.clone();
         match command {
             Command::Add { source } => {
-                let id = video_id(&source).ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Enter a YouTube video link or ID.",
-                    )
-                })?;
-                if state.entries.contains(&id) {
-                    return Ok(false);
+                for id in video_ids(&source)? {
+                    if !state.entries.contains(&id) {
+                        state.entries.push(id);
+                    }
                 }
-                if state.entries.len() >= MAX_ENTRIES {
+                if state.entries.len() > MAX_ENTRIES {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
                         format!("The queue can hold up to {MAX_ENTRIES} videos."),
                     ));
                 }
                 if state.current.is_none() {
-                    state.current = Some(id.clone());
+                    state.current = state.entries.first().cloned();
                 }
-                state.entries.push(id);
             }
             Command::Select { id } => {
                 entry_index(&state.entries, &id)?;
@@ -186,6 +181,38 @@ fn normalized_title(title: &str) -> Option<&str> {
         .map_or(title.len(), |(index, _)| index);
     let title = title[..end].trim_end();
     (!title.is_empty()).then_some(title)
+}
+
+fn video_ids(source: &str) -> io::Result<Vec<String>> {
+    let invalid_source = || {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Enter a YouTube video link or ID.",
+        )
+    };
+    if source.len() > MAX_SOURCE_BYTES {
+        return Err(invalid_source());
+    }
+
+    let inputs = source
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty());
+    if inputs.clone().nth(1).is_none() {
+        let id = video_id(source).ok_or_else(invalid_source)?;
+        return Ok(vec![id]);
+    }
+
+    inputs
+        .map(|(index, line)| {
+            video_id(line).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Enter a YouTube video link or ID on line {}.", index + 1),
+                )
+            })
+        })
+        .collect()
 }
 
 fn video_id(source: &str) -> Option<String> {
@@ -444,6 +471,63 @@ mod tests {
     }
 
     #[test]
+    fn adds_batches_in_order_without_interrupting_the_current_video() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let mut library = Library::load(path.clone()).unwrap();
+        let first_batch = format!("\r\n https://youtu.be/{SECOND} \r\n{FIRST}\r\n\r\n{SECOND}\r\n");
+        assert!(library.apply(add(&first_batch)).unwrap());
+        assert_eq!(library.state().entries, [SECOND, FIRST]);
+        assert_eq!(library.state().current.as_deref(), Some(SECOND));
+
+        assert!(library.apply(select(FIRST)).unwrap());
+        assert!(library.remember_title(FIRST, "Current video").unwrap());
+        let second_batch = format!("{FIRST}\nhttps://www.youtube.com/watch?v={THIRD}\n{THIRD}");
+        assert!(!library.apply(add(&second_batch)).unwrap());
+        let restored = Library::load(path).unwrap();
+        assert_eq!(restored.state().entries, [SECOND, FIRST, THIRD]);
+        assert_eq!(restored.state().current.as_deref(), Some(FIRST));
+        assert_eq!(restored.state().titles[FIRST], "Current video");
+    }
+
+    #[test]
+    fn rejects_an_invalid_batch_at_its_original_line_without_adding_valid_entries() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let mut library = Library::load(path.clone()).unwrap();
+        library.apply(add(FIRST)).unwrap();
+        let saved = fs::read(&path).unwrap();
+
+        let source = format!("{SECOND}\n\nhttps://youtu.be/{THIRD}?bad=\tvalue\n{THIRD}");
+        let error = library.apply(add(&source)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            error.to_string(),
+            "Enter a YouTube video link or ID on line 3."
+        );
+        assert_eq!(library.state().entries, [FIRST]);
+        assert_eq!(library.state().current.as_deref(), Some(FIRST));
+        assert_eq!(fs::read(path).unwrap(), saved);
+    }
+
+    #[test]
+    fn applies_the_byte_limit_to_the_whole_batch_before_skipping_blank_lines() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let mut library = Library::load(path.clone()).unwrap();
+        let padding = " ".repeat(4096 - FIRST.len() - SECOND.len() - 2);
+        let source = format!("{FIRST}\n{padding}\n{SECOND}");
+
+        let error = library.apply(add(&format!("{source}\n"))).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(library.state().entries.is_empty());
+        assert!(!path.exists());
+
+        assert!(library.apply(add(&source)).unwrap());
+        assert_eq!(library.state().entries, [FIRST, SECOND]);
+    }
+
+    #[test]
     fn navigation_is_bounded_and_removal_prefers_the_next_video() {
         let directory = TestDirectory::new();
         let mut library = Library::load(directory.queue_path()).unwrap();
@@ -589,7 +673,15 @@ mod tests {
         library.apply(add(FIRST)).unwrap();
         let saved = fs::read(&path).unwrap();
 
-        assert!(library.apply(add("invalid")).is_err());
+        for source in [
+            "invalid",
+            "\nhttps://youtu.be/dQw4w9WgXcQ?bad=\tvalue\n",
+            "\r\n \n",
+        ] {
+            let error = library.apply(add(source)).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert_eq!(error.to_string(), "Enter a YouTube video link or ID.");
+        }
         assert!(library.apply(select(SECOND)).is_err());
         assert!(library.apply(remove(SECOND)).is_err());
         assert!(
@@ -691,5 +783,30 @@ mod tests {
         assert!(!library.apply(add(&id(0))).unwrap());
         assert!(library.apply(select(&id(1))).unwrap());
         assert_eq!(library.state().current.as_deref(), Some(id(1).as_str()));
+    }
+
+    #[test]
+    fn counts_unique_entries_before_enforcing_batch_capacity() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let entries: Vec<String> = (0..499).map(|index| format!("video{index:06}")).collect();
+        let saved = serde_json::json!({"entries": entries, "current": entries[0]}).to_string();
+        fs::write(&path, &saved).unwrap();
+        let mut library = Library::load(path.clone()).unwrap();
+
+        let error = library
+            .apply(add(&format!("{FIRST}\n{SECOND}")))
+            .unwrap_err();
+        assert_eq!(error.to_string(), "The queue can hold up to 500 videos.");
+        assert_eq!(library.state().entries, entries);
+        assert_eq!(fs::read_to_string(&path).unwrap(), saved);
+
+        let source = format!("{}\n{FIRST}\nhttps://youtu.be/{FIRST}", entries[0]);
+        assert!(!library.apply(add(&source)).unwrap());
+        assert_eq!(library.state().entries.len(), 500);
+        assert_eq!(library.state().entries[499], FIRST);
+        let saved = fs::read(&path).unwrap();
+        assert!(!library.apply(add(&source)).unwrap());
+        assert_eq!(fs::read(path).unwrap(), saved);
     }
 }

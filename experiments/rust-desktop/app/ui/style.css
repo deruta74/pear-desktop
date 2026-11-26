@@ -35,7 +35,8 @@ p {
 }
 
 button,
-input {
+input,
+textarea {
   min-height: var(--target);
   border: 1px solid var(--control-border);
   border-radius: 0.5rem;
@@ -72,7 +73,7 @@ button[aria-disabled='true'] {
 
 .panel {
   display: grid;
-  grid-template-rows: auto auto auto minmax(6rem, 1fr);
+  grid-template-rows: auto auto auto minmax(7.25rem, 1fr);
   gap: 1.25rem;
   min-height: min-content;
   height: 100vh;
@@ -230,25 +231,43 @@ label {
 
 .add-controls {
   display: flex;
+  align-items: flex-start;
   gap: 0.5rem;
   margin-block-start: 0.375rem;
 }
 
-.add-controls input {
-  flex: 1;
+.add-controls textarea,
+.queue-filter {
   min-width: 0;
-  padding-inline: 0.75rem;
+  padding: 0.625rem 0.75rem;
   background: var(--background);
   font-size: 0.875rem;
 }
 
-.add-controls input::placeholder {
+.add-controls textarea {
+  flex: 1;
+  max-height: 7rem;
+  resize: vertical;
+}
+
+.add-controls textarea::placeholder,
+.queue-filter::placeholder {
   color: var(--quiet);
 }
 
 .add-button {
   min-width: 3.5rem;
   font-size: 0.875rem;
+}
+
+.add-button:enabled:not([aria-disabled='true']) {
+  border-color: transparent;
+  color: var(--background);
+  background: var(--accent);
+}
+
+.add-button:enabled:not([aria-disabled='true']):hover {
+  filter: brightness(1.08);
 }
 
 .feedback {
@@ -272,9 +291,17 @@ label {
   min-height: 0;
 }
 
-.queue-heading {
+.queue-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
   padding-block-end: 0.5rem;
   border-block-end: 1px solid var(--line);
+}
+
+.queue-filter {
+  width: min(9rem, 42vw);
 }
 
 .queue-heading h2 {
@@ -409,4 +436,24 @@ label {
 
 .remove-icon::after {
   transform: rotate(-45deg);
+}
+
+@media (max-height: 580px) {
+  .panel {
+    gap: 0.75rem;
+    padding-block: 0.875rem;
+  }
+
+  .selection {
+    padding: 0.75rem;
+  }
+
+  .selection-title {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .playback-actions {
+    margin-block-start: 0.625rem;
+  }
 }

@@ -131,6 +131,136 @@ test('keeps invalid input for correction and clears input after an acknowledged 
   await expect(page.getByRole('status')).toContainText('Added');
 });
 
+test('submits a multiline paste once and retains it when a line is invalid', async (t) => {
+  const page = await panel(t);
+  await state(page, [first], first);
+  const input = page.getByRole('textbox', { name: 'YouTube link or video ID' });
+  const invalid = `https://youtu.be/${second}\ninvalid`;
+  await input.fill(invalid);
+  await input.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'add', source: invalid },
+  });
+  await state(
+    page,
+    [first],
+    first,
+    'Enter a YouTube video link or ID on line 2.',
+  );
+  await expect(input).toHaveValue(invalid);
+  await expect(page.locator('#queue-error')).toContainText('line 2');
+
+  const corrected = `https://youtu.be/${second}\n${third}`;
+  await input.fill(corrected);
+  await page.getByRole('button', { name: 'Add' }).click();
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 3,
+    command: { type: 'add', source: corrected },
+  });
+  await state(page, [first, second, third], first);
+  await expect(input).toHaveValue('');
+  await expect(page.getByRole('status')).toHaveText(
+    'Added 2 videos to the queue.',
+  );
+  await expect(page.locator('#position')).toHaveText('1 of 3');
+});
+
+test('filters by title and ID without changing the active video or controls', async (t) => {
+  const page = await panel(t);
+  const titles = {
+    [first]: 'Piano',
+    [second]: 'Evening strings',
+    [third]: 'Live piano',
+  };
+  await state(page, [first, second, third], first, null, null, 1, { titles });
+  const filter = page.getByRole('searchbox', { name: 'Filter queue' });
+  await filter.fill('PIANO');
+  await expect(page.locator('#queue-items > li:visible')).toHaveCount(2);
+  await expect(page.locator('#queue-count')).toHaveText('2 of 3 videos');
+  await expect(page.locator('#selection-id')).toHaveText('Piano');
+  expect(await messages(page)).toHaveLength(1);
+
+  await filter.fill('SECONDVIDEO');
+  await expect(
+    page.getByRole('button', { name: 'Select Evening strings' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Move Evening strings down' }).click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'move_down',
+    id: second,
+  });
+  await state(page, [first, third, second], first, null, null, 2, { titles });
+  await expect(
+    page.getByRole('button', { name: 'Move Evening strings down' }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole('button', { name: 'Move Evening strings down' }),
+  ).toBeDisabled();
+
+  await filter.fill('no match');
+  await expect(page.getByText('No matching videos.')).toBeVisible();
+  await filter.press('Escape');
+  await expect(filter).toHaveValue('');
+  await expect(page.locator('#queue-items > li:visible')).toHaveCount(3);
+  await expect(page.locator('#position')).toHaveText('1 of 3');
+});
+
+test('has room for a queue row at the minimum panel size with a long title and a player error', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const entries = [
+    first,
+    second,
+    third,
+    ...Array.from({ length: 7 }, (_, i) => `extraVideo${i}`),
+  ];
+  await state(page, entries, first, null, null, 1, {
+    titles: {
+      [first]: 'A video with a long title and many words '
+        .repeat(5)
+        .slice(0, 180),
+    },
+    playerProblem:
+      'Could not load the video player. Use Reload Player or Open in browser.',
+  });
+  const list = await page.locator('#queue-items').boundingBox();
+  const row = await page.locator('#queue-items > li').first().boundingBox();
+  assertVisibleQueueRow(list, row);
+});
+
+function assertVisibleQueueRow(list, row) {
+  expect(list).not.toBeNull();
+  expect(row).not.toBeNull();
+  expect(list.height).toBeGreaterThanOrEqual(row.height);
+  expect(list.y + row.height).toBeLessThanOrEqual(520);
+}
+
+test('scrolls to the first results when the filter changes while reusing the rows', async (t) => {
+  const page = await panel(t);
+  const entries = Array.from(
+    { length: 100 },
+    (_, i) => `video${String(i).padStart(6, '0')}`,
+  );
+  const titles = Object.fromEntries(
+    entries.map((id, i) => [id, i < 50 ? 'Studio' : 'Live']),
+  );
+  await state(page, entries, entries[0], null, null, 1, { titles });
+  await page.locator('#queue-items').evaluate((list) => {
+    list.scrollTop = list.scrollHeight;
+    list.lastElementChild.dataset.existingNode = 'true';
+  });
+  await page.getByRole('searchbox', { name: 'Filter queue' }).fill('Live');
+  await expect(page.locator('#queue-items > li:visible')).toHaveCount(50);
+  expect(
+    await page.locator('#queue-items').evaluate((list) => list.scrollTop),
+  ).toBe(0);
+  await expect(page.locator('#queue-items > li:last-child')).toHaveAttribute(
+    'data-existing-node',
+    'true',
+  );
+});
+
 test('sends queue controls to the host and moves focus after removing a row', async (t) => {
   const page = await panel(t);
   await state(page, [first, second], first);

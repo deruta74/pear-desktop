@@ -15,6 +15,7 @@ const openBrowser = document.getElementById('open-browser');
 const queue = document.getElementById('queue-items');
 const count = document.getElementById('queue-count');
 const empty = document.getElementById('queue-empty');
+const filter = document.getElementById('queue-filter');
 const encoder = new TextEncoder();
 
 let nextSequence = 1;
@@ -26,9 +27,9 @@ function send(command) {
 
   const sequence = nextSequence;
   const message = JSON.stringify({ sequence, command });
-  if (encoder.encode(message).length > 4096) {
+  if (message.length > 4096 || encoder.encode(message).length > 4096) {
     errorText.textContent =
-      'This link is too long. Enter a shorter YouTube link or the video ID.';
+      'This input is too long. Use shorter links or add fewer videos at a time.';
     statusText.textContent = '';
     source.focus();
     return;
@@ -128,37 +129,67 @@ function createRow(id, title, current, index, lastIndex) {
   return row;
 }
 
+function applyFilter(entries, entryTitles) {
+  const query = filter.value.trim().toLowerCase();
+  const visibleRows = [];
+  entries.forEach((id, index) => {
+    const row = queue.children[index];
+    const hidden =
+      Boolean(query) &&
+      !id.toLowerCase().includes(query) &&
+      !entryTitles[index].toLowerCase().includes(query);
+    if (row.hidden !== hidden) row.hidden = hidden;
+    if (!hidden) visibleRows.push(row);
+  });
+
+  queue.hidden = visibleRows.length === 0;
+  empty.hidden = visibleRows.length !== 0;
+  empty.textContent = entries.length
+    ? 'No matching videos.'
+    : 'Add a YouTube video to start your queue.';
+  const countLabel = `${entries.length} ${entries.length === 1 ? 'video' : 'videos'}`;
+  const visibleCount = query
+    ? `${visibleRows.length} of ${countLabel}`
+    : countLabel;
+  if (count.textContent !== visibleCount) count.textContent = visibleCount;
+  return visibleRows;
+}
+
 function updateQueue(entries, current, entryTitles) {
   const active = document.activeElement;
   const focusedRow = queue.contains(active)
     ? active.closest('.queue-row')
     : null;
+  const focusedIndex = focusedRow
+    ? Array.from(queue.children)
+        .filter((row) => !row.hidden)
+        .indexOf(focusedRow)
+    : -1;
   const previousScroll = queue.scrollTop;
-
+  if (!entries.length) {
+    if (active === filter) source.focus();
+    filter.value = '';
+  }
+  filter.hidden = entries.length === 0;
   queue.replaceChildren(
     ...entries.map((id, index) =>
       createRow(id, entryTitles[index], current, index, entries.length - 1),
     ),
   );
-  queue.hidden = entries.length === 0;
-  empty.hidden = entries.length !== 0;
-  count.textContent = `${entries.length} ${entries.length === 1 ? 'video' : 'videos'}`;
+  const visibleRows = applyFilter(entries, entryTitles);
   queue.scrollTop = previousScroll;
 
   if (focusedRow) {
-    const id = focusedRow.dataset.id;
-    const index = entries.indexOf(id);
-    if (index !== -1) {
-      queue.children[index]
-        .querySelector(`[data-action="${active.dataset.action}"]`)
-        .focus();
+    const row = visibleRows.find(
+      (row) => row.dataset.id === focusedRow.dataset.id,
+    );
+    if (row) {
+      row.querySelector(`[data-action="${active.dataset.action}"]`).focus();
     } else {
-      const nearest = Math.min(
-        renderedState.entries.indexOf(id),
-        entries.length - 1,
-      );
+      const nearest = Math.min(focusedIndex, visibleRows.length - 1);
+      const fallback = filter.hidden ? source : filter;
       (
-        queue.children[nearest]?.querySelector('.queue-select') ?? source
+        visibleRows[nearest]?.querySelector('.queue-select') ?? fallback
       ).focus();
     }
   }
@@ -226,10 +257,12 @@ window.renderPearState = (
   let confirmation = '';
   if (!error && command?.type === 'add') {
     if (source.value === command.source) source.value = '';
-    confirmation =
-      entries.length > acknowledged.entryCount
-        ? 'Added to the queue.'
-        : 'Video is already in the queue.';
+    const added = entries.length - acknowledged.entryCount;
+    if (added > 1) confirmation = `Added ${added} videos to the queue.`;
+    else if (added === 1) confirmation = 'Added to the queue.';
+    else if (command.source.trim().includes('\n'))
+      confirmation = 'These videos are already in the queue.';
+    else confirmation = 'Video is already in the queue.';
   }
   if (error && command?.type === 'add' && active === add) source.focus();
   if (!error && command?.type === 'remove' && !entries.includes(command.id)) {
@@ -256,6 +289,25 @@ window.renderPearState = (
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   send({ type: 'add', source: source.value });
+});
+source.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    form.requestSubmit();
+  }
+});
+filter.addEventListener('input', () => {
+  if (!renderedState) return;
+  const { entries, entryTitles } = renderedState;
+  applyFilter(entries, entryTitles);
+  queue.scrollTop = 0;
+});
+filter.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && filter.value && !event.isComposing) {
+    event.preventDefault();
+    filter.value = '';
+    filter.dispatchEvent(new Event('input'));
+  }
 });
 previous.addEventListener('click', () => send({ type: 'previous' }));
 next.addEventListener('click', () => send({ type: 'next' }));

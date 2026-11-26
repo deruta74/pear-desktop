@@ -63,18 +63,17 @@
       <form id="add-video">
         <label for="video-source">YouTube link or video ID</label>
         <div class="add-controls">
-          <input
+          <textarea
             id="video-source"
-            type="text"
             autocomplete="off"
             autocapitalize="off"
             spellcheck="false"
-            placeholder="Paste a link or ID"
+            placeholder="Paste links or IDs, one per line"
             aria-describedby="queue-error"
-            maxlength="2048"
+            rows="2"
             required
             disabled
-          />
+          ></textarea>
           <button id="add-button" class="add-button" type="submit" disabled>
             Add
           </button>
@@ -84,9 +83,27 @@
       </form>
 
       <section class="queue" aria-labelledby="queue-heading">
-        <div class="queue-heading">
-          <h2 id="queue-heading">Queue</h2>
-          <span id="queue-count" class="queue-count"></span>
+        <div class="queue-toolbar">
+          <div class="queue-heading">
+            <h2 id="queue-heading">Queue</h2>
+            <span
+              id="queue-count"
+              class="queue-count"
+              aria-live="polite"
+            ></span>
+          </div>
+          <input
+            id="queue-filter"
+            class="queue-filter"
+            type="search"
+            aria-label="Filter queue"
+            aria-controls="queue-items"
+            placeholder="Filter queue"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="180"
+            hidden
+          />
         </div>
         <p id="queue-empty" class="queue-empty" hidden>
           Add a YouTube video to start your queue.
