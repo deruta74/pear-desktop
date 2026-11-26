@@ -485,7 +485,15 @@
           <h2 id="selection-heading">Now playing</h2>
           <span id="position" class="position"></span>
         </div>
-        <div class="selection-media">
+        <button
+          id="show-current-in-queue"
+          class="selection-media"
+          type="button"
+          aria-labelledby="selection-queue-label selection-id"
+          aria-controls="queue-panel"
+          title="Show in Queue"
+        >
+          <span id="selection-queue-label" hidden>Show in Queue</span>
           <img
             id="selection-artwork"
             class="selection-artwork"
@@ -496,15 +504,15 @@
             referrerpolicy="no-referrer"
             hidden
           />
-          <div class="selection-description">
-            <p
+          <span class="selection-description">
+            <span
               id="selection-id"
               class="selection-title"
               dir="auto"
               aria-live="polite"
-            ></p>
-          </div>
-        </div>
+            ></span>
+          </span>
+        </button>
         <div id="transport-timeline" class="transport-timeline" hidden>
           <span id="elapsed" aria-hidden="true"></span>
           <input

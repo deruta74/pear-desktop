@@ -146,6 +146,141 @@ test('navigates the four panel views without changing drafts or playback', async
   expect(await page.evaluate(() => history.length)).toBe(browserHistoryLength);
 });
 
+test('reveals the current queue row from the dock and preserves Search in panel history', async (t) => {
+  const page = await panel(t);
+  const entries = Array.from(
+    { length: 24 },
+    (_, i) => `video${String(i).padStart(6, '0')}`,
+  );
+  const current = entries.at(-1);
+  const catalog = searchState();
+  const render = (id, sequence) =>
+    state(page, entries, id, null, null, sequence, { catalog });
+  await render(current, 1);
+  await transport(page, { ...readyTransport, playing: true });
+  const nav = page.getByRole('navigation');
+  const tab = (name) => nav.getByRole('button', { name });
+  const search = page.locator('#catalog-query');
+  const back = page.getByRole('button', { name: 'Back', exact: true });
+  const forward = page.getByRole('button', { name: 'Forward', exact: true });
+  const dock = page.getByRole('region', { name: 'Now playing' });
+  const showInQueue = dock.getByRole('button', {
+    name: `Show in Queue ${current}`,
+    exact: true,
+  });
+  const list = page.getByRole('list', { name: 'Queue', exact: true });
+  const selected = page.getByRole('button', { name: `Select ${current}` });
+
+  await expect(selected).not.toBeInViewport();
+  await tab('Search').click();
+  await search.fill('My Search draft');
+  await expect(showInQueue).toBeVisible({ timeout: 1000 });
+  await showInQueue.press('Space');
+  await expect(tab('Queue')).toHaveAttribute('aria-pressed', 'true');
+  await expect(selected).toBeFocused();
+  await expect(selected).toBeInViewport({ ratio: 1 });
+  await expect(dock.getByRole('button', { name: 'Pause video' })).toBeVisible();
+
+  await showInQueue.click();
+  await expect(selected).toBeFocused();
+  await back.click();
+  await expect(tab('Search')).toHaveAttribute('aria-pressed', 'true');
+  await expect(search).toHaveValue('My Search draft');
+  await forward.click();
+  await expect(tab('Queue')).toHaveAttribute('aria-pressed', 'true');
+
+  await showInQueue.press('Enter');
+  await expect(selected).toBeFocused();
+  await list.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(selected).not.toBeInViewport();
+  await render(entries[0], null);
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(selected).toBeFocused();
+  expect(await messages(page)).toHaveLength(1);
+});
+
+test('opens Queue without changing a filter that excludes the current track', async (t) => {
+  const page = await panel(t);
+  await state(page, [first, second], first, null, null, 1, {
+    catalog: searchState(),
+  });
+  const filter = page.getByRole('searchbox', { name: 'Filter queue' });
+  await filter.fill(second);
+  await page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Search' })
+    .click();
+  const showInQueue = page.getByRole('button', {
+    name: `Show in Queue ${first}`,
+  });
+  await expect(showInQueue).toBeVisible({ timeout: 1000 });
+  await showInQueue.click();
+
+  await expect(filter).toBeFocused();
+  await expect(filter).toHaveValue(second);
+  await expect(
+    page.getByRole('button', { name: `Select ${first}` }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: `Select ${second}` }),
+  ).toBeVisible();
+  expect(await messages(page)).toHaveLength(1);
+});
+
+test('keeps the scroll position when refreshed metadata hides the focused queue row', async (t) => {
+  const page = await panel(t);
+  const entries = Array.from(
+    { length: 24 },
+    (_, index) => `video${String(index).padStart(6, '0')}`,
+  );
+  const current = entries.at(-1);
+  const titles = Object.fromEntries(
+    entries.map((id, index) => [id, `Mix ${index + 1}`]),
+  );
+  await state(page, entries, current, null, null, 1, { titles });
+  const filter = page.getByRole('searchbox', { name: 'Filter queue' });
+  await filter.fill('mix');
+  await page.getByRole('button', { name: 'Show in Queue Mix 24' }).press('Enter');
+  const selected = page.getByRole('button', { name: 'Select Mix 24' });
+  await expect(selected).toBeFocused();
+
+  const list = page.getByRole('list', { name: 'Queue', exact: true });
+  await list.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await state(page, entries, current, null, null, null, {
+    titles: { ...titles, [current]: 'Remastered track' },
+  });
+  await expect(page.getByRole('button', { name: 'Select Mix 23' })).toBeFocused();
+  await expect(filter).toHaveValue('mix');
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(0);
+});
+
+test('opens Queue during public playlist playback without jumping to the saved selection', async (t) => {
+  const page = await panel(t);
+  await state(page, [first, second], first, null, null, 1, {
+    catalog: searchState(),
+    publicPlaylist: true,
+  });
+  await page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Search' })
+    .click();
+  const showInQueue = page.getByRole('button', {
+    name: 'Show in Queue YouTube playlist',
+  });
+  await expect(showInQueue).toBeVisible({ timeout: 1000 });
+  await showInQueue.press('Enter');
+
+  await expect(
+    page.getByRole('searchbox', { name: 'Filter queue' }),
+  ).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Return to queue' })).toBeVisible();
+  expect(await messages(page)).toHaveLength(1);
+});
+
 for (const platform of ['MacIntel', 'Win32']) {
   test(`handles panel shortcuts and browser keys on ${platform}`, async (t) => {
     const page = await panel(t, { platform });
@@ -607,7 +742,10 @@ test('reopens Terms & Privacy without losing drafts or navigating the panel to e
   await render(accepted);
   await expect(query).toBeFocused();
   await expect(query).toHaveValue('My search draft');
-  await page.getByRole('button', { name: 'Queue' }).click();
+  await page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Queue' })
+    .click();
   await expect(source).toHaveValue('My queue draft');
 });
 
@@ -1421,9 +1559,11 @@ test('prioritizes adding a link when the queue is empty', async (t) => {
   await expect(addLink).toBeInViewport();
   await state(page, [first], first);
   await expect(playing).toBeVisible();
+  await playing.getByRole('button', { name: `Show in Queue ${first}` }).focus();
   await state(page, [], null);
   await expect(playing).toBeHidden();
   await expect(addLink).toBeInViewport();
+  await expect(addLink).toBeFocused();
 });
 
 test('opens and closes Add links from the keyboard while keeping the queue and its draft', async (t) => {
@@ -1459,7 +1599,10 @@ test('opens and closes Add links from the keyboard while keeping the queue and i
   await expect(input).toBeHidden();
 
   await page.getByRole('button', { name: 'Search' }).press('Enter');
-  await page.getByRole('button', { name: 'Queue' }).press('Enter');
+  await page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Queue' })
+    .press('Enter');
   await expect(filter).toBeFocused();
   await expect(input).toBeHidden();
   await expect(timeline).toBeInViewport();
@@ -1648,6 +1791,9 @@ test('loads only artwork matching the current video and clears it on selection c
     .poll(() => cover.evaluate((image) => image.naturalWidth))
     .toBe(1);
   expect(requested).toBe(1);
+  await cover.click();
+  await expect(page.getByRole('button', { name: 'Select Track' })).toBeFocused();
+  expect(await messages(page)).toHaveLength(1);
   await state(page, [first, second], second);
   await expect(cover).toBeHidden();
   expect(await cover.getAttribute('src')).toBeNull();
@@ -2461,7 +2607,10 @@ test('keeps navigation and transport on single rows in a narrow panel', async (t
   const timeline = await dock
     .getByRole('slider', { name: 'Playback position' })
     .boundingBox();
-  const transportButtons = await dock.getByRole('button').all();
+  const transportButtons = await dock
+    .getByRole('group', { name: 'Playback controls' })
+    .getByRole('button')
+    .all();
   const transportBoxes = await Promise.all(
     transportButtons.map((button) => button.boundingBox()),
   );

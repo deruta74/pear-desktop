@@ -10,6 +10,7 @@ const metadataProblemText = document.getElementById('metadata-problem');
 const preferencesProblemText = document.getElementById('preferences-problem');
 const selection = document.getElementById('selection-id');
 const selectionArtwork = document.getElementById('selection-artwork');
+const showCurrentInQueue = document.getElementById('show-current-in-queue');
 const selectionPanel = selection.closest('.selection');
 const position = document.getElementById('position');
 const previous = document.getElementById('previous');
@@ -505,7 +506,7 @@ function updateSelectionAttribution(channel) {
     return;
   }
   if (!attribution) {
-    attribution = document.createElement('p');
+    attribution = document.createElement('span');
     attribution.className = 'selection-attribution';
     selection.after(attribution);
   }
@@ -634,7 +635,7 @@ function applyFilter(entries, entryTitles) {
   return visibleRows;
 }
 
-function updateQueue(entries, current, entryTitles, nextId) {
+function updateQueue(entries, current, entryTitles, nextId, preserveScroll) {
   const active = document.activeElement;
   const focusedRow = queue.contains(active)
     ? active.closest('.queue-row')
@@ -673,13 +674,15 @@ function updateQueue(entries, current, entryTitles, nextId) {
       const action = row.querySelector(
         `[data-action="${active.dataset.action}"]`,
       );
-      (action ?? row.querySelector('.queue-select')).focus();
+      (action ?? row.querySelector('.queue-select')).focus({
+        preventScroll: preserveScroll,
+      });
     } else {
       const nearest = Math.min(focusedIndex, visibleRows.length - 1);
       const fallback = filter.hidden ? source : filter;
       (
         visibleRows[nearest]?.querySelector('.queue-select') ?? fallback
-      ).focus();
+      ).focus({ preventScroll: preserveScroll });
     }
   }
 }
@@ -787,7 +790,7 @@ function activateView(view) {
   updateViews();
 }
 
-function showView(view) {
+function showView(view, focusView = () => primaryInput().focus()) {
   interruptHistorySwipe?.();
   if (!controlsVisible() || !viewAvailable(view)) return;
   if (view !== activeView) {
@@ -797,8 +800,22 @@ function showView(view) {
     viewHistoryIndex = viewHistory.length - 1;
     activateView(view);
   }
-  primaryInput().focus();
+  focusView();
 }
+
+showCurrentInQueue.addEventListener('click', () => {
+  showView('queue', () => {
+    const row = playingPublicPlaylist
+      ? null
+      : queue.querySelector('.queue-row[data-current]:not([hidden])');
+    if (row) {
+      row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      row.querySelector('.queue-select').focus({ preventScroll: true });
+    } else {
+      primaryInput().focus();
+    }
+  });
+});
 
 function traverseViewHistory(step) {
   if (!controlsVisible()) return false;
@@ -2066,7 +2083,8 @@ window.renderPearState = (
     ) ||
     current !== renderedState.current;
   const nextId = hasSelection ? entries[index + 1] : null;
-  if (changed) updateQueue(entries, current, entryTitles, nextId);
+  // Passive updates keep the user's list position even when restoring focus.
+  if (changed) updateQueue(entries, current, entryTitles, nextId, !command);
   renderedState = { entries, current, entryTitles, nextId };
   shuffle.hidden = !hasSelection || entries.length - index - 1 < 2;
   if (active === shuffle && shuffle.hidden)
@@ -2217,7 +2235,10 @@ window.renderPearState = (
     if (document.activeElement !== previousFocus) primaryInput().focus();
   }
   if (!panel.hidden && focusAddOnReady) focusQueueAdd();
-  if (active === returnToQueue && returnToQueue.hidden)
+  if (
+    (active === returnToQueue && returnToQueue.hidden) ||
+    (active === showCurrentInQueue && selectionPanel.hidden)
+  )
     primaryInput().focus({ preventScroll: true });
 };
 
