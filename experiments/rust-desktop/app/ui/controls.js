@@ -2126,7 +2126,8 @@ window.renderPearState = (
     queueConfirmation = context === 'queue' ? confirmation : '';
   }
   const queueStatus = [queueConfirmation, notice].filter(Boolean).join(' ');
-  if (statusText.textContent !== queueStatus) statusText.textContent = queueStatus;
+  if (statusText.textContent !== queueStatus)
+    statusText.textContent = queueStatus;
   if (selectionChanged || playlistChanged) renderedTransport = null;
   lyricsSwitchingActive = Boolean(lyricsSwitching);
   updateQueueAvailability();

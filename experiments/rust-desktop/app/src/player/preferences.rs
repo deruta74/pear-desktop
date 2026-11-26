@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{iframe::AudioOutput, metadata::read_key_file};
+use super::{iframe::AudioOutput, metadata::read_google_key_file};
 use crate::library::write_atomic;
 
 const MAX_FILE_BYTES: u64 = 4096;
@@ -74,7 +74,7 @@ impl Preferences {
         }
         if path
             .as_deref()
-            .is_some_and(|path| !path.is_absolute() || read_key_file(path).is_none())
+            .is_some_and(|path| !path.is_absolute() || read_google_key_file(path).is_none())
         {
             return Err("Choose a readable plain-text file containing one YouTube Data API key.");
         }
@@ -217,11 +217,13 @@ mod tests {
         }
     }
 
+    const SYNTHETIC_GOOGLE_KEY: &str = "AIza01234567890123456789012345678901234";
+
     #[test]
     fn remembers_only_the_key_file_location_and_keeps_playback_preferences() {
         let directory = TestDirectory::new();
         let key_file = directory.0.join("key.txt");
-        let secret = "synthetic-pear-key";
+        let secret = SYNTHETIC_GOOGLE_KEY;
         fs::write(&key_file, secret).unwrap();
         let path = directory.path();
         let mut preferences = Preferences::load(path.clone());
@@ -249,7 +251,7 @@ mod tests {
     fn rejects_invalid_key_file_choices_without_replacing_the_saved_path() {
         let directory = TestDirectory::new();
         let key_file = directory.0.join("key.txt");
-        fs::write(&key_file, b"synthetic-key").unwrap();
+        fs::write(&key_file, SYNTHETIC_GOOGLE_KEY).unwrap();
         let path = directory.path();
         let mut preferences = Preferences::load(path.clone());
         preferences
@@ -257,7 +259,13 @@ mod tests {
             .unwrap();
         let original = fs::read(&path).unwrap();
         let invalid = directory.0.join("invalid-file.txt");
-        for bytes in [b" \n".as_slice(), b"{ synthetic-secret }", &[b'x'; 513]] {
+        for bytes in [
+            b" \n".as_slice(),
+            b"{ synthetic-secret }",
+            b"unrelated-credential",
+            b"AIza_too-short",
+            &[b'x'; 513],
+        ] {
             fs::write(&invalid, bytes).unwrap();
             let problem = preferences
                 .set_youtube_key_file(Some(invalid.clone()))
@@ -282,8 +290,10 @@ mod tests {
 
         let directory = TestDirectory::new();
         let valid = directory.0.join("key.txt");
+        let override_file = directory.0.join("override.txt");
         let missing = directory.0.join("missing.txt");
-        fs::write(&valid, b"synthetic-key").unwrap();
+        fs::write(&valid, SYNTHETIC_GOOGLE_KEY).unwrap();
+        fs::write(&override_file, b"synthetic-override").unwrap();
 
         assert!(matches!(Client::configured(None, None), Ok(None)));
         assert!(matches!(
@@ -291,9 +301,10 @@ mod tests {
             Ok(Some(_))
         ));
         assert!(Client::configured(None, Some(&missing)).is_err());
+        assert!(Client::configured(None, Some(&override_file)).is_err());
         assert!(Client::configured(Some(&missing), Some(&valid)).is_err());
         assert!(matches!(
-            Client::configured(Some(&valid), Some(&missing)),
+            Client::configured(Some(&override_file), Some(&missing)),
             Ok(Some(_))
         ));
     }

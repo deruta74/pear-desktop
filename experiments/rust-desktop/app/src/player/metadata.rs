@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, path::Path, time::Duration};
+use std::{fs::OpenOptions, io::Read, path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use ureq::{
@@ -88,7 +88,7 @@ impl Client {
                 .ok_or("Could not read the YouTube Data API key file specified at launch.")?
         } else if let Some(path) = saved_path {
             path.is_absolute()
-                .then(|| read_key_file(path))
+                .then(|| read_google_key_file(path))
                 .flatten()
                 .ok_or("Could not read the saved YouTube Data API key file. Choose it again from the File menu.")?
         } else {
@@ -259,12 +259,28 @@ pub(super) fn normalize_query(query: &str) -> Option<String> {
     Some(trimmed.to_owned())
 }
 
-pub(super) fn read_key_file(path: &Path) -> Option<HeaderValue> {
-    let metadata = path.metadata().ok()?;
-    if !metadata.is_file() || metadata.len() > MAX_KEY_FILE_BYTES {
+pub(super) fn read_google_key_file(path: &Path) -> Option<HeaderValue> {
+    read_key_file(path)
+        .filter(|key| key.as_bytes().len() == 39 && key.as_bytes().starts_with(b"AIza"))
+}
+
+fn read_key_file(path: &Path) -> Option<HeaderValue> {
+    if !path.metadata().ok()?.is_file() {
         return None;
     }
-    key_header(File::open(path).ok()?)
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A stale key path can be replaced with a FIFO.
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY);
+    }
+    let file = options.open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    (metadata.is_file() && metadata.len() <= MAX_KEY_FILE_BYTES)
+        .then(|| key_header(file))
+        .flatten()
 }
 
 fn key_header(reader: impl Read) -> Option<HeaderValue> {
