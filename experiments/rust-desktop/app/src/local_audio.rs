@@ -338,8 +338,10 @@ pub(crate) fn run() -> Result<()> {
     };
     #[cfg(target_os = "windows")]
     let mut media = media::Backend::new(&window, dispatch_media);
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let mut media = media::Backend::new(dispatch_media);
+    #[cfg(target_os = "macos")]
+    let mut media: Option<media::Backend> = None;
     let mut track: Option<Track> = None;
     let mut track_generation = 0_u64;
     let mut volume = 1.0;
@@ -441,6 +443,11 @@ pub(crate) fn run() -> Result<()> {
             Event::UserEvent(AudioEvent::Opened(result)) => {
                 match result {
                     Ok((name, mut engine)) => {
+                        #[cfg(target_os = "macos")]
+                        if media.is_none() {
+                            // Let the first AppKit file picker finish before registering MediaPlayer.
+                            media = media::Backend::new(dispatch_media.clone());
+                        }
                         let (play, skipped) = queue.finish();
                         engine.set_volume(volume);
                         engine.set_speed(speed);
