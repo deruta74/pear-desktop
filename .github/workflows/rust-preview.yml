@@ -53,6 +53,12 @@ jobs:
         run: cargo +stable test --locked --workspace --all-features
       - name: Lint all targets
         run: cargo +stable clippy --locked --workspace --all-targets --all-features
+      - name: Check the Windows system media transport API
+        if: runner.os == 'Windows'
+        run: >-
+          cargo +stable test --locked -p pear-desktop-preview --bin pear-desktop-preview
+          local_audio::media::windows::tests::windows_smtc_native_smoke
+          -- --exact --ignored --nocapture --test-threads=1
 
       - name: Package the macOS app
         if: runner.os == 'macOS'
