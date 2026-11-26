@@ -465,14 +465,17 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
     let dispatch_media = move |request| {
         let _ = media_events.send_event(AudioEvent::Media(request));
     };
-    #[cfg(target_os = "windows")]
-    let mut media = media::Backend::new(&window, dispatch_media);
-    #[cfg(target_os = "linux")]
-    let mut media = media::Backend::new(media::SessionKind::LocalAudio, dispatch_media);
-    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
-    let mut media = media::Backend::new(dispatch_media);
-    #[cfg(target_os = "macos")]
-    let mut media: Option<media::Backend> = None;
+    #[cfg(not(target_os = "macos"))]
+    let mut start_media = Some(move |_window: &Window| {
+        #[cfg(target_os = "windows")]
+        let backend = media::Backend::new(_window, dispatch_media);
+        #[cfg(target_os = "linux")]
+        let backend = media::Backend::new(media::SessionKind::LocalAudio, dispatch_media);
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        let backend = media::Backend::new(dispatch_media);
+        backend
+    });
+    let mut media = None;
     let mut track: Option<Track> = None;
     let mut track_generation = 0_u64;
     let mut equalizer = equalizer::Profile::default();
@@ -482,6 +485,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
     let mut folder_error = None;
     let mut lyrics_picker = None::<(u64, lyrics::Picker)>;
     let mut deadline = None;
+    let mut last_render = None::<String>;
     #[cfg(target_os = "linux")]
     let mut timer = crate::player::DeadlineTimer::default();
 
@@ -512,6 +516,10 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             Event::UserEvent(AudioEvent::Menu(event)) => event.id == *quit.id(),
             _ => false,
         };
+        let timer_tick = matches!(
+            &event,
+            Event::NewEvents(StartCause::ResumeTimeReached { .. })
+        );
         let was_importing = queue.opening() || scanning_folder;
         let mut dropped_files = None;
         let mut requested_path = None;
@@ -667,6 +675,11 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                             stopped: false,
                             lyrics: lyrics::State::default(),
                         });
+                        // Start playback before connecting to the native media service.
+                        #[cfg(not(target_os = "macos"))]
+                        if let Some(start_media) = start_media.take() {
+                            media = start_media(&window);
+                        }
                     }
                     Err(problem) => {
                         queue.output_failed();
@@ -997,11 +1010,15 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             presets: send_presets
                 .then(|| presets.iter().map(|preset| preset.name.as_str()).collect()),
         };
-        if let Ok(state) = serde_json::to_string(&state)
-            && let Err(problem) =
-                view.evaluate_script(&format!("window.renderPearLocal?.({state});"))
-        {
-            eprintln!("Could not update local playback controls: {problem}");
+        let Ok(state) = serde_json::to_string(&state) else {
+            return;
+        };
+        if timer_tick && last_render.as_ref() == Some(&state) {
+            return;
+        }
+        match view.evaluate_script(&format!("window.renderPearLocal?.({state});")) {
+            Ok(()) => last_render = Some(state),
+            Err(problem) => eprintln!("Could not update local playback controls: {problem}"),
         }
     });
 }
