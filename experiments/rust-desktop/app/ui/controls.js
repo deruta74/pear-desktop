@@ -53,6 +53,7 @@ const playlistLink = document.getElementById('public-playlist-link');
 const playlistFeedback = document.getElementById('public-playlist-feedback');
 const returnToQueue = document.getElementById('return-to-queue');
 const queueInputs = document.getElementById('queue-inputs');
+const addLinks = document.getElementById('show-queue-inputs');
 // The native transport polls once per second.
 const LYRIC_SAMPLE_INTERVAL_MS = 1000;
 
@@ -81,6 +82,7 @@ let lyricCueTimer = null;
 let lyricCueDeadline = null;
 let pearPanelVisible = true;
 let focusAddOnReady = false;
+let queueInputsOpen = false;
 let editingPosition = false;
 let audioExpanded = false;
 let editingVolume = false;
@@ -125,15 +127,16 @@ function commandProblem(message, context) {
 }
 
 function primaryInput() {
-  if (activeView === 'search') return catalogView?.query ?? source;
-  if (activeView === 'lyrics') return lyricsView?.track ?? source;
+  if (activeView === 'search' && catalogView) return catalogView.query;
+  if (activeView === 'lyrics' && lyricsView) return lyricsView.track;
   if (activeView === 'library' && libraryView) {
     if (renderedLibrary?.selected) return libraryView.title;
     return libraryView.saveName.disabled
       ? libraryView.heading
       : libraryView.saveName;
   }
-  return source;
+  if (!queueInputs.hidden) return source;
+  return filter.hidden ? addLinks : filter;
 }
 
 function interruptsLyricsClock(command) {
@@ -154,11 +157,23 @@ function interruptsLyricsClock(command) {
   }
 }
 
-function updateShuffleAvailability() {
-  shuffle.setAttribute(
-    'aria-disabled',
-    String(Boolean(pending) || lyricsSwitchingActive),
+function playNextUnavailable(id) {
+  return (
+    Boolean(pending) ||
+    lyricsSwitchingActive ||
+    id === renderedState?.current ||
+    id === renderedState?.nextId
   );
+}
+
+function updateQueueAvailability() {
+  const busy = Boolean(pending) || lyricsSwitchingActive;
+  shuffle.setAttribute('aria-disabled', String(busy));
+  for (const action of queue.querySelectorAll('[data-play-next]')) {
+    const disabled = String(playNextUnavailable(action.dataset.playNext));
+    if (action.getAttribute('aria-disabled') !== disabled)
+      action.setAttribute('aria-disabled', disabled);
+  }
 }
 
 function send(command, context = 'queue') {
@@ -227,7 +242,7 @@ function send(command, context = 'queue') {
     updateLegalControls();
     return;
   }
-  updateShuffleAvailability();
+  updateQueueAvailability();
   if (catalogView) updateCatalog(renderedCatalog);
   if (lyricsView) updateLyrics(renderedLyrics);
   if (libraryView) updateLibrary(renderedLibrary);
@@ -486,12 +501,12 @@ function rowAction(type, label, id, icon, disabled = false) {
   button.setAttribute('aria-label', label);
   button.title = label;
   if (disabled) {
-    // Keep a move button focusable by script after it reaches a queue boundary.
+    // Keep the action focusable by script after a queue reorder.
     button.setAttribute('aria-disabled', 'true');
     button.tabIndex = -1;
   }
   button.addEventListener('click', () => {
-    if (!disabled) send({ type, id });
+    if (button.getAttribute('aria-disabled') !== 'true') send({ type, id });
   });
 
   const glyph = document.createElement('span');
@@ -501,7 +516,7 @@ function rowAction(type, label, id, icon, disabled = false) {
   return button;
 }
 
-function createRow(id, title, current, index, lastIndex) {
+function createRow(id, title, current, index, lastIndex, nextId) {
   const label = title || id;
   const row = document.createElement('li');
   row.className = 'queue-row';
@@ -528,9 +543,20 @@ function createRow(id, title, current, index, lastIndex) {
   trackName.textContent = label;
   select.append(trackName);
 
+  row.append(number, select);
+  if (id !== current) {
+    const playNext = rowAction(
+      'play_next',
+      `Play ${label} next`,
+      id,
+      'play-next-icon',
+      id === nextId,
+    );
+    playNext.dataset.playNext = id;
+    row.setAttribute('data-has-play-next', '');
+    row.append(playNext);
+  }
   row.append(
-    number,
-    select,
     rowAction('move_up', `Move ${label} up`, id, 'move-icon', index === 0),
     rowAction(
       'move_down',
@@ -570,7 +596,7 @@ function applyFilter(entries, entryTitles) {
   return visibleRows;
 }
 
-function updateQueue(entries, current, entryTitles) {
+function updateQueue(entries, current, entryTitles, nextId) {
   const active = document.activeElement;
   const focusedRow = queue.contains(active)
     ? active.closest('.queue-row')
@@ -588,7 +614,14 @@ function updateQueue(entries, current, entryTitles) {
   filter.hidden = entries.length === 0;
   queue.replaceChildren(
     ...entries.map((id, index) =>
-      createRow(id, entryTitles[index], current, index, entries.length - 1),
+      createRow(
+        id,
+        entryTitles[index],
+        current,
+        index,
+        entries.length - 1,
+        nextId,
+      ),
     ),
   );
   const visibleRows = applyFilter(entries, entryTitles);
@@ -599,7 +632,10 @@ function updateQueue(entries, current, entryTitles) {
       (row) => row.dataset.id === focusedRow.dataset.id,
     );
     if (row) {
-      row.querySelector(`[data-action="${active.dataset.action}"]`).focus();
+      const action = row.querySelector(
+        `[data-action="${active.dataset.action}"]`,
+      );
+      (action ?? row.querySelector('.queue-select')).focus();
     } else {
       const nearest = Math.min(focusedIndex, visibleRows.length - 1);
       const fallback = filter.hidden ? source : filter;
@@ -627,7 +663,7 @@ function updateViews() {
       viewSwitcherTemplate.content.firstElementChild.cloneNode(true);
     const [queueButton, searchButton, lyricsButton, libraryButton] =
       viewSwitcher.children;
-    queueButton.addEventListener('click', focusQueueAdd);
+    queueButton.addEventListener('click', () => showView('queue'));
     searchButton.addEventListener('click', () => showView('search'));
     lyricsButton.addEventListener('click', () => showView('lyrics'));
     libraryButton.addEventListener('click', () => showView('library'));
@@ -667,7 +703,7 @@ function updateViews() {
     );
   }
 
-  form.hidden = queuePanel.hidden = queueInputs.hidden = activeView !== 'queue';
+  queuePanel.hidden = activeView !== 'queue';
   if (catalogView) {
     catalogView.form.hidden = activeView !== 'search';
     catalogView.results.hidden =
@@ -692,12 +728,22 @@ function showView(view) {
   primaryInput().focus();
 }
 
+function updateQueueInputs(emptyQueue = renderedState?.entries.length === 0) {
+  const active = document.activeElement;
+  addLinks.hidden = emptyQueue;
+  queueInputs.hidden = !queueInputsOpen && !emptyQueue;
+  addLinks.setAttribute('aria-expanded', String(!queueInputs.hidden));
+  if (emptyQueue && active === addLinks) source.focus();
+}
+
 function focusQueueAdd() {
   if (panel.hidden) {
     if (legalPanel.hidden) focusAddOnReady = true;
     return;
   }
   focusAddOnReady = source.disabled;
+  queueInputsOpen = true;
+  updateQueueInputs();
   showView('queue');
 }
 
@@ -784,7 +830,22 @@ function createCatalogResult({ id, title, channel }, playlist) {
       : { type: 'add', source: id };
     send(command, 'result-add');
   });
-  row.append(description, button);
+  const actions = document.createElement('div');
+  actions.className = 'catalog-actions';
+  actions.append(button);
+  if (!playlist) {
+    const playNext = document.createElement('button');
+    playNext.type = 'button';
+    playNext.dataset.playNext = id;
+    playNext.textContent = 'Play next';
+    playNext.setAttribute('aria-label', `Play ${title} next`);
+    playNext.addEventListener('click', () => {
+      if (!playNextUnavailable(id))
+        send({ type: 'play_next', id }, 'result-add');
+    });
+    actions.append(playNext);
+  }
+  row.append(description, actions);
   return row;
 }
 
@@ -854,7 +915,9 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   const controlsBusy = Boolean(pending);
   view.submit.setAttribute('aria-disabled', String(controlsBusy));
   for (const button of view.results.querySelectorAll('button')) {
-    button.setAttribute('aria-disabled', String(controlsBusy));
+    const id = button.dataset.playNext;
+    const disabled = id ? playNextUnavailable(id) : controlsBusy;
+    button.setAttribute('aria-disabled', String(disabled));
   }
 
   let message = '';
@@ -1546,6 +1609,9 @@ window.renderPearState = (
   const selectionChanged =
     renderedState !== null && current !== renderedState.current;
   const active = document.activeElement;
+  if (command?.type === 'accept_legal' || queueInputs.contains(active))
+    queueInputsOpen = true;
+  updateQueueInputs(!entries.length);
   const selectionLabel = playingPublicPlaylist
     ? 'YouTube playlist'
     : hasSelection
@@ -1593,8 +1659,9 @@ window.renderPearState = (
         id !== oldEntries[i] || entryTitles[i] !== renderedState.entryTitles[i],
     ) ||
     current !== renderedState.current;
-  if (changed) updateQueue(entries, current, entryTitles);
-  renderedState = { entries, current, entryTitles };
+  const nextId = hasSelection ? entries[index + 1] : null;
+  if (changed) updateQueue(entries, current, entryTitles, nextId);
+  renderedState = { entries, current, entryTitles, nextId };
   shuffle.hidden = !hasSelection || entries.length - index - 1 < 2;
   if (active === shuffle && shuffle.hidden)
     (filter.hidden ? source : filter).focus({ preventScroll: true });
@@ -1611,6 +1678,11 @@ window.renderPearState = (
     else confirmation = 'Video is already in the queue.';
   }
   if (error && command?.type === 'add' && active === add) source.focus();
+  if (!error && command?.type === 'play_next') {
+    if (acknowledged.entryCount === 0 && current === command.id)
+      confirmation = 'Added to the queue.';
+    else if (nextId === command.id) confirmation = 'Queued to play next.';
+  }
   if (!error && command?.type === 'remove' && !entries.includes(command.id)) {
     confirmation = 'Removed from the queue.';
   }
@@ -1679,7 +1751,7 @@ window.renderPearState = (
   }
   if (selectionChanged || playlistChanged) renderedTransport = null;
   lyricsSwitchingActive = Boolean(lyricsSwitching);
-  updateShuffleAvailability();
+  updateQueueAvailability();
   if (
     selectionChanged ||
     playlistChanged ||
@@ -1759,6 +1831,18 @@ form.addEventListener('submit', (event) => {
   event.preventDefault();
   send({ type: 'add', source: source.value });
 });
+addLinks.addEventListener('click', () => {
+  queueInputsOpen = !queueInputsOpen;
+  updateQueueInputs();
+  if (queueInputsOpen) source.focus();
+});
+queueInputs.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || event.isComposing || addLinks.hidden) return;
+  event.preventDefault();
+  queueInputsOpen = false;
+  updateQueueInputs();
+  addLinks.focus();
+});
 source.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
@@ -1809,7 +1893,7 @@ document.addEventListener('keydown', (event) => {
   if (
     target instanceof Element &&
     target.closest(
-      'input, textarea, button, select, a, [contenteditable], [tabindex]:not([tabindex="-1"])',
+      'input, textarea, button, select, a, summary, [contenteditable], [tabindex]:not([tabindex="-1"])',
     )
   )
     return;

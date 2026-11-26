@@ -151,6 +151,7 @@ test('reopens Terms & Privacy without losing drafts or navigating the panel to e
   const source = page.getByRole('textbox', {
     name: 'YouTube link or video ID',
   });
+  await page.getByRole('button', { name: 'Add links' }).click();
   await source.fill('My queue draft');
   await page.getByRole('button', { name: 'Search' }).click();
   const query = page.getByRole('searchbox', { name: 'Search YouTube' });
@@ -295,6 +296,7 @@ test('uses Space for playback only outside editable controls and after the offic
 
   await transport(page, { ...readyTransport, playing: true });
   const link = page.getByRole('textbox', { name: 'YouTube link or video ID' });
+  await page.getByRole('button', { name: 'Add links' }).click();
   await link.fill('My link draft');
   await page.keyboard.press('Space');
   await expect(link).toHaveValue('My link draft ');
@@ -320,7 +322,9 @@ test('opens a public playlist without catalog access and returns to the saved qu
   await expect(queueMetadataProblem).toHaveText(metadataProblem);
   await transport(page, readyTransport);
   await expect(play).toBeVisible();
-  await page.getByText('Play a YouTube playlist', { exact: true }).click();
+  await page.getByRole('button', { name: 'Add links' }).click();
+  await page.locator('#public-playlist > summary').press('Space');
+  expect(await messages(page)).toHaveLength(1);
   await page.getByLabel('Public playlist link').fill(url);
   await page.getByRole('button', { name: 'Play playlist in Pear' }).click();
   expect((await messages(page)).at(-1).command).toEqual({
@@ -628,7 +632,9 @@ test('keeps invalid input for correction and clears input after an acknowledged 
   await expect(input).toHaveValue('https://youtu.be/firstVideo_');
   await state(page, [first], first, null, null, 2);
   await expect(input).toHaveValue('https://youtu.be/firstVideo_');
-  await expect(page.getByRole('button', { name: 'Add' })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Add', exact: true }),
+  ).toBeDisabled();
   await state(page, [first], first, null, 'Player is ready.');
   await expect(input).toHaveValue('');
   await expect(page.locator('#queue-error')).toHaveText('');
@@ -639,6 +645,7 @@ test('keeps invalid input for correction and clears input after an acknowledged 
 test('submits a multiline paste once and retains it when a line is invalid', async (t) => {
   const page = await panel(t);
   await state(page, [first], first);
+  await page.getByRole('button', { name: 'Add links' }).click();
   const input = page.getByRole('textbox', { name: 'YouTube link or video ID' });
   const invalid = `https://youtu.be/${second}\ninvalid`;
   await input.fill(invalid);
@@ -658,7 +665,7 @@ test('submits a multiline paste once and retains it when a line is invalid', asy
 
   const corrected = `https://youtu.be/${second}\n${third}`;
   await input.fill(corrected);
-  await page.getByRole('button', { name: 'Add' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   expect((await messages(page)).at(-1)).toEqual({
     sequence: 3,
     command: { type: 'add', source: corrected },
@@ -813,6 +820,51 @@ test('has room for a queue row at the minimum panel size with a long title and a
   expect(layout.scrollWidth).toBe(layout.width);
 });
 
+test('queues an existing track to play next without interrupting playback or losing focus', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const entries = [first, second, third];
+  await state(page, entries, first);
+  await transport(page, { ...readyTransport, playing: true });
+  const queue = page.getByRole('list', { name: 'Queue' });
+  const playNext = queue.getByRole('button', { name: `Play ${third} next` });
+  await expect(
+    queue.getByRole('button', { name: `Play ${first} next` }),
+  ).toHaveCount(0);
+  await expect(
+    queue.getByRole('button', { name: `Play ${second} next` }),
+  ).toBeDisabled();
+  await playNext.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'play_next', id: third },
+  });
+  await expect(playNext).toBeDisabled();
+  await expect(playNext).toBeFocused();
+  await playNext.press('Space');
+  expect(await messages(page)).toHaveLength(2);
+
+  const reordered = [first, third, second];
+  await state(page, reordered, first);
+  await expect(queue.getByRole('listitem').nth(1)).toContainText(third);
+  await expect(playNext).toBeFocused();
+  await expect(playNext).toBeDisabled();
+  await expect(page.getByRole('status')).toHaveText('Queued to play next.');
+  await expect(
+    page.getByRole('button', { name: 'Pause video' }),
+  ).toBeInViewport();
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toHaveValue('15');
+  await state(page, reordered, third, null, null, null);
+  await expect(
+    queue.getByRole('button', { name: `Select ${third}` }),
+  ).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+});
+
 function assertVisibleQueueRow(list, row) {
   expect(list).not.toBeNull();
   expect(row).not.toBeNull();
@@ -911,6 +963,63 @@ test('prioritizes adding a link when the queue is empty', async (t) => {
   await state(page, [], null);
   await expect(playing).toBeHidden();
   await expect(addLink).toBeInViewport();
+});
+
+test('opens and closes Add links from the keyboard while keeping the queue and its draft', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const entries = Array.from(
+    { length: 12 },
+    (_, i) => `video${String(i).padStart(6, '0')}`,
+  );
+  await state(page, entries, entries[0], null, null, 1, {
+    catalog: searchState(),
+  });
+  await transport(page, readyTransport);
+  const composer = page.getByRole('button', { name: 'Add links' });
+  const input = page.getByRole('textbox', { name: 'YouTube link or video ID' });
+  const filter = page.getByRole('searchbox', { name: 'Filter queue' });
+  const queue = page.getByRole('list', { name: 'Queue' });
+  const timeline = page.getByRole('slider', { name: 'Playback position' });
+
+  await expect(composer).toHaveAttribute('aria-expanded', 'false');
+  await expect(input).toBeHidden();
+  await expect(queue.getByRole('listitem').nth(2)).toBeInViewport();
+  await queue.getByRole('button', { name: `Select ${entries.at(-1)}` }).focus();
+  expect(await queue.evaluate((list) => list.scrollTop)).toBeGreaterThan(0);
+  await expect(timeline).toBeInViewport();
+
+  await composer.press('Space');
+  await expect(composer).toHaveAttribute('aria-expanded', 'true');
+  await expect(input).toBeFocused();
+  await input.fill(second);
+  await input.press('Escape');
+  await expect(composer).toBeFocused();
+  await expect(input).toBeHidden();
+
+  await page.getByRole('button', { name: 'Search' }).press('Enter');
+  await page.getByRole('button', { name: 'Queue' }).press('Enter');
+  await expect(filter).toBeFocused();
+  await expect(input).toBeHidden();
+  await expect(timeline).toBeInViewport();
+
+  await composer.press('Enter');
+  await expect(input).toHaveValue(second);
+  await input.press('Enter');
+  await input.press('Escape');
+  await state(page, entries, entries[0], 'Could not save the queue.', null, 2, {
+    catalog: searchState(),
+  });
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Could not save the queue.' }),
+  ).toBeVisible();
+  await expect(composer).toBeFocused();
+  await composer.press('Enter');
+  await expect(input).toHaveValue(second);
+  await page.setViewportSize({ width: 320, height: 520 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    320,
+  );
 });
 
 test('rejects oversized UTF-8 envelopes without getting stuck waiting for the host', async (t) => {
@@ -1162,6 +1271,9 @@ test('shows public playlist limitations and hands off a selected row without add
     name: /Open .* in YouTube Music/,
   });
   await expect(actions).toHaveCount(2);
+  await expect(rows.getByRole('button', { name: /play .* next/i })).toHaveCount(
+    0,
+  );
   await actions.first().click();
   expect((await messages(page)).at(-1).command).toEqual({
     type: 'open_playlist_video',
@@ -1259,11 +1371,13 @@ test('makes the Search view available only with an active catalog and keeps play
   const source = page.getByRole('textbox', {
     name: 'YouTube link or video ID',
   });
+  const filter = page.getByRole('searchbox', { name: 'Filter queue' });
 
   await state(page, [first], first);
   await expect(navigation).toHaveCount(0);
   await expect(query).toHaveCount(0);
-  await expect(source).toBeVisible();
+  await expect(source).toBeHidden();
+  await expect(filter).toBeVisible();
 
   await state(page, [first], first, null, null, null, {
     catalog: searchState(),
@@ -1280,12 +1394,12 @@ test('makes the Search view available only with an active catalog and keeps play
     page.getByRole('slider', { name: 'Playback position' }),
   ).toBeVisible();
   await navigation.getByRole('button', { name: 'Queue' }).press('Space');
-  await expect(source).toBeFocused();
+  await expect(filter).toBeFocused();
   await showSearch.press('Enter');
   await state(page, [first], first, null, null, null, { catalog: null });
   await expect(navigation).toHaveCount(0);
   await expect(query).toHaveCount(0);
-  await expect(source).toBeFocused();
+  await expect(filter).toBeFocused();
 });
 
 test('opens Queue and focuses its add field from the native shortcut while preserving both drafts', async (t) => {
@@ -1432,6 +1546,7 @@ test('adds a YouTube search result by keyboard without clearing the queue draft'
   const source = page.getByRole('textbox', {
     name: 'YouTube link or video ID',
   });
+  await page.getByRole('button', { name: 'Add links' }).click();
   await source.fill(second);
   const view = page.getByRole('navigation', { name: 'Queue and search' });
   await expect(view).toBeVisible();
@@ -1464,6 +1579,50 @@ test('adds a YouTube search result by keyboard without clearing the queue draft'
   await view.getByRole('button', { name: 'Queue' }).click();
   await expect(source).toHaveValue(second);
   await expect(page.getByRole('status')).toBeEmpty();
+});
+
+test('queues a search result to play next and keeps feedback and focus in Search', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const catalog = searchState({ query: 'piano', results: [pianoResult] });
+  await state(page, [first, third], first, null, null, 1, { catalog });
+  await transport(page, readyTransport);
+  await page.getByRole('button', { name: 'Search' }).press('Enter');
+  const list = page.getByRole('list', { name: 'YouTube results' });
+  const action = list.getByRole('button', {
+    name: `Play ${pianoResult.title} next`,
+  });
+  await action.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'play_next', id: second },
+  });
+  await expect(action).toBeDisabled();
+  await state(
+    page,
+    [first, third],
+    first,
+    'Could not save the queue.',
+    null,
+    2,
+    { catalog },
+  );
+  await expect(page.getByText('Could not save the queue.')).toBeVisible();
+  await expect(action).toBeFocused();
+  await expect(action).toBeEnabled();
+  await action.press('Enter');
+  await state(page, [first, second, third], first, null, null, 3, { catalog });
+  await expect(
+    page.getByText('Queued to play next.', { exact: true }),
+  ).toBeVisible();
+  await expect(action).toBeFocused();
+  await expect(action).toBeDisabled();
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
 });
 
 test('fits Queue and Search rows at the minimum panel size alongside playback controls', async (t) => {
@@ -1608,7 +1767,7 @@ test('only looks up explicitly submitted Lyrics and clears old drafts and result
   });
   await expect(tab).toHaveCount(0);
   await expect(
-    page.getByRole('textbox', { name: 'YouTube link or video ID' }),
+    page.getByRole('searchbox', { name: 'Filter queue' }),
   ).toBeFocused();
 });
 
@@ -2118,6 +2277,7 @@ test('updates the player alert independently from queue acknowledgements and val
 
   await state(page, [first], first, null, null, 1, { playerProblem });
   await expect(playerAlert).toHaveText(playerProblem);
+  await page.getByRole('button', { name: 'Add links' }).click();
   await input.fill(second);
   await input.press('Enter');
   await state(page, [first, second], first, null, null, null, {

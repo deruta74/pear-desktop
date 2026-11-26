@@ -154,90 +154,105 @@
         <p id="metadata-problem" class="feedback" aria-live="polite"></p>
       </section>
 
-      <div id="queue-inputs">
-        <form id="add-video">
-          <label for="video-source">YouTube link or video ID</label>
-          <div class="add-controls">
-            <textarea
-              id="video-source"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-              placeholder="Paste links or IDs, one per line"
-              aria-describedby="queue-error"
-              rows="2"
-              required
-              disabled
-            ></textarea>
-            <button id="add-button" class="add-button" type="submit" disabled>
-              Add
-            </button>
-          </div>
-          <p id="queue-error" class="feedback error" role="alert"></p>
-          <p id="queue-status" class="feedback" role="status">Loading queue…</p>
-        </form>
-
-        <details id="public-playlist">
-          <summary>Play a YouTube playlist</summary>
-          <form id="public-playlist-form">
-            <label for="public-playlist-link">Public playlist link</label>
-            <div class="add-controls">
+      <section id="queue-panel" class="queue" aria-labelledby="queue-heading">
+        <div class="queue-controls">
+          <div class="queue-toolbar">
+            <div class="queue-heading">
+              <h2 id="queue-heading">Queue</h2>
+              <span
+                id="queue-count"
+                class="queue-count"
+                aria-live="polite"
+              ></span>
+            </div>
+            <div class="queue-tools">
+              <button
+                id="shuffle-upcoming"
+                class="queue-shuffle"
+                type="button"
+                aria-label="Shuffle upcoming"
+                aria-controls="queue-items"
+                title="Shuffle upcoming"
+                hidden
+              >
+                Shuffle
+              </button>
               <input
-                id="public-playlist-link"
-                placeholder="Paste a public playlist link"
+                id="queue-filter"
+                class="queue-filter"
+                type="search"
+                aria-label="Filter queue"
+                aria-controls="queue-items"
+                placeholder="Filter queue"
                 autocomplete="off"
                 spellcheck="false"
-                aria-describedby="public-playlist-feedback"
-                required
+                maxlength="180"
+                hidden
               />
-              <button class="add-button" type="submit">
-                Play playlist in Pear
+              <button
+                id="show-queue-inputs"
+                type="button"
+                aria-controls="queue-inputs"
+                aria-expanded="false"
+                hidden
+              >
+                Add links
               </button>
             </div>
-            <p
-              id="public-playlist-feedback"
-              class="feedback error"
-              role="alert"
-            ></p>
-          </form>
-        </details>
-      </div>
+          </div>
+          <div id="queue-inputs">
+            <form id="add-video">
+              <label for="video-source">YouTube link or video ID</label>
+              <div class="add-controls">
+                <textarea
+                  id="video-source"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="Paste links or IDs, one per line"
+                  aria-describedby="queue-error"
+                  rows="2"
+                  required
+                  disabled
+                ></textarea>
+                <button
+                  id="add-button"
+                  class="add-button"
+                  type="submit"
+                  disabled
+                >
+                  Add
+                </button>
+              </div>
+            </form>
 
-      <section id="queue-panel" class="queue" aria-labelledby="queue-heading">
-        <div class="queue-toolbar">
-          <div class="queue-heading">
-            <h2 id="queue-heading">Queue</h2>
-            <span
-              id="queue-count"
-              class="queue-count"
-              aria-live="polite"
-            ></span>
+            <details id="public-playlist">
+              <summary>Play a YouTube playlist</summary>
+              <form id="public-playlist-form">
+                <label for="public-playlist-link">Public playlist link</label>
+                <div class="add-controls">
+                  <input
+                    id="public-playlist-link"
+                    placeholder="Paste a public playlist link"
+                    autocomplete="off"
+                    spellcheck="false"
+                    aria-describedby="public-playlist-feedback"
+                    required
+                  />
+                  <button class="add-button" type="submit">
+                    Play playlist in Pear
+                  </button>
+                </div>
+              </form>
+            </details>
           </div>
-          <div class="queue-tools">
-            <button
-              id="shuffle-upcoming"
-              class="queue-shuffle"
-              type="button"
-              aria-label="Shuffle upcoming"
-              aria-controls="queue-items"
-              title="Shuffle upcoming"
-              hidden
-            >
-              Shuffle
-            </button>
-            <input
-              id="queue-filter"
-              class="queue-filter"
-              type="search"
-              aria-label="Filter queue"
-              aria-controls="queue-items"
-              placeholder="Filter queue"
-              autocomplete="off"
-              spellcheck="false"
-              maxlength="180"
-              hidden
-            />
-          </div>
+          <p id="queue-error" class="feedback error" role="alert"></p>
+          <p
+            id="public-playlist-feedback"
+            class="feedback error"
+            role="alert"
+          ></p>
+          <p id="queue-status" class="feedback" role="status">Loading queue…</p>
         </div>
         <p id="queue-empty" class="queue-empty" hidden>
           Add a YouTube video to start your queue.
@@ -256,7 +271,7 @@
           <button
             id="show-queue"
             type="button"
-            aria-controls="add-video queue-panel"
+            aria-controls="queue-panel"
             aria-pressed="true"
           >
             Queue

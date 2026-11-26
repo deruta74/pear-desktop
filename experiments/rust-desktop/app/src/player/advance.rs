@@ -44,7 +44,7 @@ impl Advance {
         self.armed = None;
     }
 
-    pub(super) fn retarget_after_shuffle(&mut self, queue: &QueueState) {
+    pub(super) fn retarget_after_queue_edit(&mut self, queue: &QueueState) {
         if let Some((armed_from, armed_to)) = &mut self.armed
             && let Some((from, to)) = queue_next(queue)
             && armed_from == from
@@ -316,14 +316,14 @@ mod tests {
     }
 
     #[test]
-    fn shuffling_an_armed_queue_advances_to_its_new_next_video() {
+    fn reordering_an_armed_queue_advances_to_its_new_next_video() {
         let now = Instant::now();
         let mut queue = queue();
         let mut state = Advance::default();
         state.observe(&queue, &sample(A, 1, 19_000, false), true, now);
 
         queue.entries.swap(1, 2);
-        state.retarget_after_shuffle(&queue);
+        state.retarget_after_queue_edit(&queue);
         assert!(matches!(
             state.observe(&queue, &sample(A, 0, 20_000, false), true, now),
             Some(Action::Advance { from, to }) if from == A && to == C

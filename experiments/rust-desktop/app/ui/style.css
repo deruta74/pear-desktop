@@ -465,25 +465,33 @@ button.play-toggle:enabled:active {
   margin-inline-start: 0;
 }
 
-#queue-inputs {
-  position: relative;
-}
-
-#public-playlist[open] {
-  margin-block-start: 0.5rem;
+#queue-inputs:not([hidden]) {
+  display: grid;
+  gap: 0.5rem;
+  margin-block-start: 0.75rem;
 }
 
 #public-playlist > summary {
-  position: absolute;
-  inset-block-start: 0.125rem;
-  inset-inline-end: 0;
+  width: fit-content;
+  min-height: var(--target);
+  padding: 0.75rem 0.25rem;
+  border-radius: 0.375rem;
   color: var(--muted);
   font-size: 0.8125rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
-#public-playlist-form {
-  margin-block-start: 0.25rem;
+#public-playlist > summary:hover {
+  color: var(--text);
+}
+
+#public-playlist-form .add-controls {
+  flex-wrap: wrap;
+}
+
+#public-playlist-form input {
+  flex-basis: 7.5rem;
 }
 
 .external-icon {
@@ -603,33 +611,63 @@ button.play-toggle:enabled:active {
 
 .queue {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(7.25rem, 1fr);
   min-width: 0;
   min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.queue,
+.library {
+  grid-row: -3 / -1;
+}
+
+.queue-controls {
+  padding: 0.25rem 0.25rem 0.5rem;
+  border-block-end: 1px solid var(--line);
 }
 
 .queue-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(max-content, 1fr) auto;
   align-items: center;
   gap: 0.5rem;
-  padding-block-end: 0.5rem;
-  border-block-end: 1px solid var(--line);
+}
+
+.queue-heading {
+  justify-content: start;
 }
 
 .queue-tools {
   display: flex;
-  gap: 0.375rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.25rem;
   align-items: center;
 }
 
 .queue-filter {
-  width: min(9rem, 33vw);
+  width: clamp(6rem, 26vw, 10rem);
 }
 
-.queue-shuffle {
+.queue-tools button {
   padding-inline: 0.625rem;
   font-size: 0.875rem;
+}
+
+#show-queue-inputs {
+  border-color: transparent;
+  color: var(--accent);
+  background: var(--current);
+}
+
+#show-queue-inputs:hover {
+  background: var(--hover);
+}
+
+#show-queue-inputs[aria-expanded='true'] {
+  border-color: var(--control-border);
 }
 
 .queue-heading h2 {
@@ -675,6 +713,16 @@ button.play-toggle:enabled:active {
   border-block-end: 1px solid var(--line);
 }
 
+.catalog-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.catalog-actions button {
+  padding-inline: 0.625rem;
+  font-size: 0.8125rem;
+}
+
 .catalog-title {
   font-size: 0.875rem;
   font-weight: 600;
@@ -691,15 +739,10 @@ button.play-toggle:enabled:active {
 
 .library {
   display: grid;
-  grid-row: 3 / span 2;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 0.5rem;
   min-width: 0;
   min-height: 0;
-}
-
-.panel[data-empty] .library {
-  grid-row: 2 / span 2;
 }
 
 .library[hidden],
@@ -864,14 +907,19 @@ button.play-toggle:enabled:active {
 }
 
 .queue-row {
+  --row-actions: 3;
   display: grid;
   grid-template-columns: minmax(1.75rem, auto) minmax(0, 1fr) repeat(
-      3,
+      var(--row-actions),
       var(--target)
     );
   min-height: 3.75rem;
   align-items: stretch;
   border-block-end: 1px solid var(--line);
+}
+
+.queue-row[data-has-play-next] {
+  --row-actions: 4;
 }
 
 .queue-row[data-current] {
@@ -931,11 +979,29 @@ button.play-toggle:enabled:active {
 }
 
 .move-icon,
-.remove-icon {
+.remove-icon,
+.play-next-icon {
   position: relative;
   display: block;
   width: 1rem;
   height: 1rem;
+}
+
+.play-next-icon::before {
+  position: absolute;
+  inset: 0.25rem auto auto 0;
+  border-block: 0.25rem solid transparent;
+  border-left: 0.375rem solid currentColor;
+  content: '';
+}
+
+.play-next-icon::after {
+  position: absolute;
+  inset: 0.25rem 0.0625rem auto auto;
+  width: 0.4375rem;
+  height: 0.5rem;
+  border-block: 1.5px solid currentColor;
+  content: '';
 }
 
 .move-icon::before {
@@ -974,6 +1040,12 @@ button.play-toggle:enabled:active {
 }
 
 @media (max-width: 420px) {
+  .queue-heading {
+    flex-direction: column;
+    align-items: start;
+    gap: 0;
+  }
+
   .view-switcher button {
     min-inline-size: var(--target);
     padding-inline: 0.5rem;
@@ -986,6 +1058,22 @@ button.play-toggle:enabled:active {
 
   .playback-actions[data-audio] .browser-label {
     display: none;
+  }
+}
+
+@media (max-width: 350px) {
+  .queue-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .queue-heading {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+
+  .queue-tools {
+    justify-content: start;
   }
 }
 

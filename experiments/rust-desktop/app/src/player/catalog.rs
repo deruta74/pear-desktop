@@ -244,11 +244,17 @@ impl Catalog {
     }
 
     pub(super) fn can_open_playlist_video(&self, id: &str, time: Instant) -> bool {
-        self.view.playlist.is_some()
-            && self
-                .expires
-                .as_ref()
-                .is_some_and(|expiry| !expiry.expired(time))
+        self.view.playlist.is_some() && self.has_current_video(id, time)
+    }
+
+    pub(super) fn can_queue_video(&self, id: &str, time: Instant) -> bool {
+        self.view.playlist.is_none() && self.has_current_video(id, time)
+    }
+
+    fn has_current_video(&self, id: &str, time: Instant) -> bool {
+        self.expires
+            .as_ref()
+            .is_some_and(|expiry| !expiry.expired(time))
             && self.view.results.iter().any(|result| result.id == id)
     }
 
@@ -318,6 +324,34 @@ mod tests {
         assert!(catalog.receive(second, Ok(Results::Search(vec![])), now + THROTTLE_DELAY));
         catalog.submit("second", now + THROTTLE_DELAY);
         assert_eq!(receiver.try_recv(), Err(TryRecvError::Empty));
+    }
+
+    #[test]
+    fn play_next_accepts_current_video_search_results_only() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let id = "M7lc1UVf-VE";
+        catalog.submit("music", now);
+        let (revision, _) = receiver.try_recv().unwrap();
+        assert!(!catalog.can_queue_video(id, now));
+        assert!(catalog.receive(revision, Ok(Results::Search(vec![result("Example")])), now));
+        assert!(catalog.can_queue_video(id, now));
+        assert!(!catalog.can_queue_video("dQw4w9WgXcQ", now));
+        assert!(!catalog.can_queue_video(id, now + Duration::from_secs(25 * 60 * 60)));
+
+        catalog.submit("https://www.youtube.com/playlist?list=PL_1234567890", now);
+        let (revision, _) = receiver.try_recv().unwrap();
+        assert!(catalog.receive(
+            revision,
+            Ok(Results::Playlist(PlaylistItems {
+                items: vec![result("Example")],
+                has_more: false,
+                unavailable: 0,
+            })),
+            now,
+        ));
+        assert!(!catalog.can_queue_video(id, now));
     }
 
     #[test]

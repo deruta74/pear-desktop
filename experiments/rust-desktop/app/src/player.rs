@@ -1178,12 +1178,26 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             error = Some("Playback controls are unavailable for this video.".into());
                         }
                     }
-                    command @ Command::ShuffleUpcoming {} => {
+                    command @ (Command::ShuffleUpcoming {} | Command::PlayNext { .. }) => {
+                        let available = match &command {
+                            Command::PlayNext { id } => library.state().entries.contains(id)
+                                || catalog.as_ref().is_some_and(|catalog|
+                                    catalog.can_queue_video(id, Instant::now())
+                                ),
+                            _ => true,
+                        };
                         if auto_advance.pending() {
                             error = Some("Waiting for the next video to start.".into());
+                        } else if !available {
+                            error = Some("That video is no longer available in Queue or Search.".into());
                         } else {
                             match library.apply(command) {
-                                Ok(_) => auto_advance.retarget_after_shuffle(library.state()),
+                                Ok(changed) => {
+                                    auto_advance.retarget_after_queue_edit(library.state());
+                                    reload_player = queue_edit_requires_reload(
+                                        &mut public_playlist, false, changed,
+                                    );
+                                }
                                 Err(reason) => error = Some(reason.to_string()),
                             }
                         }

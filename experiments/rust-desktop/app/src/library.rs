@@ -24,6 +24,9 @@ pub enum Command {
     Add {
         source: String,
     },
+    PlayNext {
+        id: String,
+    },
     Select {
         id: String,
     },
@@ -165,6 +168,23 @@ impl Library {
         match command {
             Command::Add { source } => {
                 state.append_ids(video_ids(&source)?)?;
+            }
+            Command::PlayNext { id } => {
+                if !valid_id(&id) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Enter a valid YouTube video ID.",
+                    ));
+                }
+                state.append_ids([id.clone()])?;
+                if let Some(current) = &state.current
+                    && current != &id
+                {
+                    let old_index = entry_index(&state.entries, &id)?;
+                    state.entries.remove(old_index);
+                    let next_index = entry_index(&state.entries, current)? + 1;
+                    state.entries.insert(next_index, id);
+                }
             }
             Command::Select { id } => {
                 entry_index(&state.entries, &id)?;
@@ -599,6 +619,76 @@ mod tests {
         assert_eq!(persisted.state().titles[FOURTH], "An upcoming video");
     }
 
+    #[test]
+    fn play_next_moves_an_existing_track_and_persists_without_reloading() {
+        const FOURTH: &str = "fourthVideo";
+        let dir = TestDirectory::new();
+        let path = dir.queue_path();
+        let mut queue = Library::load(path.clone()).unwrap();
+        for id in [FIRST, SECOND, THIRD, FOURTH] {
+            queue.apply(add(id)).unwrap();
+        }
+        queue.apply(select(SECOND)).unwrap();
+        queue
+            .remember_title(FIRST, "A previously played track")
+            .unwrap();
+
+        assert!(!queue.apply(play_next(FOURTH)).unwrap());
+        assert_eq!(queue.state().entries, [FIRST, SECOND, FOURTH, THIRD]);
+        assert!(!queue.apply(play_next(FIRST)).unwrap());
+        assert_eq!(queue.state().entries, [SECOND, FIRST, FOURTH, THIRD]);
+
+        assert_eq!(queue.state().current.as_deref(), Some(SECOND));
+        assert_eq!(queue.state().titles[FIRST], "A previously played track");
+        assert!(Library::load(path).unwrap().state() == queue.state());
+        assert!(queue.apply(Command::Next {}).unwrap());
+        assert_eq!(queue.state().current.as_deref(), Some(FIRST));
+    }
+
+    #[test]
+    fn play_next_inserts_new_tracks_and_selects_the_first_track_of_an_empty_queue() {
+        let dir = TestDirectory::new();
+        let path = dir.queue_path();
+        let mut queue = Library::load(path.clone()).unwrap();
+        let invalid = queue.apply(play_next("invalid")).unwrap_err();
+        assert_eq!(invalid.kind(), io::ErrorKind::InvalidInput);
+        assert!(!path.exists());
+
+        assert!(queue.apply(play_next(FIRST)).unwrap());
+        assert_eq!(queue.state().entries, [FIRST]);
+        assert_eq!(queue.state().current.as_deref(), Some(FIRST));
+
+        queue.apply(add(SECOND)).unwrap();
+        assert!(!queue.apply(play_next(THIRD)).unwrap());
+        assert_eq!(queue.state().entries, [FIRST, THIRD, SECOND]);
+        assert_eq!(queue.state().current.as_deref(), Some(FIRST));
+    }
+
+    #[test]
+    fn play_next_can_move_a_track_at_capacity_but_rejects_new_tracks() {
+        let dir = TestDirectory::new();
+        let path = dir.queue_path();
+        let entries: Vec<String> = (0..MAX_ENTRIES)
+            .map(|index| format!("video{index:06}"))
+            .collect();
+        let saved = serde_json::json!({"entries": entries, "current": entries[1]}).to_string();
+        fs::write(&path, &saved).unwrap();
+        let mut queue = Library::load(path.clone()).unwrap();
+
+        let error = queue.apply(play_next(FIRST)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(queue.state().entries, entries);
+        assert_eq!(fs::read_to_string(&path).unwrap(), saved);
+
+        assert!(!queue.apply(play_next(&entries[0])).unwrap());
+        assert_eq!(queue.state().entries.len(), MAX_ENTRIES);
+        assert_eq!(
+            queue.state().entries[..3],
+            ["video000001", "video000000", "video000002"]
+        );
+        assert!(Library::load(path).unwrap().state() == queue.state());
+    }
+
     struct TestDirectory(PathBuf);
 
     impl TestDirectory {
@@ -637,6 +727,10 @@ mod tests {
 
     fn select(id: &str) -> Command {
         Command::Select { id: id.into() }
+    }
+
+    fn play_next(id: &str) -> Command {
+        serde_json::from_value(serde_json::json!({"type": "play_next", "id": id})).unwrap()
     }
 
     fn remove(id: &str) -> Command {
@@ -940,6 +1034,9 @@ mod tests {
                 .apply(Command::MoveUp { id: SECOND.into() })
                 .is_err()
         );
+        assert!(library.apply(play_next(THIRD)).is_err());
+        assert!(!library.apply(play_next(FIRST)).unwrap());
+        assert!(!library.apply(play_next(SECOND)).unwrap());
         assert!(!library.apply(Command::MoveUp { id: FIRST.into() }).unwrap());
         assert!(library.remember_title(FIRST, "Changed title").is_err());
         assert_eq!(library.state().entries, [FIRST, SECOND]);
