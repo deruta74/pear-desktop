@@ -1143,6 +1143,10 @@ button.play-toggle:enabled:active {
 }
 
 @media (max-width: 420px) {
+  .view-switcher button {
+    font-size: 0.8125rem;
+  }
+
   .queue-heading {
     flex-direction: column;
     align-items: start;
