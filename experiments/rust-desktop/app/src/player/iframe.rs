@@ -16,8 +16,9 @@ use crate::{Result, library::valid_id};
 
 const WRAPPER_PATH: &str = "/iframe-player.html";
 const HTML: &str = include_str!("../../ui/iframe-player.html");
-const MAX_SNAPSHOT_BYTES: usize = 512;
+const MAX_SNAPSHOT_BYTES: usize = 768;
 const MAX_VOLUME: u8 = 100;
+const MAX_PLAYBACK_RATES: usize = 16;
 // A generous bound for long-running live streams as well as ordinary videos.
 const MAX_SECONDS: u32 = 31 * 24 * 60 * 60;
 
@@ -189,6 +190,7 @@ pub(super) enum Action {
     Seek(u32),
     SetVolume(u8),
     SetMuted(bool),
+    SetRate(f64),
     Advance { from: String, to: String },
 }
 
@@ -206,12 +208,20 @@ impl Action {
             }
             Self::SetVolume(_) => return Err("The IFrame volume is out of range.".into()),
             Self::SetMuted(muted) => format!("window.pearIframePlayer?.setMuted({muted})"),
+            Self::SetRate(rate) if valid_rate(rate) => {
+                format!("window.pearIframePlayer?.setRate({rate})")
+            }
+            Self::SetRate(_) => return Err("The IFrame playback rate is out of range.".into()),
             Self::Advance { from, to } if from != to && valid_id(&from) && valid_id(&to) => {
                 format!("window.pearIframePlayer?.advance({from:?},{to:?})")
             }
             Self::Advance { .. } => return Err("Invalid YouTube video IDs for advance.".into()),
         })
     }
+}
+
+fn valid_rate(rate: f64) -> bool {
+    (0.25..=4.0).contains(&rate)
 }
 
 #[derive(Deserialize)]
@@ -231,6 +241,7 @@ pub(super) struct Snapshot {
     pub(super) position: Option<u32>,
     pub(super) position_ms: Option<u32>,
     pub(super) playback_rate: Option<f64>,
+    pub(super) playback_rates: Option<Vec<f64>>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
     pub(super) duration: Option<u32>,
     pub(super) ended: bool,
@@ -272,9 +283,17 @@ impl Snapshot {
                         .duration
                         .is_some_and(|duration| millis > duration.saturating_mul(1000))
             })
-            || snapshot
-                .playback_rate
-                .is_some_and(|rate| !(0.25..=4.0).contains(&rate))
+            || snapshot.playback_rate.is_some_and(|rate| !valid_rate(rate))
+            || snapshot.playback_rates.as_deref().is_some_and(|rates| {
+                !snapshot.ready
+                    || snapshot.blocked
+                    || snapshot.error.is_some()
+                    || snapshot.source_replayed
+                    || rates.is_empty()
+                    || rates.len() > MAX_PLAYBACK_RATES
+                    || rates.iter().any(|&rate| !valid_rate(rate))
+                    || rates.windows(2).any(|rates| rates[0] >= rates[1])
+            })
             || snapshot
                 .duration
                 .is_some_and(|duration| !(1..=MAX_SECONDS).contains(&duration))
@@ -494,6 +513,79 @@ mod tests {
             Action::SetMuted(false).command().unwrap(),
             "window.pearIframePlayer?.setMuted(false)"
         );
+    }
+
+    #[test]
+    fn builds_only_finite_bounded_playback_rate_commands() {
+        assert_eq!(
+            Action::SetRate(0.25).command().unwrap(),
+            "window.pearIframePlayer?.setRate(0.25)"
+        );
+        assert_eq!(
+            Action::SetRate(4.0).command().unwrap(),
+            "window.pearIframePlayer?.setRate(4)"
+        );
+        for rate in [0.249, 4.001, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(Action::SetRate(rate).command().is_err());
+        }
+    }
+
+    #[test]
+    fn parses_only_bounded_distinct_playback_rates_when_available() {
+        let mut snapshot: serde_json::Value = serde_json::from_str(STARTING).unwrap();
+        assert!(
+            Snapshot::parse(&snapshot.to_string())
+                .unwrap()
+                .playback_rates
+                .is_none()
+        );
+        snapshot["playbackRates"] = serde_json::json!([0.25, 1, 4]);
+        assert!(Snapshot::parse(&snapshot.to_string()).is_none());
+        snapshot["ready"] = serde_json::json!(true);
+        let rates = Snapshot::parse(&snapshot.to_string()).unwrap();
+        assert!(!rates.has_played);
+        assert_eq!(rates.playback_rates.as_deref(), Some(&[0.25, 1.0, 4.0][..]));
+        assert!(rates.playback_rate.is_none());
+        for (key, value) in [
+            ("blocked", serde_json::json!(true)),
+            ("error", serde_json::json!(100)),
+            ("playbackRates", serde_json::json!([])),
+            ("playbackRates", serde_json::json!([0.249, 1])),
+            ("playbackRates", serde_json::json!([1, 4.001])),
+            ("playbackRates", serde_json::json!([1, 0.5])),
+            ("playbackRates", serde_json::json!([1, 1])),
+            (
+                "playbackRates",
+                serde_json::json!(
+                    (0..17)
+                        .map(|step| 0.25 + f64::from(step) / 8.0)
+                        .collect::<Vec<_>>()
+                ),
+            ),
+        ] {
+            let mut invalid = snapshot.clone();
+            invalid[key] = value;
+            assert!(Snapshot::parse(&invalid.to_string()).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn accepts_full_playback_rate_lists_alongside_existing_telemetry() {
+        let mut snapshot: serde_json::Value = serde_json::from_str(PLAYING).unwrap();
+        let rates: Vec<_> = (1..=16)
+            .map(|offset| 0.25 + f64::from(offset) * f64::EPSILON)
+            .collect();
+        snapshot["playbackRates"] = serde_json::json!(rates);
+        snapshot["videoId"] = serde_json::json!(ID);
+        snapshot["sourceReplayed"] = serde_json::json!(false);
+        snapshot["positionMs"] = serde_json::json!(172_345);
+        snapshot["playbackRate"] = serde_json::json!(0.25);
+        snapshot["volume"] = serde_json::json!(37);
+        snapshot["muted"] = serde_json::json!(false);
+        let sampled = Snapshot::parse(&snapshot.to_string()).unwrap();
+        assert_eq!(sampled.playback_rates.unwrap().len(), 16);
+        assert_eq!(sampled.playback_rate, Some(0.25));
+        assert_eq!(sampled.position_ms, Some(172_345));
     }
 
     #[test]

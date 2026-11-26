@@ -56,8 +56,10 @@ let renderedTransport = null;
 let activeView = 'queue';
 let viewSwitcher = null;
 let renderedCatalog = null;
+let renderedBrowserSearch = false;
 let catalogView = null;
 let catalogSearchError = '';
+let browserSearchError = '';
 let catalogAddFeedback = null;
 let renderedLyrics = null;
 let lyricsSwitchingActive = false;
@@ -104,7 +106,8 @@ function commandProblem(message, context) {
     updateLibrary(renderedLibrary);
     return;
   }
-  if (context === 'search') catalogSearchError = message;
+  if (context === 'browser-search') browserSearchError = message;
+  else if (context === 'search') catalogSearchError = message;
   else catalogAddFeedback = { message, error: true };
   updateCatalog(renderedCatalog);
 }
@@ -149,6 +152,7 @@ function send(command, context = 'queue') {
     return;
 
   if (context === 'legal') legalCommandProblem = '';
+  if (context === 'browser-search') browserSearchError = '';
   if (context === 'search') catalogSearchError = '';
   if (context === 'search' || context === 'result-add')
     catalogAddFeedback = null;
@@ -159,7 +163,7 @@ function send(command, context = 'queue') {
   const message = JSON.stringify({ sequence, command });
   if (message.length > 4096 || encoder.encode(message).length > 4096) {
     commandProblem(
-      context === 'search'
+      context === 'search' || context === 'browser-search'
         ? 'Enter a search of up to 160 characters.'
         : context === 'lyrics'
           ? 'Enter a track and artist of up to 160 characters each.'
@@ -682,6 +686,7 @@ function mountCatalog(query) {
   const [searchForm, results] =
     catalogTemplate.content.cloneNode(true).children;
   const input = searchForm.querySelector('#catalog-query');
+  const label = searchForm.querySelector('#catalog-query-label');
   const submit = searchForm.querySelector('button');
   const feedback = searchForm.querySelector('#catalog-feedback');
   const addFeedback = searchForm.querySelector('#catalog-add-feedback');
@@ -690,10 +695,20 @@ function mountCatalog(query) {
     event.preventDefault();
     if (pending) return;
     const query = input.value.trim();
+    const context = renderedBrowserSearch ? 'browser-search' : 'search';
     if (!query) {
       catalogAddFeedback = null;
-      commandProblem('Enter a search term.', 'search');
+      commandProblem('Enter a search term.', context);
       input.focus();
+      return;
+    }
+    if (renderedBrowserSearch) {
+      if ([...query].length > 160) {
+        commandProblem('Enter a search of up to 160 characters.', context);
+        input.focus();
+        return;
+      }
+      send({ type: 'open_music_search', query }, context);
       return;
     }
     input.value = query;
@@ -703,6 +718,7 @@ function mountCatalog(query) {
   return {
     form: searchForm,
     query: input,
+    label,
     submit,
     feedback,
     addFeedback,
@@ -744,11 +760,15 @@ function createCatalogResult({ id, title, channel }) {
   return row;
 }
 
-function updateCatalog(catalog) {
+function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   renderedCatalog = catalog ?? null;
+  renderedBrowserSearch = !catalog && browserSearch === true;
+  if (!renderedBrowserSearch) browserSearchError = '';
   if (!catalog) {
     catalogSearchError = '';
     catalogAddFeedback = null;
+  }
+  if (!catalog && !renderedBrowserSearch) {
     if (catalogView) {
       const wasFocused = removeView(catalogView.form, catalogView.results);
       catalogView = null;
@@ -757,10 +777,19 @@ function updateCatalog(catalog) {
     return false;
   }
 
-  catalogView ??= mountCatalog(catalog.query);
+  catalogView ??= mountCatalog(catalog?.query ?? '');
   const view = catalogView;
-  const searching = catalog.pending || pending?.command.type === 'search';
-  const results = searching ? [] : catalog.results;
+  const label = renderedBrowserSearch
+    ? 'Search YouTube Music'
+    : 'Search YouTube';
+  const action = renderedBrowserSearch ? 'Open in browser' : 'Search';
+  view.form.toggleAttribute('data-browser-search', renderedBrowserSearch);
+  if (view.label.textContent !== label) view.label.textContent = label;
+  if (view.submit.textContent !== action) view.submit.textContent = action;
+
+  const searching =
+    catalog && (catalog.pending || pending?.context === 'search');
+  const results = searching ? [] : (catalog?.results ?? []);
   if (
     results.length !== view.renderedResults.length ||
     results.some((result, index) => {
@@ -785,15 +814,20 @@ function updateCatalog(catalog) {
 
   let message = '';
   let error = false;
-  if (catalogSearchError) {
-    message = catalogSearchError;
+  const searchError = renderedBrowserSearch
+    ? browserSearchError
+    : catalogSearchError;
+  if (searchError) {
+    message = searchError;
     error = true;
+  } else if (renderedBrowserSearch && pending?.context === 'browser-search') {
+    message = 'Opening YouTube Music…';
   } else if (searching) {
     message = 'Searching YouTube…';
-  } else if (catalog.problem) {
+  } else if (catalog?.problem) {
     message = catalog.problem;
     error = true;
-  } else if (catalog.query) {
+  } else if (catalog?.query) {
     message = results.length
       ? `${results.length} ${results.length === 1 ? 'video' : 'videos'} found.`
       : 'No videos found. Try a different search.';
@@ -1408,6 +1442,7 @@ window.renderPearState = (
     metadata,
     metadataProblem,
     catalog,
+    browserSearch,
     lyrics,
     lyricsSwitching,
     savedPlaylists,
@@ -1525,6 +1560,8 @@ window.renderPearState = (
 
   if (context === 'search') {
     catalogSearchError = error ?? '';
+  } else if (context === 'browser-search') {
+    browserSearchError = error ?? '';
   } else if (context === 'result-add') {
     catalogAddFeedback = {
       message: error || confirmation,
@@ -1540,7 +1577,9 @@ window.renderPearState = (
     errorText.textContent = error ?? '';
   }
   if (
-    (context !== 'legal' && context !== 'audio') ||
+    (context !== 'legal' &&
+      context !== 'audio' &&
+      context !== 'browser-search') ||
     command?.type === 'accept_legal' ||
     notice
   ) {
@@ -1552,7 +1591,7 @@ window.renderPearState = (
   lyricsSwitchingActive = Boolean(lyricsSwitching);
   if (selectionChanged || playerProblem || lyricsSwitchingActive)
     cancelLyricsClock();
-  const catalogWasFocused = updateCatalog(catalog);
+  const catalogWasFocused = updateCatalog(catalog, browserSearch === true);
   const lyricsWasFocused = updateLyrics(lyrics, selectionChanged);
   const libraryWasFocused = updateLibrary(
     savedPlaylists,

@@ -111,6 +111,10 @@ impl Transport {
             .filter(|_| self.sampled_at == Some(time))
     }
 
+    pub(super) fn snapshot(&self) -> Option<&Snapshot> {
+        self.snapshot.as_ref()
+    }
+
     pub(super) fn confirmed_output(&mut self, time: Instant) -> AudioOutput {
         let (volume, muted) = self
             .observed_at(time)
@@ -139,6 +143,10 @@ impl Transport {
         let available = match &action {
             Action::SetVolume(_) => state.volume.is_some(),
             Action::SetMuted(_) => state.muted.is_some(),
+            Action::SetRate(rate) => state
+                .playback_rates
+                .as_ref()
+                .is_some_and(|rates| rates.contains(rate)),
             _ => state.has_played,
         };
         if !available {

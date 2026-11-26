@@ -51,6 +51,9 @@ pub enum Command {
     Search {
         query: String,
     },
+    OpenMusicSearch {
+        query: String,
+    },
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     FindLyrics {
         title: String,
@@ -210,6 +213,7 @@ impl Library {
             | Command::OpenLegalLink { .. }
             | Command::OpenBrowser {}
             | Command::Search { .. }
+            | Command::OpenMusicSearch { .. }
             | Command::Playlist(_) => {
                 return Ok(false);
             }

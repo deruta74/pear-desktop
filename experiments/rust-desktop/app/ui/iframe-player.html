@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-bu6b2x3ciGpQhc2jdhhZjyeultt2bF62p9inSaGYrNI=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-8XD95nd53djct/0SlX/RATT+7qB6Yy1oV7m/F39bdjs=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
   <title>YouTube player</title>
   <style>
     html, body { width: 100%; height: 100%; margin: 0; background: #000; }
@@ -39,6 +39,7 @@
       let pendingAdvance = null;
       let volumeSetterFailed = false;
       let muteSetterFailed = false;
+      let rateSetterFailed = false;
 
       const fail = () => { error ??= -1; };
 
@@ -58,10 +59,10 @@
               const target = event?.target ?? player;
               const { initialVolume, initialMuted } = document.documentElement.dataset;
               if (/^(?:100|[1-9]?[0-9])$/.test(initialVolume)) {
-                audioValue(() => target.setVolume(Number(initialVolume)));
+                optionalValue(() => target.setVolume(Number(initialVolume)));
               }
               if (initialMuted === 'true' || initialMuted === 'false') {
-                audioValue(() => applyMuted(target, initialMuted === 'true'));
+                optionalValue(() => applyMuted(target, initialMuted === 'true'));
               }
               ready = true;
             },
@@ -124,11 +125,15 @@
         return Number.isInteger(value) && value >= 0 && value <= 100;
       }
 
-      function audioValue(readOrSet) {
+      function validRate(value) {
+        return Number.isFinite(value) && value >= 0.25 && value <= 4;
+      }
+
+      function optionalValue(readOrSet) {
         try {
           return readOrSet();
         } catch {
-          // An optional audio method can fail independently of playback.
+          // Optional player methods can fail independently of playback.
           return null;
         }
       }
@@ -139,12 +144,27 @@
       }
 
       function canSetVolume() {
-        return !volumeSetterFailed && audioValue(() => typeof player.setVolume === 'function') === true;
+        return !volumeSetterFailed && optionalValue(() => typeof player.setVolume === 'function') === true;
       }
 
       function canSetMuted() {
-        return !muteSetterFailed && audioValue(() =>
+        return !muteSetterFailed && optionalValue(() =>
           typeof player.mute === 'function' && typeof player.unMute === 'function') === true;
+      }
+
+      function availableRates() {
+        return optionalValue(() => {
+          if (rateSetterFailed || typeof player.setPlaybackRate !== 'function') return null;
+          const values = player.getAvailablePlaybackRates();
+          if (!Array.isArray(values) || values.length === 0 || values.length > 16) return null;
+          const rates = new Set();
+          for (let index = 0, length = values.length; index < length; index += 1) {
+            const rate = values[index];
+            if (!validRate(rate)) return null;
+            rates.add(rate);
+          }
+          return [...rates].sort((first, second) => first - second);
+        });
       }
 
       function observeAdvance(videoId) {
@@ -176,6 +196,7 @@
         let position = null;
         let positionMs = null;
         let playbackRate = null;
+        let playbackRates = null;
         let duration = null;
         let volume = null;
         let muted = null;
@@ -187,15 +208,16 @@
               if (state === 1 && videoId !== null) playedVideoId = videoId;
               const length = boundedSeconds(player.getDuration());
               const time = boundedSeconds(player.getCurrentTime());
-              const rate = player.getPlaybackRate();
-              if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) playbackRate = rate;
+              const rate = optionalValue(() => player.getPlaybackRate());
+              if (validRate(rate)) playbackRate = rate;
+              if (!blocked) playbackRates = availableRates();
               if (length > 0) duration = Math.ceil(length);
               if (time !== null) {
                 positionMs = Math.floor(Math.min(time, duration ?? maxSeconds) * 1000);
                 position = Math.floor(positionMs / 1000);
               }
-              const audioVolume = canSetVolume() ? audioValue(() => player.getVolume()) : null;
-              const audioMuted = canSetMuted() ? audioValue(() => player.isMuted()) : null;
+              const audioVolume = canSetVolume() ? optionalValue(() => player.getVolume()) : null;
+              const audioMuted = canSetMuted() ? optionalValue(() => player.isMuted()) : null;
               if (validVolume(audioVolume)) volume = audioVolume;
               if (typeof audioMuted === 'boolean') muted = audioMuted;
             }
@@ -206,7 +228,7 @@
         return {
           ready, videoId, sourceReplayed, hasPlayed: ready && hasPlayed, state: ready ? state : null,
           volume, muted,
-          position, positionMs, playbackRate, duration, ended: ready && ended, error, blocked,
+          position, positionMs, playbackRate, playbackRates, duration, ended: ready && ended, error, blocked,
         };
       }
 
@@ -220,7 +242,7 @@
         }
       }
 
-      function audioCommand(canApply, apply, onFailure) {
+      function optionalCommand(canApply, apply, onFailure) {
         if (!isWrapper() || !ready || blocked || error !== null || pendingAdvance !== null || !canApply()) return;
         try {
           apply();
@@ -250,14 +272,22 @@
         play: () => command(() => player.playVideo()),
         pause: () => command(() => player.pauseVideo()),
         setVolume: (volume) => {
-          if (validVolume(volume)) audioCommand(canSetVolume, () => player.setVolume(volume), () => {
+          if (validVolume(volume)) optionalCommand(canSetVolume, () => player.setVolume(volume), () => {
             volumeSetterFailed = true;
           });
         },
         setMuted: (muted) => {
-          if (typeof muted === 'boolean') audioCommand(canSetMuted, () => applyMuted(player, muted), () => {
+          if (typeof muted === 'boolean') optionalCommand(canSetMuted, () => applyMuted(player, muted), () => {
             muteSetterFailed = true;
           });
+        },
+        setRate: (rate) => {
+          if (!validRate(rate)) return;
+          optionalCommand(
+            () => availableRates()?.includes(rate),
+            () => player.setPlaybackRate(rate),
+            () => { rateSetterFailed = true; },
+          );
         },
         seek: (seconds) => {
           if (!Number.isInteger(seconds) || seconds < 0 || seconds > maxSeconds) return;

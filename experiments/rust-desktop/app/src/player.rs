@@ -16,6 +16,8 @@ mod playlists;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod preferences;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod speed_menu;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod transport;
 use std::{
     borrow::Cow,
@@ -115,6 +117,8 @@ struct QueueView<'a> {
     metadata: Option<&'a metadata::Metadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata_problem: Option<&'static str>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    browser_search: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     catalog: Option<&'a catalog::View>,
     saved_playlists: playlists::View<'a>,
@@ -258,6 +262,14 @@ fn isolated_builder(builder: WebViewBuilder<'_>) -> WebViewBuilder<'_> {
 
 fn embed_url(id: &str) -> String {
     format!("https://www.youtube.com/embed/{id}")
+}
+
+fn music_search_url(query: &str) -> Result<url::Url> {
+    let query =
+        metadata::normalize_query(query).ok_or("Enter a search term of up to 160 characters.")?;
+    let mut url = url::Url::parse("https://music.youtube.com/search")?;
+    url.query_pairs_mut().append_pair("q", &query);
+    Ok(url)
 }
 
 fn video_title(document_title: &str) -> Option<&str> {
@@ -542,9 +554,14 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         accelerator(CMD_OR_CTRL | Modifiers::SHIFT, Code::KeyL),
     );
     let add_video = MenuItem::new("Add Video", approved, accelerator(CMD_OR_CTRL, Code::KeyL));
+    let open_music = MenuItem::new(
+        "Open in YouTube Music",
+        approved && library.state().current.is_some(),
+        None,
+    );
     let legal = MenuItem::new("Terms and Privacy", true, None);
     let app_menu = Submenu::with_items("Pear Desktop", true, &[&quit])?;
-    let file_menu = Submenu::with_items("File", true, &[&add_video])?;
+    let file_menu = Submenu::with_items("File", true, &[&add_video, &open_music])?;
     let view_menu = Submenu::with_items("View", true, &[&toggle_queue, &reload])?;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let toggle_iframe = CheckMenuItem::new(
@@ -564,6 +581,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     );
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     view_menu.append(&toggle_advance)?;
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut speed_menu = speed_menu::SpeedMenu::new();
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    view_menu.append(speed_menu.submenu())?;
     let edit_menu = Submenu::with_items(
         "Edit",
         true,
@@ -715,6 +736,16 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 *flow = ControlFlow::Exit;
                 return;
             }
+            Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *open_music.id() => {
+                if approved
+                    && let Some(id) = library.state().current.as_deref()
+                    && let Err(reason) =
+                        open::that_detached(format!("https://music.youtube.com/watch?v={id}"))
+                {
+                    error = Some(format!("Could not open YouTube Music: {reason}"));
+                }
+                true
+            }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *reload.id() => {
                 if !approved {
                     return;
@@ -807,6 +838,18 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     show_legal = false;
                     legal_problem = None;
                     focus_add_field = true;
+                }
+                true
+            }
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            Event::UserEvent(PlayerEvent::Menu(event)) => {
+                let Some(rate) = speed_menu.requested(&event.id) else { return };
+                if approved
+                    && !auto_advance.pending()
+                    && let (Some(transport), Some(player)) = (&mut transport, &current_player)
+                    && let Err(reason) = transport.perform(player, iframe::Action::SetRate(rate))
+                {
+                    error = Some(reason.to_string());
                 }
                 true
             }
@@ -1014,6 +1057,16 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             catalog.submit(&query, Instant::now());
                         }
                     }
+                    Command::OpenMusicSearch { query } => {
+                        match music_search_url(&query) {
+                            Ok(url) => {
+                                if let Err(reason) = open::that_detached(url.as_str()) {
+                                    error = Some(format!("Could not open YouTube Music: {reason}"));
+                                }
+                            }
+                            Err(reason) => error = Some(reason.to_string()),
+                        }
+                    }
                     Command::Playlist(command) => {
                         #[cfg(any(target_os = "macos", target_os = "linux"))]
                         let cancel_switch = auto_advance.pending()
@@ -1056,6 +1109,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 iframe::Action::Advance { .. } => "advance",
                                     iframe::Action::SetVolume(_) => "volume",
                                     iframe::Action::SetMuted(_) => "mute",
+                                    iframe::Action::SetRate(_) => "rate",
                                 };
                                 println!("PEAR_QUEUE_TRANSPORT_COMMAND {name}");
                             }
@@ -1210,6 +1264,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             &mut timer,
         );
         if controls_ready && update_queue {
+            open_music.set_enabled(approved && library.state().current.is_some());
             let player_ready = titled_generation == Some(generation);
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             let player_ready = player_ready || transport.as_ref().is_some_and(transport::Transport::ready);
@@ -1233,6 +1288,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     queue: library.state(),
                     metadata: lookup.as_ref().and_then(metadata_lookup::Lookup::metadata),
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
+                    browser_search: approved && !mode.smoke && catalog.is_none(),
                     catalog: catalog.as_ref().map(catalog::Catalog::view),
                     saved_playlists: playlists.view(),
                     legal: LegalView {
@@ -1259,6 +1315,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         }
         if focus_add_field && let Err(reason) = focus_add(&controls) {
             eprintln!("Could not focus the video field: {reason}");
+        }
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            let sample = if approved && !switching {
+                transport.as_ref().and_then(transport::Transport::snapshot)
+            } else {
+                None
+            };
+            if let Err(reason) = speed_menu.update(sample) {
+                eprintln!("Could not update the playback speed menu: {reason}");
+            }
         }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         if approved && controls_ready && let Some(transport) = &mut transport
@@ -1359,6 +1426,24 @@ mod tests {
         };
         assert_eq!(link.url(), "https://www.youtube.com/t/terms");
         assert!(controls_command(&request("https://example.invalid")).is_none());
+    }
+
+    #[test]
+    fn music_search_opens_a_fixed_origin_with_one_encoded_query() {
+        let url = music_search_url("  Björk & Jónsi? # live  ").unwrap();
+        assert_eq!(
+            url.origin().ascii_serialization(),
+            "https://music.youtube.com"
+        );
+        assert_eq!(url.path(), "/search");
+        assert!(url.fragment().is_none());
+        assert_eq!(
+            url.query_pairs().collect::<Vec<_>>(),
+            [(Cow::Borrowed("q"), Cow::Borrowed("Björk & Jónsi? # live"))],
+        );
+        assert!(music_search_url(" ").is_err());
+        assert!(music_search_url("search\nextra").is_err());
+        assert!(music_search_url(&"界".repeat(161)).is_err());
     }
 
     #[test]

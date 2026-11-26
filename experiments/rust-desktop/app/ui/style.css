@@ -587,6 +587,10 @@ button.play-toggle:enabled:active {
   border-block-start: 1px solid var(--line);
 }
 
+#catalog-form[data-browser-search] .add-button {
+  flex-shrink: 0;
+}
+
 .catalog-result {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

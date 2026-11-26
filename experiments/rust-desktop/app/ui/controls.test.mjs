@@ -224,6 +224,7 @@ async function state(
     metadata,
     metadataProblem,
     catalog,
+    browserSearch,
     lyrics,
     lyricsSwitching,
     savedPlaylists,
@@ -250,6 +251,7 @@ async function state(
         metadata,
         metadataProblem,
         catalog,
+        browserSearch,
         lyrics,
         lyricsSwitching,
         savedPlaylists,
@@ -946,6 +948,82 @@ const pianoResult = {
   title: '<b>Studio piano & strings</b>',
   channel: '<i>Artist & friends</i>',
 };
+
+test('opens browser search only when submitted and keeps its draft and acknowledgement in Search', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const remoteRequests = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).origin !== origin)
+      remoteRequests.push(request.url());
+  });
+  const render = (error = null, sequence, catalog) =>
+    state(page, [first], first, error, null, sequence, {
+      browserSearch: true,
+      catalog,
+    });
+  await render();
+  const navigation = page.getByRole('navigation', { name: 'Queue and search' });
+  await navigation.getByRole('button', { name: 'Search' }).click();
+  const form = page.locator('#catalog-form');
+  const query = form.getByRole('searchbox', { name: 'Search YouTube Music' });
+  const submit = form.getByRole('button', {
+    name: 'Open in browser',
+    exact: true,
+  });
+  await expect(query).toBeFocused();
+  await expect(submit).toBeInViewport();
+  expect((await query.boundingBox()).width).toBeGreaterThanOrEqual(100);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+  await query.fill(' '.repeat(3));
+  await query.press('Enter');
+  await expect(form.getByText('Enter a search term.')).toBeVisible();
+  await query.fill('🌿'.repeat(161));
+  await query.press('Enter');
+  await expect(
+    form.getByText('Enter a search of up to 160 characters.'),
+  ).toBeVisible();
+
+  const draft = '  Björk & Co  ';
+  await query.fill(draft);
+  expect(await messages(page)).toHaveLength(1);
+  await query.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'open_music_search', query: 'Björk & Co' },
+  });
+  await render(null, null);
+  await expect(submit).toBeDisabled();
+  await expect(query).toHaveValue(draft);
+  await expect(query).toBeFocused();
+
+  const problem = 'Could not open YouTube Music in your browser.';
+  await render(problem, 2);
+  await expect(form.getByText(problem)).toBeVisible();
+  await expect(submit).toBeEnabled();
+  await expect(page.locator('#queue-error')).toBeEmpty();
+  await navigation.getByRole('button', { name: 'Queue' }).click();
+  await navigation.getByRole('button', { name: 'Search' }).click();
+  await expect(query).toHaveValue(draft);
+  await query.press('Enter');
+  await render(null, 3);
+  await expect(form.getByText(problem)).toHaveCount(0);
+  await expect(query).toHaveValue(draft);
+  await expect(
+    page.getByRole('list', { name: 'YouTube results' }),
+  ).toBeHidden();
+  expect(page.url()).toBe(`${origin}/`);
+  expect(remoteRequests).toEqual([]);
+
+  await render(null, null, searchState());
+  await expect(
+    form.getByRole('searchbox', { name: 'Search YouTube', exact: true }),
+  ).toHaveValue(draft);
+  await expect(form.getByRole('button', { name: 'Search' })).toBeVisible();
+  expect(await messages(page)).toHaveLength(3);
+});
 
 test('makes the Search view available only with an active catalog and keeps playback accessible', async (t) => {
   const page = await panel(t);

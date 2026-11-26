@@ -243,8 +243,10 @@
       </template>
 
       <template id="catalog-template">
-        <form id="catalog-form" hidden>
-          <label for="catalog-query">Search YouTube</label>
+        <form id="catalog-form" aria-labelledby="catalog-query-label" hidden>
+          <label id="catalog-query-label" for="catalog-query"
+            >Search YouTube</label
+          >
           <div class="add-controls">
             <input
               id="catalog-query"
@@ -453,8 +455,10 @@
             When you select or restore a video, Pear shares its ID with YouTube
             to load the embedded player and fetch details and artwork. Details
             use YouTube oEmbed or the YouTube Data API with a key you configure.
-            Searches you submit send your search text to YouTube and use the
-            configured key’s API quota.
+            The in-app Data API search sends your search text to YouTube and
+            uses the configured key’s project quota. When you choose Open in
+            browser for a YouTube Music search, Pear passes your search text to
+            your browser to submit to YouTube Music.
           </p>
           <p>
             Pear uses separate private WebViews for the controls and player.
