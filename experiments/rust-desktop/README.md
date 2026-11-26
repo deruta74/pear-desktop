@@ -63,7 +63,7 @@ In `--iframe-player`, start the video and open **Lyrics**. Check the track name 
 
 ### Local audio and Slowed + Reverb
 
-Choose **File → Open Local Audio Window**, then **Open audio files**, or drop up to 200 files into the Local Audio window. Select a track from the list or use Previous and Next. At the end of a playing track, Pear lets the effect tail finish and starts the next readable file. **Shuffle upcoming** reorders the tracks after the current one. Choose **Repeat → Queue** to wrap to the beginning or **Repeat → Track** to replay the current file. The queue lasts for the current local audio session.
+Choose **File → Open Local Audio Window**, then **Open audio files**, or drop up to 200 files into the Local Audio window. Select a track from the list or use Previous and Next. At the end of a playing track, Pear lets the effect tail finish and starts the next readable file. Use **Shuffle upcoming** to reorder tracks after the current one or **Clear upcoming** to remove them while playback continues. Choose **Repeat → Queue** to wrap to the beginning or **Repeat → Track** to replay the current file. The queue lasts for the current local audio session.
 
 Pear streams mono or stereo integer PCM and IEEE float WAV, native FLAC with a known duration, MP3, and single-stream Ogg Opus (`.opus` or `.ogg`) through the system’s default output. It uses MP3 encoder delay and padding information when available and counts complete frames when the file lacks duration metadata. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. Volume, speed, and reverb settings carry across tracks and are restored the next time you open Local Audio.
 
@@ -146,8 +146,8 @@ PEAR_YOUTUBE_OAUTH_CLIENT_FILE="/absolute/path/to/desktop-client.json" \
   "$app/Contents/MacOS/pear-desktop-preview"
 ```
 
-On Linux or Windows, set the same environment variable in the shell that runs
-the preview. In Pear, open **Library → YouTube account** and choose **Connect**.
+On Linux or Windows, set the override in the shell that runs the preview.
+In Pear, open **Library → YouTube account** and choose **Connect**.
 Finish sign-in in your system browser to grant the read-only YouTube scope.
 Use **Your playlists**, **Liked videos**, and **Next page** to browse your
 collections. Selecting a playlist shows its videos. Selecting a video opens its

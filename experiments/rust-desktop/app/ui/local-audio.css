@@ -64,13 +64,16 @@
 
 .local-queue-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem;
   font-size: 0.875rem;
 }
 
-.local-queue-tools label {
-  margin-inline-start: 0.25rem;
+.local-queue-repeat {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
 }
 
 .local-queue-tools select {

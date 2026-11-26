@@ -87,12 +87,17 @@
             <button id="shuffle-upcoming" type="button" aria-disabled="true">
               Shuffle upcoming
             </button>
-            <label for="queue-repeat">Repeat</label>
-            <select id="queue-repeat" disabled>
-              <option value="off">Off</option>
-              <option value="queue">Queue</option>
-              <option value="track">Track</option>
-            </select>
+            <button id="clear-upcoming" type="button" disabled>
+              Clear upcoming
+            </button>
+            <label class="local-queue-repeat">
+              Repeat
+              <select id="queue-repeat" disabled>
+                <option value="off">Off</option>
+                <option value="queue">Queue</option>
+                <option value="track">Track</option>
+              </select>
+            </label>
           </div>
         </div>
         <ol id="queue-tracks" role="list" aria-labelledby="queue-heading"></ol>

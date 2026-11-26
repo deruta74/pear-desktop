@@ -10,6 +10,7 @@ const play = element('play');
 const next = element('next');
 const queueList = element('queue-tracks');
 const shuffle = element('shuffle-upcoming');
+const clearUpcoming = element('clear-upcoming');
 const repeat = element('queue-repeat');
 const volume = element('volume');
 const speed = element('speed');
@@ -55,6 +56,7 @@ function renderQueue() {
     repeat: repeatMode = 'off',
   } = queueState;
   const focusedRow = queueList.querySelector('button:focus');
+  const clearHadFocus = document.activeElement === clearUpcoming;
   const focusedIndex = Number(focusedRow?.dataset.index ?? -1);
   const tabStopIndex =
     focusedIndex >= 0 && focusedIndex < tracks.length
@@ -83,6 +85,8 @@ function renderQueue() {
   }
   element('local-queue').hidden = tracks.length === 0;
   shuffle.setAttribute('aria-disabled', String(opening || !canShuffle));
+  clearUpcoming.disabled =
+    opening || selected === null || selected >= tracks.length - 1;
   repeat.disabled = opening || tracks.length === 0;
   if (repeat.value !== repeatMode) repeat.value = repeatMode;
   previous.setAttribute(
@@ -93,7 +97,10 @@ function renderQueue() {
     'aria-disabled',
     String(opening || selected === null || selected >= tracks.length - 1),
   );
-  if (focusedIndex >= tracks.length) {
+  if (
+    focusedIndex >= tracks.length ||
+    (clearHadFocus && clearUpcoming.disabled)
+  ) {
     (queueButton(tabStopIndex) ?? open).focus();
   }
 }
@@ -216,6 +223,12 @@ next.addEventListener('click', () => {
 shuffle.addEventListener('click', () => {
   if (!opening && queueState.canShuffle)
     send('shuffle_upcoming', { revision: queueState.revision });
+});
+clearUpcoming.addEventListener('click', () => {
+  if (!clearUpcoming.disabled) {
+    const { revision, selected } = queueState;
+    send('clear_upcoming', { revision, selected });
+  }
 });
 repeat.addEventListener('change', () => {
   if (!repeat.disabled)

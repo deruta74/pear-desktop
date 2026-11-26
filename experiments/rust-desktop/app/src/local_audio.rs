@@ -57,6 +57,10 @@ enum AudioCommand {
     ShuffleUpcoming {
         revision: u32,
     },
+    ClearUpcoming {
+        revision: u32,
+        selected: usize,
+    },
     SetRepeat {
         revision: u32,
         mode: queue::RepeatMode,
@@ -528,7 +532,11 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
         let send_queue = ready
             || matches!(
                 action,
-                Some(AudioCommand::ShuffleUpcoming { .. } | AudioCommand::SetRepeat { .. })
+                Some(
+                    AudioCommand::ShuffleUpcoming { .. }
+                        | AudioCommand::ClearUpcoming { .. }
+                        | AudioCommand::SetRepeat { .. }
+                )
             );
         let eq_revision = match &action {
             Some(
@@ -564,6 +572,9 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             }
             Some(AudioCommand::ShuffleUpcoming { revision }) => {
                 queue.shuffle_upcoming(revision);
+            }
+            Some(AudioCommand::ClearUpcoming { revision, selected }) => {
+                queue.clear_upcoming(revision, selected);
             }
             Some(AudioCommand::SetRepeat { revision, mode }) => {
                 queue.set_repeat(revision, mode);
@@ -876,6 +887,23 @@ mod tests {
             Some(AudioCommand::ResetEffects {})
         ));
         assert!(command(&message("https://example.com", reset)).is_none());
+        assert!(matches!(
+            command(&message(
+                DOCUMENT,
+                r#"{"type":"clear_upcoming","revision":1,"selected":0}"#
+            )),
+            Some(AudioCommand::ClearUpcoming {
+                revision: 1,
+                selected: 0,
+            })
+        ));
+        assert!(
+            command(&message(
+                DOCUMENT,
+                r#"{"type":"clear_upcoming","revision":1}"#
+            ))
+            .is_none()
+        );
         assert!(
             command(&message(
                 DOCUMENT,

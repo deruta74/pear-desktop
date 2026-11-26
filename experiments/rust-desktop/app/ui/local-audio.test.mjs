@@ -431,6 +431,65 @@ test('shuffles upcoming tracks and sets repeat mode through the current queue re
   );
 });
 
+test('clears upcoming tracks against the displayed selection and restores queue focus', async (t) => {
+  const { page, messages, render } = await localAudioPage(t, {
+    width: 290,
+    height: 475,
+  });
+  const track = 'Current.wav';
+  const transport = { positionMs: 1500, durationMs: 48000, playing: true };
+  const queue = {
+    revision: 17,
+    tracks: ['First.wav', track, 'Last.flac'],
+    selected: 1,
+    canShuffle: false,
+    repeat: 'queue',
+  };
+  const clear = page.getByRole('button', { name: 'Clear upcoming' });
+  await render({ track, transport, queue });
+  await expect(clear).toBeEnabled({ timeout: 1000 });
+  await clear.focus();
+  await page.keyboard.press('Enter');
+  expect((await messages()).at(-1)).toEqual({
+    type: 'clear_upcoming',
+    revision: 17,
+    selected: 1,
+  });
+
+  await render({ track, transport, opening: true });
+  await expect(clear).toBeDisabled();
+  const currentRow = page.getByRole('button', { name: track });
+  await expect(currentRow).toBeFocused();
+  const count = (await messages()).length;
+  await clear.evaluate((button) => button.click());
+  expect(await messages()).toHaveLength(count);
+
+  await render({ track, transport });
+  await expect(clear).toBeEnabled();
+  await clear.focus();
+  await render({
+    track,
+    transport,
+    queue: { ...queue, revision: 18, tracks: ['First.wav', track] },
+  });
+  await expect(clear).toBeDisabled();
+  await expect(currentRow).toBeFocused();
+  await expect(
+    page.getByRole('list', { name: 'Queue' }).getByRole('listitem'),
+  ).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toHaveValue('1500');
+  await expect(page.getByRole('combobox', { name: 'Repeat' })).toHaveValue(
+    'queue',
+  );
+  await expect(page.getByRole('button', { name: 'Next track' })).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    290,
+  );
+});
+
 test('displays local track tags as text and clears them for the next untagged track', async (t) => {
   const { page, render, blocked } = await localAudioPage(t);
   const transport = { positionMs: 0, durationMs: 1000, playing: true };

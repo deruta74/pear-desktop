@@ -148,6 +148,19 @@ impl Queue {
         true
     }
 
+    pub(super) fn clear_upcoming(&mut self, revision: u32, selected: usize) -> bool {
+        if self.opening() || revision != self.revision || self.selected != Some(selected) {
+            return false;
+        }
+        let (_, Some(next)) = self.neighbors() else {
+            return false;
+        };
+        self.entries.truncate(next);
+        self.revision = self.revision.wrapping_add(1);
+        self.consecutive_failures = 0;
+        true
+    }
+
     fn shuffle_span(&self) -> Option<(usize, usize)> {
         let start = self.selected? + 1;
         let upcoming = &self.entries[start..];
@@ -322,6 +335,48 @@ mod tests {
             queue.advance(End::Natural),
             Some(Advance::Open("b/Track.wav".into()))
         );
+    }
+
+    #[test]
+    fn clear_upcoming_keeps_history_and_uses_the_shortened_queue_for_repeat() {
+        let mut queue = queue_with(&["First.wav", "Current.wav", "Last.flac"], 1);
+        let revision = queue.view().revision;
+        assert!(queue.set_repeat(revision, RepeatMode::Queue));
+        assert!(!queue.clear_upcoming(revision.wrapping_sub(1), 1));
+
+        assert!(queue.clear_upcoming(revision, 1));
+        let view = queue.view();
+        assert_eq!(view.tracks, ["First.wav", "Current.wav"]);
+        assert_eq!(view.selected, Some(1));
+        assert_eq!(view.revision, revision.wrapping_add(1));
+        assert_eq!(view.repeat, RepeatMode::Queue);
+        assert!(!queue.clear_upcoming(view.revision, 1));
+        assert!(!queue.opening());
+        assert_eq!(queue.neighbors(), (Some(0), None));
+        assert_eq!(
+            queue.advance(End::Natural),
+            Some(Advance::Open("First.wav".into()))
+        );
+    }
+
+    #[test]
+    fn clear_upcoming_rejects_a_pending_open_and_a_selection_changed_by_advance() {
+        let mut queue = queue_with(&["First.wav", "Second.wav", "Last.flac"], 0);
+        let revision = queue.view().revision;
+
+        assert_eq!(
+            queue.advance(End::Natural),
+            Some(Advance::Open("Second.wav".into()))
+        );
+        assert!(!queue.clear_upcoming(revision, 0));
+        assert_eq!(queue.finish(), (true, 0));
+        assert!(!queue.clear_upcoming(revision, 0));
+        assert_eq!(
+            queue.view().tracks,
+            ["First.wav", "Second.wav", "Last.flac"]
+        );
+        assert!(queue.clear_upcoming(revision, 1));
+        assert_eq!(queue.advance(End::DecodeError), None);
     }
 
     #[test]
