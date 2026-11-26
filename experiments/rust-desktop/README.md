@@ -55,6 +55,12 @@ Windows uses the same local wrapper and a native WebView2 frame navigation guard
 
 In `--iframe-player`, start the video and open **Lyrics**. Check the track name and artist, then select **Find lyrics**. Pear sends those two fields and the video duration to LRCLIB when you submit. Synced lines follow playback and highlight individual words where LRCLIB supplies timing. The animated dots appear during the current timed rest, and reduced motion keeps them still. Lyrics stay in memory and clear when you change the video. [LRCLIB API](https://lrclib.net/docs)
 
+### Local audio and Slowed + Reverb
+
+Choose **File → Open Local Audio Window**, then **Open WAV file**. Pear plays mono or stereo integer PCM and IEEE float WAV through the system’s default output. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. The effect settings apply to the current local audio session.
+
+You can also pass `--local-audio` to the executable. Local playback runs offline in a separate window and uses its own session. The embedded YouTube player has its own playback controls.
+
 ### Video details and optional search
 
 Pear shows the title, channel and artwork for the selected video when YouTube supplies them. The public oEmbed lookup works without an API key.
@@ -67,7 +73,7 @@ Without a key, **Search** opens the submitted query or public playlist link in Y
 
 ## Run the queue on Linux or Windows
 
-The preview opens the queue by default on Linux and Windows. To build it on Debian or Ubuntu, install `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`, a C toolchain and `pkg-config`. To build on Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app confirms that each native WebView2 controller started in InPrivate mode before loading its page.
+The preview opens the queue by default on Linux and Windows. To build it on Debian or Ubuntu, install `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`, `libasound2-dev`, a C toolchain and `pkg-config`. To build on Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app confirms that each native WebView2 controller started in InPrivate mode before loading its page.
 
 ```sh
 cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview
