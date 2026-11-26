@@ -16,7 +16,7 @@ const QUIT_LOCK_WAIT: Duration = Duration::from_millis(250);
 const READ_ERROR: &str = "Could not read the saved Local Audio settings.";
 const INVALID: &str = "The saved Local Audio settings contain invalid data.";
 const SAVE_ERROR: &str = "Could not save the Local Audio settings.";
-const BUSY: &str = "The Local Audio settings file is busy.";
+const BUSY: &str = "The Local Audio settings file is busy. Try closing again shortly.";
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
@@ -105,6 +105,7 @@ pub(super) struct Preferences {
     current: Settings,
     pending: Patch,
     deadline: Option<Instant>,
+    quit_deadline: Option<Instant>,
     problem: Option<&'static str>,
 }
 
@@ -116,6 +117,7 @@ impl Preferences {
             current: values.unwrap_or_default(),
             pending: Patch::default(),
             deadline: None,
+            quit_deadline: None,
             problem: values.err(),
         }
     }
@@ -138,31 +140,73 @@ impl Preferences {
         }
         self.pending.record(self.current, next);
         self.current = next;
-        self.deadline = Some(now + SAVE_DELAY);
+        self.schedule_save(now);
         true
     }
 
-    pub(super) fn save_if_due(&mut self, now: Instant) {
-        if self.deadline.is_some_and(|deadline| now >= deadline) {
-            self.deadline = None;
-            match self.save() {
-                Ok(()) => {}
-                Err(SaveFailure::Busy) => self.deadline = Some(now + LOCK_RETRY),
-                Err(SaveFailure::Other(problem)) => self.problem = Some(problem),
-            }
+    pub(super) fn reset_effects(&mut self, now: Instant) {
+        let defaults = Settings::default();
+        self.current = Settings {
+            volume: self.current.volume,
+            ..defaults
+        };
+        // A reset explicitly claims each effect, even when this window
+        // already displays defaults.
+        self.pending.speed = Some(defaults.speed);
+        self.pending.intensity = Some(defaults.intensity);
+        self.pending.high_pass_hz = Some(defaults.high_pass_hz);
+        self.pending.low_pass_hz = Some(defaults.low_pass_hz);
+        self.schedule_save(now);
+    }
+
+    fn schedule_save(&mut self, now: Instant) {
+        if self.quit_deadline.is_none() {
+            self.deadline = Some(now + SAVE_DELAY);
         }
     }
 
-    pub(super) fn flush_on_exit(&mut self) -> Result<(), &'static str> {
-        let deadline = Instant::now() + QUIT_LOCK_WAIT;
-        loop {
-            match self.save() {
-                Ok(()) => return Ok(()),
-                Err(SaveFailure::Busy) if Instant::now() < deadline => {
-                    std::thread::sleep(QUIT_LOCK_RETRY);
+    pub(super) fn save_if_due(&mut self, now: Instant) -> Quit {
+        if self.deadline.is_some_and(|deadline| now >= deadline) {
+            self.save_pending(now)
+        } else {
+            Quit::StayOpen
+        }
+    }
+
+    pub(super) fn request_quit(&mut self, now: Instant) -> Quit {
+        self.quit_deadline.get_or_insert(now + QUIT_LOCK_WAIT);
+        self.save_pending(now)
+    }
+
+    pub(super) fn flush_on_termination(&mut self) -> Result<(), &'static str> {
+        self.save().map_err(SaveFailure::message)
+    }
+
+    fn save_pending(&mut self, now: Instant) -> Quit {
+        self.deadline = None;
+        match self.save() {
+            Err(SaveFailure::Busy) => {
+                self.deadline = Some(match self.quit_deadline {
+                    Some(deadline) if now < deadline => (now + QUIT_LOCK_RETRY).min(deadline),
+                    Some(_) => {
+                        self.quit_deadline = None;
+                        self.problem = Some(BUSY);
+                        now + LOCK_RETRY
+                    }
+                    None => now + LOCK_RETRY,
+                });
+                Quit::StayOpen
+            }
+            result => {
+                let problem = result.err().map(SaveFailure::message);
+                if problem.is_some() {
+                    self.problem = problem;
                 }
-                Err(SaveFailure::Busy) => return Err(BUSY),
-                Err(SaveFailure::Other(problem)) => return Err(problem),
+                if self.quit_deadline.take().is_some() {
+                    Quit::Exit(problem)
+                } else {
+                    Quit::StayOpen
+                }
             }
         }
     }
@@ -197,9 +241,24 @@ impl Preferences {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Quit {
+    StayOpen,
+    Exit(Option<&'static str>),
+}
+
 enum SaveFailure {
     Busy,
     Other(&'static str),
+}
+
+impl SaveFailure {
+    fn message(self) -> &'static str {
+        match self {
+            Self::Busy => BUSY,
+            Self::Other(problem) => problem,
+        }
+    }
 }
 
 fn read(path: &Path) -> Result<Settings, &'static str> {

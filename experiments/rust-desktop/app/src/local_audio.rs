@@ -78,6 +78,7 @@ enum AudioCommand {
         high_pass_hz: f32,
         low_pass_hz: f32,
     },
+    ResetEffects {},
     SetEqualizer {
         profile: equalizer::Profile,
         revision: u32,
@@ -119,6 +120,8 @@ struct View<'a> {
     album: Option<&'a str>,
     transport: Option<engine::Snapshot>,
     error: Option<&'a str>,
+    #[serde(rename = "settingsError", skip_serializing_if = "Option::is_none")]
+    settings_error: Option<&'a str>,
     opening: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     queue: Option<queue::View<'a>>,
@@ -137,6 +140,53 @@ fn command(request: &Request<String>) -> Option<AudioCommand> {
         return None;
     }
     serde_json::from_str(request.body()).ok()
+}
+
+fn apply_settings_command(
+    command: &AudioCommand,
+    preferences: &mut settings::Preferences,
+    engine: Option<&mut engine::Engine>,
+    now: Instant,
+) -> bool {
+    let previous = preferences.current();
+    match *command {
+        AudioCommand::SetVolume { volume } => {
+            preferences.update(Settings { volume, ..previous }, now);
+        }
+        AudioCommand::SetSpeed { speed } => {
+            preferences.update(Settings { speed, ..previous }, now);
+        }
+        AudioCommand::SetReverb {
+            intensity,
+            high_pass_hz,
+            low_pass_hz,
+        } => {
+            preferences.update(
+                Settings {
+                    intensity,
+                    high_pass_hz,
+                    low_pass_hz,
+                    ..previous
+                },
+                now,
+            );
+        }
+        AudioCommand::ResetEffects {} => preferences.reset_effects(now),
+        _ => return false,
+    }
+    if let Some(engine) = engine {
+        let latest = preferences.current();
+        if latest.volume != previous.volume {
+            engine.set_volume(latest.volume);
+        }
+        if latest.speed != previous.speed {
+            engine.set_speed(latest.speed);
+        }
+        if latest.reverb() != previous.reverb() {
+            engine.set_reverb(latest.reverb());
+        }
+    }
+    true
 }
 
 fn assets(request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
@@ -345,7 +395,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
 
     event_loop.run(move |event, _, flow| {
         let _keep_menu_alive = &menu;
-        let closing = match &event {
+        let quit_requested = match &event {
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::CloseRequested,
@@ -354,19 +404,11 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             Event::UserEvent(AudioEvent::Menu(event)) => event.id == *quit.id(),
             _ => false,
         };
-        if closing {
-            media.take();
-            track.take();
-            if let Err(problem) = preferences.flush_on_exit() {
-                eprintln!("{problem}");
-            }
-            *flow = ControlFlow::Exit;
-            return;
-        }
         let was_opening = queue.opening();
         let mut dropped_files = None;
         let mut requested_path = None;
         let action = match event {
+            _ if quit_requested => None,
             Event::UserEvent(AudioEvent::Menu(event)) if event.id == *open.id() => {
                 Some(AudioCommand::Open {})
             }
@@ -474,12 +516,16 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => None,
             Event::LoopDestroyed => {
                 media.take();
+                if let Err(problem) = preferences.flush_on_termination() {
+                    eprintln!("{problem}");
+                }
                 return;
             }
             _ => return,
         };
-        let send_settings = matches!(action, Some(AudioCommand::Ready {}));
-        let send_queue = send_settings
+        let ready = matches!(action, Some(AudioCommand::Ready {}));
+        let send_settings = ready || matches!(action, Some(AudioCommand::ResetEffects {}));
+        let send_queue = ready
             || matches!(
                 action,
                 Some(AudioCommand::ShuffleUpcoming { .. } | AudioCommand::SetRepeat { .. })
@@ -491,7 +537,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             ) => Some(*revision),
             _ => None,
         };
-        let send_presets = send_settings
+        let send_presets = ready
             || matches!(
                 action,
                 Some(
@@ -523,7 +569,12 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                 queue.set_repeat(revision, mode);
             }
             Some(action) => {
-                if let Some(Track {
+                if !apply_settings_command(
+                    &action,
+                    &mut preferences,
+                    track.as_mut().map(|track| &mut track.engine),
+                    Instant::now(),
+                ) && let Some(Track {
                     engine, stopped, ..
                 }) = &mut track
                 {
@@ -537,39 +588,6 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                         AudioCommand::Seek { position_ms } if !queue.opening() => {
                             *stopped = false;
                             engine.seek_ms(position_ms);
-                        }
-                        AudioCommand::SetVolume { volume } => {
-                            let next = Settings {
-                                volume,
-                                ..preferences.current()
-                            };
-                            if preferences.update(next, Instant::now()) {
-                                engine.set_volume(volume);
-                            }
-                        }
-                        AudioCommand::SetSpeed { speed } => {
-                            let next = Settings {
-                                speed,
-                                ..preferences.current()
-                            };
-                            if preferences.update(next, Instant::now()) {
-                                engine.set_speed(speed);
-                            }
-                        }
-                        AudioCommand::SetReverb {
-                            intensity,
-                            high_pass_hz,
-                            low_pass_hz,
-                        } => {
-                            let next = Settings {
-                                intensity,
-                                high_pass_hz,
-                                low_pass_hz,
-                                ..preferences.current()
-                            };
-                            if preferences.update(next, Instant::now()) {
-                                engine.set_reverb(next.reverb());
-                            }
                         }
                         AudioCommand::SetEqualizer { profile, .. } => match profile.normalize() {
                             Some(profile) => match profile.apply(engine) {
@@ -617,11 +635,26 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                     }
                 }
             }
-            None if !deadline.is_some_and(|when| Instant::now() >= when) => return,
+            None if !quit_requested && !deadline.is_some_and(|when| Instant::now() >= when) => {
+                return;
+            }
             None => {}
         }
         let now = Instant::now();
-        preferences.save_if_due(now);
+        let quit = if quit_requested {
+            preferences.request_quit(now)
+        } else {
+            preferences.save_if_due(now)
+        };
+        if let settings::Quit::Exit(problem) = quit {
+            media.take();
+            track.take();
+            if let Some(problem) = problem {
+                eprintln!("{problem}");
+            }
+            *flow = ControlFlow::Exit;
+            return;
+        }
         let settings = preferences.current();
         let transport = track.as_mut().map(|track| {
             let snapshot = track.engine.snapshot(queue.opening());
@@ -723,11 +756,12 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             artist: metadata.and_then(|metadata| metadata.artist.as_deref()),
             album: metadata.and_then(|metadata| metadata.album.as_deref()),
             transport,
-            error: error.as_deref().or(preferences.problem()),
+            error: error.as_deref(),
+            settings_error: preferences.problem(),
             opening,
             queue: send_queue.then(|| queue.view()),
             settings: send_settings.then_some(settings),
-            equalizer: (send_settings || eq_revision.is_some()).then_some(&equalizer),
+            equalizer: (ready || eq_revision.is_some()).then_some(&equalizer),
             eq_revision,
             presets: send_presets
                 .then(|| presets.iter().map(|preset| preset.name.as_str()).collect()),
@@ -836,6 +870,19 @@ mod tests {
             command(&message(DOCUMENT, r#"{"type":"open"}"#)),
             Some(AudioCommand::Open {})
         ));
+        let reset = r#"{"type":"reset_effects"}"#;
+        assert!(matches!(
+            command(&message(DOCUMENT, reset)),
+            Some(AudioCommand::ResetEffects {})
+        ));
+        assert!(command(&message("https://example.com", reset)).is_none());
+        assert!(
+            command(&message(
+                DOCUMENT,
+                r#"{"type":"reset_effects","volume":0.2}"#
+            ))
+            .is_none()
+        );
         assert!(matches!(
             command(&message(
                 DOCUMENT,

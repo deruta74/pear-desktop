@@ -116,12 +116,24 @@ test('opens local audio files and sends playback and exact reverb settings to Ru
     high_pass_hz: 180,
     low_pass_hz: 6725,
   });
+  const beforeReset = (await messages()).length;
   await page.getByRole('button', { name: 'Reset effects' }).click();
-  await expect(cutoff).toHaveValue('6500');
-  expect((await messages()).slice(-2)).toEqual([
-    { type: 'set_speed', speed: 1 },
-    { type: 'set_reverb', intensity: 0, high_pass_hz: 180, low_pass_hz: 6500 },
+  expect((await messages()).slice(beforeReset)).toEqual([
+    { type: 'reset_effects' },
   ]);
+  await render({
+    track,
+    transport,
+    settings: {
+      volume: 0.61,
+      speed: 1,
+      intensity: 0,
+      highPassHz: 180,
+      lowPassHz: 6500,
+    },
+  });
+  await expect(cutoff).toHaveValue('6500');
+  await expect(page.getByRole('slider', { name: 'Volume' })).toHaveValue('61');
   await render({
     track,
     transport,
@@ -314,6 +326,8 @@ test('blocks transport and queue changes while opening and at the queue bounds',
   await render({ track, transport, opening: true });
   await render({ track: null, transport: null, opening: true });
   await expect(next).toBeFocused({ timeout: 1000 });
+  await page.getByRole('slider', { name: 'Speed' }).press('ArrowLeft');
+  expect((await messages()).at(-1)).toEqual({ type: 'set_speed', speed: 0.99 });
   await render({ track, transport, opening: false });
   await row.focus();
   await render({ track, transport, opening: true });
@@ -328,8 +342,6 @@ test('blocks transport and queue changes while opening and at the queue bounds',
   await page.getByRole('heading', { name: 'Local audio', exact: true }).click();
   await page.keyboard.press('Space');
   expect(await messages()).toHaveLength(beforeOpeningCommands);
-  await page.getByRole('slider', { name: 'Speed' }).press('ArrowLeft');
-  expect((await messages()).at(-1)).toEqual({ type: 'set_speed', speed: 0.99 });
 
   await render({ track: second, transport, queue: { ...queue, selected: 1 } });
   await expect(next).toBeDisabled();
@@ -448,4 +460,26 @@ test('displays local track tags as text and clears them for the next untagged tr
   await expect(page.getByRole('heading', { name: 'second.wav' })).toBeVisible();
   await expect(page.getByText('Live album', { exact: false })).toBeHidden();
   expect(blocked).toEqual([]);
+});
+
+test('shows a settings save problem alongside a playback problem', async (t) => {
+  const { page, render } = await localAudioPage(t);
+  const transport = {
+    positionMs: 0,
+    durationMs: 1000,
+    playing: false,
+    error: 'Could not read the audio samples.',
+  };
+  await render({
+    track: 'test.wav',
+    transport,
+    settingsError: 'The Local Audio settings file is busy.',
+  });
+  await expect(page.getByRole('alert')).toHaveText(
+    'Could not read the audio samples. The Local Audio settings file is busy.',
+  );
+  await render({ track: 'test.wav', transport });
+  await expect(page.getByRole('alert')).toHaveText(
+    'Could not read the audio samples.',
+  );
 });

@@ -143,6 +143,7 @@ window.renderPearLocal = ({
   album,
   transport,
   error,
+  settingsError,
   opening: isOpening = false,
   queue,
   settings,
@@ -170,7 +171,8 @@ window.renderPearLocal = ({
   );
   element('empty').hidden =
     Boolean(transport) || opening || queueState.tracks.length > 0;
-  setText(element('problem'), transport?.error ?? error ?? '');
+  const problems = [transport?.error ?? error, settingsError].filter(Boolean);
+  setText(element('problem'), problems.join(' '));
   if (settings) {
     volume.value = Math.round(settings.volume * 100);
     speed.value = Math.round(settings.speed * 100);
@@ -299,14 +301,5 @@ volume.addEventListener('change', () =>
 speed.addEventListener('change', changeSpeed);
 for (const input of [intensity, highPass, lowPass])
   input.addEventListener('change', changeReverb);
-element('reset').addEventListener('click', () => {
-  speed.value = 100;
-  intensity.value = 0;
-  highPass.value = defaultHighPass;
-  lowPass.value = defaultLowPass;
-  showSpeed();
-  showIntensity();
-  changeSpeed();
-  changeReverb();
-});
+element('reset').addEventListener('click', () => send('reset_effects'));
 send('ready');
