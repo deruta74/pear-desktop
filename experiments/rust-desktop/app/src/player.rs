@@ -371,9 +371,10 @@ fn show_video(
         platform::observe_video(&view, &iframe::wrapper_url(), report_problem);
         #[cfg(target_os = "windows")]
         {
-            platform::restrict_video_frames(&view, move |url| page.permits_frame(url))?;
+            let navigation = page.clone();
+            platform::restrict_video_frames(&view, move |url| navigation.permits_frame(url))?;
             let url = iframe::wrapper_url();
-            platform::observe_video(&view, &url, false, report_problem)?;
+            platform::observe_video(&view, &url, false, Some(page), report_problem)?;
             view.load_url(&url)?;
         }
         #[cfg(not(target_os = "windows"))]
@@ -418,7 +419,7 @@ fn show_video(
     let referer = format!("https://{APP_ID}");
     #[cfg(target_os = "windows")]
     {
-        let observer = platform::observe_video(&view, &url, mode.smoke, report_problem);
+        let observer = platform::observe_video(&view, &url, mode.smoke, None, report_problem);
         if mode.smoke && observer.is_err() {
             println!("PEAR_WINDOWS_VIDEO_SETUP_ERROR stage=observer");
         }

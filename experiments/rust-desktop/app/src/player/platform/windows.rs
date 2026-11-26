@@ -2,6 +2,7 @@ use std::{
     cell::{Cell, RefCell},
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
 };
 
 use serde::Deserialize;
@@ -10,8 +11,10 @@ use webview2_com::{
     ExecuteScriptCompletedHandler,
     Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_PROCESS_FAILED_KIND, COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED,
         COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED, COREWEBVIEW2_WEB_ERROR_STATUS,
         ICoreWebView2_2, ICoreWebView2Environment2, ICoreWebView2NavigationCompletedEventArgs2,
+        ICoreWebView2ProcessFailedEventArgs, ICoreWebView2ProcessFailedEventArgs2,
     },
     NavigationCompletedEventHandler, NavigationStartingEventHandler, ProcessFailedEventHandler,
     take_pwstr,
@@ -20,6 +23,7 @@ use windows_core::{BOOL, HSTRING, Interface, PWSTR, w};
 use wry::{WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows, WebViewExtWindows};
 
 use super::{Pane, child_bounds};
+use crate::player::iframe::Page;
 
 pub(in crate::player) struct Layout {
     webview_data_dir: PathBuf,
@@ -117,10 +121,52 @@ pub(in crate::player) fn restrict_video_frames(
     Ok(())
 }
 
+fn is_player_frame(page: &Page, source: &str) -> bool {
+    source != "about:blank" && page.permits_frame(source)
+}
+
+fn failed_player_frame(
+    args: &ICoreWebView2ProcessFailedEventArgs,
+    page: &Page,
+) -> windows_core::Result<bool> {
+    let args = args.cast::<ICoreWebView2ProcessFailedEventArgs2>()?;
+    // ProcessFailed describes affected frames by source. WebView2 does not
+    // populate their frame IDs or parents in this event.
+    unsafe {
+        let frames = args.FrameInfosForFailedProcess()?.GetIterator()?;
+        let mut has_current = BOOL::default();
+        frames.HasCurrent(&mut has_current)?;
+        while has_current.as_bool() {
+            let frame = frames.GetCurrent()?;
+            let mut source = PWSTR::null();
+            let result = frame.Source(&mut source);
+            let source = take_pwstr(source);
+            if result.is_ok() && is_player_frame(page, &source) {
+                return Ok(true);
+            }
+            frames.MoveNext(&mut has_current)?;
+        }
+    }
+    Ok(false)
+}
+
+fn video_process_stopped(
+    kind: COREWEBVIEW2_PROCESS_FAILED_KIND,
+    has_failed_player_frame: impl FnOnce() -> bool,
+) -> bool {
+    match kind {
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+        | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED => true,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED => has_failed_player_frame(),
+        _ => false,
+    }
+}
+
 pub(in crate::player) fn observe_video(
     view: &WebView,
     url: &str,
     smoke: bool,
+    iframe_page: Option<Arc<Page>>,
     on_problem: impl Fn(&'static str) + Clone + 'static,
 ) -> crate::Result<()> {
     if smoke {
@@ -233,11 +279,11 @@ pub(in crate::player) fn observe_video(
             if smoke && !process_logged.replace(true) {
                 println!("PEAR_WINDOWS_VIDEO_PROCESS_FAILED kind={}", kind.0);
             }
-            if matches!(
-                kind,
-                COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
-                    | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
-            ) {
+            if video_process_stopped(kind, || {
+                iframe_page
+                    .as_deref()
+                    .is_some_and(|page| failed_player_frame(&args, page).unwrap_or(false))
+            }) {
                 on_problem("The video player stopped. Use Reload Player or Open in browser.");
             }
         }
@@ -377,7 +423,14 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    use super::VideoNavigation;
+    use super::{
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED, VideoNavigation, is_player_frame,
+        video_process_stopped,
+    };
+    use crate::player::iframe::Page;
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED;
 
     #[test]
     fn completes_only_the_first_expected_navigation() {
@@ -393,5 +446,41 @@ mod tests {
 
         assert!(!navigation.complete(11));
         assert!(!navigation.start(13, true));
+    }
+
+    #[test]
+    fn stops_only_when_the_current_player_is_in_the_failed_frame_process() {
+        let page = Page::new("M7lc1UVf-VE").unwrap();
+        let failed = COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED;
+        let player = "https://www.youtube.com/embed/M7lc1UVf-VE?enablejsapi=1&origin=https%3A%2F%2Fcom.pear-desktop.rust-preview&autoplay=0";
+        assert!(video_process_stopped(failed, || is_player_frame(
+            &page, player
+        )));
+
+        for source in [
+            "about:blank",
+            "https://www.youtube.com/embed/M7lc1UVf-VE",
+            "https://www.youtube.com/embed/abcdefghijk?enablejsapi=1&origin=https%3A%2F%2Fcom.pear-desktop.rust-preview&autoplay=0",
+            "https://googleads.g.doubleclick.net/pagead/ads",
+        ] {
+            assert!(!video_process_stopped(failed, || is_player_frame(
+                &page, source
+            )));
+        }
+    }
+
+    #[test]
+    fn preserves_browser_and_top_level_renderer_exit_handling() {
+        let unexpected_lookup = || panic!("Only a frame renderer exit needs frame metadata");
+        for kind in [
+            COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
+        ] {
+            assert!(video_process_stopped(kind, unexpected_lookup));
+        }
+        assert!(!video_process_stopped(
+            COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED,
+            unexpected_lookup,
+        ));
     }
 }
