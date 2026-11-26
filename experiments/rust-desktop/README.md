@@ -65,6 +65,8 @@ You can also pass `--local-audio` to the executable. Local playback runs offline
 
 Expand **Equalizer** to choose the 8-, 14- or 20-band layout, or add up to 64 custom peaking bands. In **Custom**, click the graph to add a point and drag it to set frequency and gain. The fields below the graph accept exact frequency, gain and Q values. **Auto preamp** adjusts attenuation for the active EQ curve and the local volume. Named presets are saved in the local audio profile so they can be loaded after restarting Pear.
 
+FLAC decoding uses Symphonia 0.6.1, licensed under MPL 2.0. [Symphonia source](https://github.com/pdeljanov/Symphonia/tree/v0.6.1)
+
 ### Video details and optional search
 
 Pear shows the title, channel and artwork for the selected video when YouTube supplies them. The public oEmbed lookup works without an API key.

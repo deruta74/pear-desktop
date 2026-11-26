@@ -66,6 +66,10 @@ for size in 16 32 128 256 512; do
   install -m 0644 "$icons/${double}x${double}.png" "$iconset/icon_${size}x${size}@2x.png"
 done
 iconutil --convert icns --output "$bundle/Contents/Resources/Pear.icns" "$iconset"
+install -m 0644 "$repository/license" "$bundle/Contents/Resources/LICENSE"
+if [[ "${1:-preview}" == preview ]]; then
+  install -m 0644 "$root/README.md" "$bundle/Contents/Resources/README.md"
+fi
 
 cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
