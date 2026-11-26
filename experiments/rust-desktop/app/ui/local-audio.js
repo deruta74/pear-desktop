@@ -3,6 +3,9 @@
 const element = (id) => document.getElementById(id);
 const open = element('open');
 const openFolder = element('open-folder');
+const openLyrics = element('open-lyrics');
+const lyricsPanel = element('local-lyrics');
+const lyricsLine = element('lyrics-line');
 const track = element('track');
 const trackDetails = element('track-details');
 const seek = element('seek');
@@ -23,7 +26,7 @@ const defaultLowPass = 6500;
 let current = null;
 let queueState = { revision: 0, tracks: [], selected: null };
 let opening = false;
-let importing = false;
+let loadingLyrics = false;
 let scrubbing = false;
 
 function send(type, fields) {
@@ -154,8 +157,10 @@ window.renderPearLocal = ({
   error,
   folderError,
   settingsError,
+  lyrics,
   opening: isOpening = false,
   scanningFolder = false,
+  selectingLyrics = false,
   queue,
   settings,
   equalizer,
@@ -172,12 +177,42 @@ window.renderPearLocal = ({
     queueState = queue ?? queueState;
     renderQueue();
   }
-  importing = opening || scanningFolder;
-  open.setAttribute('aria-disabled', String(importing));
-  openFolder.setAttribute('aria-disabled', String(importing));
+  const importing = opening || scanningFolder;
+  open.setAttribute('aria-disabled', String(importing || selectingLyrics));
+  openFolder.setAttribute(
+    'aria-disabled',
+    String(importing || selectingLyrics),
+  );
+  const wasLoadingLyrics = loadingLyrics;
+  loadingLyrics = Boolean(lyrics?.loading);
+  const canOpenLyrics =
+    Boolean(transport) && !importing && !selectingLyrics && !loadingLyrics;
+  openLyrics.setAttribute('aria-disabled', String(!canOpenLyrics));
+  if (lyrics?.available) {
+    if (
+      (lyricsPanel.hidden || wasLoadingLyrics) &&
+      !loadingLyrics &&
+      !lyrics.error
+    )
+      lyricsPanel.open = true;
+    lyricsPanel.hidden = false;
+  } else {
+    if (lyricsPanel.contains(document.activeElement))
+      (canOpenLyrics ? openLyrics : open).focus();
+    lyricsPanel.hidden = true;
+    lyricsPanel.open = false;
+  }
+  setText(lyricsLine, lyrics?.line ?? '');
   const status = element('opening');
-  setText(status, scanningFolder ? 'Scanning audio folder…' : 'Opening audio…');
-  status.hidden = !importing;
+  setText(
+    status,
+    scanningFolder
+      ? 'Scanning audio folder…'
+      : opening
+        ? 'Opening audio…'
+        : 'Opening lyrics file…',
+  );
+  status.hidden = !importing && !loadingLyrics;
   element('player').hidden = element('effects').hidden = !current;
   window.renderPearEqualizer?.(
     equalizer,
@@ -191,6 +226,7 @@ window.renderPearLocal = ({
     transport?.error ?? error,
     folderError,
     settingsError,
+    !loadingLyrics && lyrics?.error,
   ].filter(Boolean);
   setText(element('problem'), problems.join(' '));
   if (settings) {
@@ -221,10 +257,13 @@ window.renderPearLocal = ({
 };
 
 open.addEventListener('click', () => {
-  if (!importing) send('open');
+  if (open.getAttribute('aria-disabled') !== 'true') send('open');
 });
 openFolder.addEventListener('click', () => {
-  if (!importing) send('open_folder');
+  if (openFolder.getAttribute('aria-disabled') !== 'true') send('open_folder');
+});
+openLyrics.addEventListener('click', () => {
+  if (openLyrics.getAttribute('aria-disabled') === 'false') send('open_lyrics');
 });
 previous.addEventListener('click', () => {
   if (queueState.selected !== null) selectTrack(queueState.selected - 1);

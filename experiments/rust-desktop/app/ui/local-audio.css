@@ -57,6 +57,24 @@
   overflow-wrap: anywhere;
 }
 
+.local-lyrics {
+  margin-block-start: 0.75rem;
+}
+
+.local-lyrics button {
+  font-size: 0.875rem;
+}
+
+.local-lyrics details {
+  margin-block-start: 0.5rem;
+  border-block-start: 1px solid var(--line);
+}
+
+.local-lyrics p {
+  min-block-size: 1.4em;
+  overflow-wrap: anywhere;
+}
+
 .local-queue h2,
 .local-effects .local-header h2 {
   font-size: 1.0625rem;
@@ -182,7 +200,8 @@
   background: var(--background);
 }
 
-.local-eq summary {
+.local-eq summary,
+.local-lyrics summary {
   min-height: var(--target);
   padding-block: 0.6rem;
   font-weight: 650;

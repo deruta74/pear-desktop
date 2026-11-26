@@ -16,7 +16,7 @@ const USER_AGENT: &str = concat!(
     " (https://github.com/deruta74/pear-desktop)"
 );
 const MAX_BODY_BYTES: u64 = 256 * 1024;
-const MAX_TEXT_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_TEXT_BYTES: usize = 64 * 1024;
 const MAX_QUERY_CHARS: usize = 160;
 pub(super) const MAX_DURATION_SECONDS: u32 = 24 * 60 * 60;
 const DURATION_TOLERANCE_SECONDS: f64 = 3.0;
@@ -43,9 +43,9 @@ pub(super) enum Document {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct Line {
-    pub(super) time_ms: u32,
-    pub(super) text: String,
+pub(crate) struct Line {
+    pub(crate) time_ms: u32,
+    pub(crate) text: String,
     pub(super) words: Vec<Word>,
 }
 
@@ -57,7 +57,7 @@ pub(super) struct Word {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum LookupError {
+pub(crate) enum LookupError {
     InvalidQuery,
     Network,
     InvalidResponse,
@@ -250,7 +250,7 @@ fn parse_plain(input: &str) -> Result<Vec<String>, LookupError> {
     Ok(lines)
 }
 
-fn parse_lrc(input: &str) -> Result<Vec<Line>, LookupError> {
+pub(crate) fn parse_lrc(input: &str) -> Result<Vec<Line>, LookupError> {
     if input.len() > MAX_TEXT_BYTES {
         return Err(LookupError::InvalidResponse);
     }

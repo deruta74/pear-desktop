@@ -7,7 +7,7 @@ mod catalog;
 mod consent;
 mod credential_setup;
 mod iframe;
-mod lyrics;
+pub(crate) mod lyrics;
 mod lyrics_lookup;
 mod metadata;
 mod metadata_lookup;

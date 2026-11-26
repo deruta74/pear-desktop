@@ -573,6 +573,86 @@ test('displays local track tags as text and clears them for the next untagged tr
   expect(blocked).toEqual([]);
 });
 
+test('opens a native lyrics picker and follows playback in a collapsible region', async (t) => {
+  const { page, messages, render, blocked } = await localAudioPage(t, {
+    width: 290,
+    height: 475,
+  });
+  const openLyrics = page.getByRole('button', { name: 'Open lyrics file' });
+  await render({ track: null, transport: null });
+  await expect(openLyrics).toBeHidden();
+  const track = 'Song.wav';
+  const transport = { positionMs: 250, durationMs: 8000, playing: true };
+  await render({ track, transport });
+  await openLyrics.click({ timeout: 1000 });
+  expect((await messages()).at(-1)).toEqual({ type: 'open_lyrics' });
+
+  await render({ track, transport, selectingLyrics: true });
+  await expect(openLyrics).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeEnabled();
+  await render({ track, transport, lyrics: { loading: true } });
+  await expect(openLyrics).toBeDisabled();
+  await expect(openLyrics).toBeFocused();
+  await expect(page.getByRole('status')).toHaveText('Opening lyrics file…');
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeEnabled();
+  await openLyrics.dispatchEvent('click');
+  expect((await messages()).slice(-2)).toEqual([
+    { type: 'ready' },
+    { type: 'open_lyrics' },
+  ]);
+
+  const details = page.locator('#local-lyrics');
+  const summary = details.getByText('Lyrics', { exact: true });
+  const line = page.locator('#lyrics-line');
+  const lyricsAt = (positionMs, line) =>
+    render({
+      track,
+      transport: { ...transport, positionMs },
+      lyrics: { available: true, line },
+    });
+  await lyricsAt(250, null);
+  await expect(details).toHaveJSProperty('open', true);
+  await expect(line).toBeEmpty();
+  const firstLine = '<img src=https://outside.test/cover>';
+  await lyricsAt(1100, firstLine);
+  await expect(line).toHaveText(firstLine);
+  await summary.focus();
+  await page.keyboard.press('Space');
+  await expect(details).toHaveJSProperty('open', false);
+  await lyricsAt(2500, 'Second line');
+  await expect(details).toHaveJSProperty('open', false);
+  await expect(line).toBeHidden();
+  const loaded = { available: true, line: 'Second line' };
+  await render({ track, transport, lyrics: loaded, selectingLyrics: true });
+  await render({ track, transport, lyrics: loaded });
+  await expect(details).toHaveJSProperty('open', false);
+  await expect(openLyrics).toBeEnabled();
+  await page.keyboard.press('Enter');
+  await expect(line).toHaveText('Second line');
+
+  await render({
+    track,
+    transport,
+    lyrics: { available: true, line: firstLine, error: 'Invalid lyrics file.' },
+  });
+  await expect(page.getByRole('alert')).toHaveText('Invalid lyrics file.');
+  await expect(line).toHaveText(firstLine);
+  await render({
+    track,
+    transport,
+    queue: { revision: 2, tracks: [track, track], selected: 1, repeat: 'off' },
+  });
+  await expect(details).toBeHidden();
+  await expect(details).toHaveJSProperty('open', false);
+  await expect(line).toBeEmpty();
+  await expect(page.getByRole('alert')).toBeHidden();
+  await expect(openLyrics).toBeFocused();
+  expect(blocked).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    290,
+  );
+});
+
 test('shows a settings save problem alongside a playback problem', async (t) => {
   const { page, render } = await localAudioPage(t);
   const transport = {
