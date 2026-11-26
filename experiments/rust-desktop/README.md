@@ -20,6 +20,8 @@ Choose **Add links** and paste one link or ID per line to add several videos tog
 
 Use the arrows beside Pear to revisit earlier Queue, Search, Lyrics, and Library views. With the panel focused, press **⌘[** or **⌘]** on macOS, or **Alt+Left** or **Alt+Right** on Windows and Linux. Pear keeps up to 32 destinations for the current window session.
 
+Select the title or artwork in **Now playing** to open Queue and reveal the current video. Pear keeps the active filter and leaves playback running.
+
 On macOS, launch the bundled preview executable with `PEAR_PREVIEW_EXPERIMENTAL_PANEL_SWIPE=1` to try swiping left or right over the controls panel header. The experiment uses horizontal pixel-wheel input and follows the current system scroll direction. Keep focus out of text and playback controls while trying it. Native WebKit page swipes remain disabled.
 
 Open **Library** to save the current queue as a local playlist. Open a saved playlist to rename it, choose a track, or add its tracks to the queue while the current video plays. The library stores playlists in `playlists.json` next to `queue.json`.
@@ -32,7 +34,7 @@ The local controls and the official player use separate private WebViews. Only t
 
 ### Experimental playback controls
 
-Choose **View → Experimental Playback Controls** to switch players. The selection reloads the current video and is remembered across launches. The command-line flag opens the experimental player for the current launch.
+On macOS and Linux, the player with integrated playback controls opens by default when the profile has no saved preferences. On Windows it remains opt-in. Choose **View → Experimental Playback Controls** to switch players. The selection reloads the current video and is remembered across launches. The command-line flag opens the player with integrated controls for the current launch.
 
 ```sh
 app="$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
@@ -53,7 +55,7 @@ With the experimental player active, **View → Play Next Automatically** can ad
 
 **View → Playback Speed** lists the speeds supported for the current video.
 
-On macOS, Now Playing offers play and pause for a queue video after you start it in the visible player. Linux exposes the same controls through MPRIS. These controls remain available when the queue panel is hidden.
+After you start a queue video in the visible player, the system can offer play and pause through macOS Now Playing, Linux MPRIS, or Windows System Media Transport Controls. These controls remain available when the queue panel is hidden.
 
 On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. Automatic advance started the next video in the same player and saved it as the current item. On Ubuntu ARM64, the example video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
 
@@ -61,7 +63,7 @@ Windows uses the same local wrapper and a native WebView2 frame navigation guard
 
 ### Synced lyrics
 
-In `--iframe-player`, start the video and open **Lyrics**. Check the track name and artist, then select **Find lyrics**. Pear sends those two fields and the video duration to LRCLIB when you submit. Synced lines follow playback and highlight individual words where LRCLIB supplies timing. The animated dots appear during the current timed rest, and reduced motion keeps them still. Lyrics stay in memory and clear when you change the video. [LRCLIB API](https://lrclib.net/docs)
+With integrated playback controls enabled, start the video and open **Lyrics**. Check the track name and artist, then select **Find lyrics**. Pear sends those two fields and the video duration to LRCLIB when you submit. Synced lines follow playback and highlight individual words where LRCLIB supplies timing. The animated dots appear during the current timed rest, and reduced motion keeps them still. Lyrics stay in memory and clear when you change the video. [LRCLIB API](https://lrclib.net/docs)
 
 ### Local audio and Slowed + Reverb
 
