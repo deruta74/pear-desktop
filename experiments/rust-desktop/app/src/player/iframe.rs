@@ -3,7 +3,7 @@
 use objc2_foundation::{NSBundle, NSString, NSURL};
 use serde::{Deserialize, Serialize};
 #[cfg(any(target_os = "windows", test))]
-use std::borrow::Cow;
+use std::{borrow::Cow, cell::Cell};
 use url::Url;
 #[cfg(target_os = "linux")]
 use webkit2gtk::WebViewExt as _;
@@ -94,8 +94,14 @@ impl Page {
     }
 
     #[cfg(any(target_os = "windows", test))]
-    pub(super) fn permits_windows_top_level(url: &str) -> bool {
-        url == "about:blank" || Self::is_wrapper_url(url)
+    pub(super) fn windows_top_level_navigation() -> impl Fn(String) -> bool {
+        let loaded = Cell::new(false);
+        move |url| match url.as_str() {
+            "about:blank" => !loaded.get(),
+            // A controller serves the HTML for its initial video. Pear's
+            // Reload Player creates a new controller for the current video.
+            _ => Self::is_wrapper_url(&url) && !loaded.replace(true),
+        }
     }
 
     #[cfg(any(target_os = "windows", test))]
@@ -449,17 +455,33 @@ mod tests {
             assert!(response.body().is_empty(), "{uri}");
         }
 
-        assert!(Page::permits_windows_top_level(WRAPPER));
-        assert!(Page::permits_windows_top_level("about:blank"));
-        assert!(!Page::permits_windows_top_level(EMBED));
-        assert!(!Page::permits_windows_top_level(&format!(
-            "{WRAPPER}#other"
-        )));
         assert!(page.permits_frame(EMBED));
         assert!(page.permits_frame("about:blank"));
         assert!(!page.permits_frame(WRAPPER));
         assert!(!page.permits_frame(&format!("{EMBED}&autoplay=1")));
         assert!(!page.permits_frame("https://www.youtube.com/watch?v=M7lc1UVf-VE"));
+
+        let rebuilt = Page::new("dQw4w9WgXcQ").unwrap();
+        assert!(!page.permits_frame(rebuilt.embed_url.as_str()));
+        assert!(rebuilt.permits_frame(rebuilt.embed_url.as_str()));
+        assert!(!rebuilt.permits_frame(EMBED));
+    }
+
+    #[test]
+    fn windows_wrapper_allows_one_top_level_load_per_controller() {
+        let navigate = Page::windows_top_level_navigation();
+        assert!(navigate("about:blank".into()));
+        assert!(!navigate(EMBED.into()));
+        assert!(!navigate(format!("{WRAPPER}#other")));
+        assert!(navigate(WRAPPER.into()));
+        assert!(
+            !navigate(WRAPPER.into()),
+            "a native reload would replay the initial video"
+        );
+        assert!(!navigate("about:blank".into()));
+
+        let rebuilt = Page::windows_top_level_navigation();
+        assert!(rebuilt(WRAPPER.into()));
     }
 
     #[test]

@@ -312,15 +312,15 @@ fn show_video(
 
                     builder
                         .with_https_scheme(true)
+                        .with_browser_accelerator_keys(false)
+                        .with_default_context_menus(false)
                         .with_custom_protocol(
                             iframe::WINDOWS_WRAPPER_SCHEME.into(),
                             move |_, request| {
                                 iframe::Page::windows_wrapper_response(&request, &html)
                             },
                         )
-                        .with_navigation_handler(|url| {
-                            iframe::Page::permits_windows_top_level(&url)
-                        })
+                        .with_navigation_handler(iframe::Page::windows_top_level_navigation())
                 };
                 #[cfg(target_os = "macos")]
                 let builder = builder
