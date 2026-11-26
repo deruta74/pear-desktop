@@ -160,7 +160,7 @@ window.renderPearLocal = ({
   lyrics,
   opening: isOpening = false,
   scanningFolder = false,
-  selectingLyrics = false,
+  selectingPath = false,
   queue,
   settings,
   equalizer,
@@ -178,15 +178,12 @@ window.renderPearLocal = ({
     renderQueue();
   }
   const importing = opening || scanningFolder;
-  open.setAttribute('aria-disabled', String(importing || selectingLyrics));
-  openFolder.setAttribute(
-    'aria-disabled',
-    String(importing || selectingLyrics),
-  );
+  const canSelectPath = !importing && !selectingPath;
+  open.setAttribute('aria-disabled', String(!canSelectPath));
+  openFolder.setAttribute('aria-disabled', String(!canSelectPath));
   const wasLoadingLyrics = loadingLyrics;
   loadingLyrics = Boolean(lyrics?.loading);
-  const canOpenLyrics =
-    Boolean(transport) && !importing && !selectingLyrics && !loadingLyrics;
+  const canOpenLyrics = Boolean(transport) && canSelectPath && !loadingLyrics;
   openLyrics.setAttribute('aria-disabled', String(!canOpenLyrics));
   if (lyrics?.available) {
     if (

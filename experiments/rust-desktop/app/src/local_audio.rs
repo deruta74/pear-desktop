@@ -2,6 +2,7 @@ mod engine;
 mod equalizer;
 mod lyrics;
 mod metadata;
+mod picker;
 mod presets;
 mod queue;
 mod settings;
@@ -110,8 +111,8 @@ enum AudioEvent {
     DropFiles(Vec<PathBuf>),
     FolderScanned(std::result::Result<Vec<PathBuf>, &'static str>),
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    LyricsPickerReady(u64),
-    LyricsPicked(u64, Option<PathBuf>),
+    PickerReady(picker::Kind),
+    PickerSelected(picker::Kind, Option<PathBuf>),
     LyricsLoaded(u64, lyrics::Loaded),
     Menu(MenuEvent),
     Prepared(std::result::Result<(Arc<Metadata>, engine::PreparedAudio), engine::EngineOpenError>),
@@ -142,8 +143,8 @@ struct View<'a> {
     opening: bool,
     #[serde(rename = "scanningFolder")]
     scanning_folder: bool,
-    #[serde(rename = "selectingLyrics")]
-    selecting_lyrics: bool,
+    #[serde(rename = "selectingPath")]
+    selecting_path: bool,
     lyrics: Option<lyrics::View<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     queue: Option<queue::View<'a>>,
@@ -296,34 +297,6 @@ fn pick_files(window: &Window) -> Vec<PathBuf> {
             dialog.filenames()
         } else {
             Vec::new()
-        }
-    }
-}
-
-fn pick_folder(window: &Window) -> Option<PathBuf> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        rfd::FileDialog::new()
-            .set_parent(window)
-            .set_title("Open audio folder")
-            .pick_folder()
-    }
-    #[cfg(target_os = "linux")]
-    {
-        use gtk::prelude::{FileChooserExt, NativeDialogExt};
-        use tao::platform::unix::WindowExtUnix;
-
-        let dialog = gtk::FileChooserNative::new(
-            Some("Open audio folder"),
-            Some(window.gtk_window()),
-            gtk::FileChooserAction::SelectFolder,
-            Some("Open"),
-            Some("Cancel"),
-        );
-        if dialog.run() == gtk::ResponseType::Accept {
-            dialog.filename()
-        } else {
-            None
         }
     }
 }
@@ -483,7 +456,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
     let mut scanning_folder = false;
     let mut folder_files = None;
     let mut folder_error = None;
-    let mut lyrics_picker = None::<(u64, lyrics::Picker)>;
+    let mut active_picker = None::<(picker::Kind, picker::Picker)>;
     let mut deadline = None;
     let mut last_render = None::<String>;
     #[cfg(target_os = "linux")]
@@ -493,17 +466,16 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
         let _keep_menu_alive = &menu;
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         let event = match event {
-            Event::UserEvent(AudioEvent::LyricsPickerReady(generation)) => {
-                let Some((_, picker)) = lyrics_picker
-                    .as_mut()
-                    .filter(|(active, _)| *active == generation)
+            Event::UserEvent(AudioEvent::PickerReady(kind)) => {
+                let Some((_, picker)) =
+                    active_picker.as_mut().filter(|(active, _)| *active == kind)
                 else {
                     return;
                 };
                 let std::task::Poll::Ready(path) = picker.poll() else {
                     return;
                 };
-                Event::UserEvent(AudioEvent::LyricsPicked(generation, path))
+                Event::UserEvent(AudioEvent::PickerSelected(kind, path))
             }
             other => other,
         };
@@ -579,30 +551,47 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                 }
                 Some(AudioCommand::Ready {})
             }
-            Event::UserEvent(AudioEvent::LyricsPicked(generation, path)) => {
-                if lyrics_picker
+            Event::UserEvent(AudioEvent::PickerSelected(kind, path)) => {
+                if active_picker
                     .as_ref()
-                    .is_none_or(|(active, _)| *active != generation)
+                    .is_none_or(|(active, _)| *active != kind)
                 {
                     return;
                 }
-                lyrics_picker = None;
-                if let Some(path) = path
-                    && let Some(current) = track
-                        .as_mut()
-                        .filter(|track| track.generation == generation)
-                {
-                    let result_events = result_events.clone();
-                    match std::thread::Builder::new()
-                        .name("pear-audio-lyrics".into())
-                        .spawn(move || {
-                            let result = lyrics::read(&path);
-                            let _ = result_events
-                                .send_event(AudioEvent::LyricsLoaded(generation, result));
-                        }) {
-                        Ok(_) => current.lyrics.loading = true,
-                        Err(_) => current.lyrics.finish(Err(lyrics::UNREADABLE)),
+                active_picker = None;
+                match (kind, path) {
+                    (picker::Kind::Folder, Some(folder)) => {
+                        folder_error = None;
+                        let result_events = result_events.clone();
+                        match std::thread::Builder::new()
+                            .name("pear-audio-folder".into())
+                            .spawn(move || {
+                                let result = scan_folder(&folder);
+                                let _ = result_events.send_event(AudioEvent::FolderScanned(result));
+                            }) {
+                            Ok(_) => scanning_folder = true,
+                            Err(_) => folder_error = Some("Could not scan the selected folder."),
+                        }
                     }
+                    (picker::Kind::Lyrics(generation), Some(path)) => {
+                        if let Some(current) = track
+                            .as_mut()
+                            .filter(|track| track.generation == generation)
+                        {
+                            let result_events = result_events.clone();
+                            match std::thread::Builder::new()
+                                .name("pear-audio-lyrics".into())
+                                .spawn(move || {
+                                    let result = lyrics::read(&path);
+                                    let _ = result_events
+                                        .send_event(AudioEvent::LyricsLoaded(generation, result));
+                                }) {
+                                Ok(_) => current.lyrics.loading = true,
+                                Err(_) => current.lyrics.finish(Err(lyrics::UNREADABLE)),
+                            }
+                        }
+                    }
+                    (_, None) => {}
                 }
                 Some(AudioCommand::Ready {})
             }
@@ -727,7 +716,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             );
         match action {
             Some(AudioCommand::Open {}) => {
-                if !was_importing && (lyrics_picker.is_none() || dropped_files.is_some()) {
+                if !was_importing && (active_picker.is_none() || dropped_files.is_some()) {
                     let paths = dropped_files.unwrap_or_else(|| pick_files(&window));
                     if !paths.is_empty() {
                         folder_error = None;
@@ -739,33 +728,20 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                 }
             }
             Some(AudioCommand::OpenFolder {}) => {
-                if !was_importing
-                    && lyrics_picker.is_none()
-                    && let Some(folder) = pick_folder(&window)
-                {
-                    folder_error = None;
-                    let result_events = result_events.clone();
-                    match std::thread::Builder::new()
-                        .name("pear-audio-folder".into())
-                        .spawn(move || {
-                            let result = scan_folder(&folder);
-                            let _ = result_events.send_event(AudioEvent::FolderScanned(result));
-                        }) {
-                        Ok(_) => scanning_folder = true,
-                        Err(_) => folder_error = Some("Could not scan the selected folder."),
-                    }
+                if !was_importing && active_picker.is_none() {
+                    let kind = picker::Kind::Folder;
+                    active_picker =
+                        Some((kind, picker::open(&window, kind, result_events.clone())));
                 }
             }
             Some(AudioCommand::OpenLyrics {}) => {
                 if !was_importing
-                    && lyrics_picker.is_none()
+                    && active_picker.is_none()
                     && let Some(current) = track.as_ref().filter(|track| !track.lyrics.loading)
                 {
-                    let generation = current.generation;
-                    lyrics_picker = Some((
-                        generation,
-                        lyrics::pick_file(&window, generation, result_events.clone()),
-                    ));
+                    let kind = picker::Kind::Lyrics(current.generation);
+                    active_picker =
+                        Some((kind, picker::open(&window, kind, result_events.clone())));
                 }
             }
             Some(AudioCommand::SelectTrack { revision, index }) => {
@@ -922,15 +898,14 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
         }
         let opening = queue.opening();
         let importing = opening || scanning_folder;
-        let selecting_lyrics = lyrics_picker.is_some();
-        let can_open_audio = !importing && !selecting_lyrics;
+        let selecting_path = active_picker.is_some();
+        let can_open_audio = !importing && !selecting_path;
         if open.is_enabled() != can_open_audio {
             open.set_enabled(can_open_audio);
             open_folder.set_enabled(can_open_audio);
         }
-        let can_open_lyrics = !importing
-            && !selecting_lyrics
-            && track.as_ref().is_some_and(|track| !track.lyrics.loading);
+        let can_open_lyrics =
+            can_open_audio && track.as_ref().is_some_and(|track| !track.lyrics.loading);
         if open_lyrics.is_enabled() != can_open_lyrics {
             open_lyrics.set_enabled(can_open_lyrics);
         }
@@ -1001,7 +976,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             settings_error: preferences.problem(),
             opening,
             scanning_folder,
-            selecting_lyrics,
+            selecting_path,
             lyrics,
             queue: send_queue.then(|| queue.view()),
             settings: send_settings.then_some(settings),

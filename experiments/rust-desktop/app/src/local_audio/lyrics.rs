@@ -1,13 +1,7 @@
-use std::{
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::{fs::File, io::Read, path::Path};
 
 use serde::Serialize;
-use tao::{event_loop::EventLoopProxy, window::Window};
 
-use super::AudioEvent;
 use crate::player::lyrics::{Line, MAX_TEXT_BYTES, parse_lrc};
 
 pub(super) type Loaded = Result<Vec<Line>, &'static str>;
@@ -47,109 +41,6 @@ impl State {
             error: self.error,
         }
     }
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-mod native_picker {
-    use std::{
-        future::Future,
-        pin::Pin,
-        sync::Arc,
-        task::{Context, Poll, Wake, Waker},
-    };
-
-    use super::{AudioEvent, EventLoopProxy, PathBuf, Window};
-
-    pub(in crate::local_audio) struct Picker {
-        dialog: Pin<Box<dyn Future<Output = Option<rfd::FileHandle>>>>,
-        waker: Waker,
-    }
-
-    struct PickerWake {
-        generation: u64,
-        events: EventLoopProxy<AudioEvent>,
-    }
-
-    impl Wake for PickerWake {
-        fn wake(self: Arc<Self>) {
-            let _ = self
-                .events
-                .send_event(AudioEvent::LyricsPickerReady(self.generation));
-        }
-    }
-
-    impl Picker {
-        pub(in crate::local_audio) fn poll(&mut self) -> Poll<Option<PathBuf>> {
-            self.dialog
-                .as_mut()
-                .poll(&mut Context::from_waker(&self.waker))
-                .map(|file| file.map(|file| file.path().to_path_buf()))
-        }
-    }
-
-    pub(in crate::local_audio) fn pick_file(
-        window: &Window,
-        generation: u64,
-        events: EventLoopProxy<AudioEvent>,
-    ) -> Picker {
-        let dialog = rfd::AsyncFileDialog::new()
-            .set_parent(window)
-            .set_title("Open lyrics file")
-            .add_filter("LRC files", &["lrc"])
-            .pick_file();
-        let _ = events.send_event(AudioEvent::LyricsPickerReady(generation));
-        Picker {
-            dialog: Box::pin(dialog),
-            waker: Waker::from(Arc::new(PickerWake { generation, events })),
-        }
-    }
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-pub(super) use native_picker::{Picker, pick_file};
-
-#[cfg(target_os = "linux")]
-pub(super) struct Picker(gtk::FileChooserNative);
-
-#[cfg(target_os = "linux")]
-impl Drop for Picker {
-    fn drop(&mut self) {
-        use gtk::prelude::NativeDialogExt;
-        self.0.destroy();
-    }
-}
-
-#[cfg(target_os = "linux")]
-pub(super) fn pick_file(
-    window: &Window,
-    generation: u64,
-    events: EventLoopProxy<AudioEvent>,
-) -> Picker {
-    use gtk::prelude::{FileChooserExt, NativeDialogExt};
-    use tao::platform::unix::WindowExtUnix;
-
-    let dialog = gtk::FileChooserNative::new(
-        Some("Open lyrics file"),
-        Some(window.gtk_window()),
-        gtk::FileChooserAction::Open,
-        Some("Open"),
-        Some("Cancel"),
-    );
-    let filter = gtk::FileFilter::new();
-    filter.set_name(Some("LRC files"));
-    filter.add_pattern("*.[lL][rR][cC]");
-    dialog.add_filter(filter);
-    dialog.set_modal(true);
-    dialog.connect_response(move |dialog, response| {
-        let path = if response == gtk::ResponseType::Accept {
-            dialog.filename()
-        } else {
-            None
-        };
-        let _ = events.send_event(AudioEvent::LyricsPicked(generation, path));
-    });
-    dialog.show();
-    Picker(dialog)
 }
 
 pub(super) const UNREADABLE: &str = "Could not read the selected lyrics file.";

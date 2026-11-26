@@ -97,6 +97,52 @@ test('requests a native folder picker and keeps playback controls active during 
   await expect(page.getByRole('alert')).toHaveText(folderError);
 });
 
+test('keeps playback active and blocks overlapping dialogs while choosing a folder', async (t) => {
+  const { page, messages, render } = await localAudioPage(t);
+  const folder = page.getByRole('button', { name: 'Open folder' });
+  const files = page.getByRole('button', { name: 'Open audio files' });
+  const lyrics = page.getByRole('button', { name: 'Open lyrics file' });
+  const pause = page.getByRole('button', { name: 'Pause', exact: true });
+  const transport = { positionMs: 7990, durationMs: 8000, playing: true };
+  await render({ track: 'First.wav', transport });
+  await folder.click({ timeout: 1000 });
+  expect((await messages()).at(-1)).toEqual({ type: 'open_folder' });
+
+  await render({
+    track: 'First.wav',
+    transport,
+    selectingPath: true,
+  });
+  const count = (await messages()).length;
+  for (const button of [files, folder, lyrics]) {
+    await expect(button).toBeDisabled({ timeout: 1000 });
+    await button.dispatchEvent('click');
+  }
+  expect(await messages()).toHaveLength(count);
+  await expect(page.getByRole('status')).toBeHidden();
+
+  const next = {
+    track: 'Next.wav',
+    transport: { ...transport, positionMs: 150 },
+  };
+  await render({ ...next, selectingPath: true });
+  await expect(page.getByRole('heading', { name: next.track })).toBeVisible();
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toHaveValue('150');
+  await pause.click({ timeout: 1000 });
+  expect((await messages()).at(-1)).toEqual({
+    type: 'set_playing',
+    playing: false,
+  });
+
+  await render(next);
+  for (const button of [files, folder, lyrics]) {
+    await expect(button).toBeEnabled();
+  }
+  await expect(page.getByRole('status')).toBeHidden();
+});
+
 test('opens local audio files and sends playback and exact reverb settings to Rust', async (t) => {
   const { page, messages, render, blocked } = await localAudioPage(t);
   const open = page.getByRole('button', { name: 'Open audio files' });
@@ -587,7 +633,7 @@ test('opens a native lyrics picker and follows playback in a collapsible region'
   await openLyrics.click({ timeout: 1000 });
   expect((await messages()).at(-1)).toEqual({ type: 'open_lyrics' });
 
-  await render({ track, transport, selectingLyrics: true });
+  await render({ track, transport, selectingPath: true });
   await expect(openLyrics).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Pause' })).toBeEnabled();
   await render({ track, transport, lyrics: { loading: true } });
@@ -623,7 +669,7 @@ test('opens a native lyrics picker and follows playback in a collapsible region'
   await expect(details).toHaveJSProperty('open', false);
   await expect(line).toBeHidden();
   const loaded = { available: true, line: 'Second line' };
-  await render({ track, transport, lyrics: loaded, selectingLyrics: true });
+  await render({ track, transport, lyrics: loaded, selectingPath: true });
   await render({ track, transport, lyrics: loaded });
   await expect(details).toHaveJSProperty('open', false);
   await expect(openLyrics).toBeEnabled();
