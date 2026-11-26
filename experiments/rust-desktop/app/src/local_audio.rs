@@ -4,17 +4,17 @@ mod media;
 mod metadata;
 mod presets;
 mod queue;
+mod settings;
 
 use std::{
     borrow::Cow,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command as Process, Stdio},
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
-use pear_preview_dsp::ReverbSettings;
 use serde::{Deserialize, Serialize};
 use tao::{
     dpi::LogicalSize,
@@ -30,6 +30,7 @@ use wry::{
 use crate::{Result, attach_menu, build_webview, player::isolated_builder};
 
 use metadata::Metadata;
+use settings::Settings;
 
 const SCHEME: &str = "pear-audio";
 const ASSET_ROOT: &str = "pear-audio://app.local/";
@@ -129,16 +130,6 @@ struct View<'a> {
     eq_revision: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     presets: Option<Vec<&'a str>>,
-}
-
-#[derive(Clone, Copy, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Settings {
-    volume: f64,
-    speed: f64,
-    intensity: f32,
-    high_pass_hz: f32,
-    low_pass_hz: f32,
 }
 
 fn command(request: &Request<String>) -> Option<AudioCommand> {
@@ -253,8 +244,18 @@ pub(crate) fn launch() -> std::io::Result<()> {
         })
 }
 
+fn profile_directory() -> Result<PathBuf> {
+    match std::env::var_os("PEAR_LOCAL_AUDIO_DIR") {
+        Some(path) if Path::new(&path).is_absolute() => Ok(path.into()),
+        Some(_) => Err("PEAR_LOCAL_AUDIO_DIR must be an absolute path.".into()),
+        None => Ok(crate::player::data_root()?.join("com.pear-desktop.rust-preview-local-audio")),
+    }
+}
+
 pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
-    let store = presets::Store::from_environment()?;
+    let directory = profile_directory()?;
+    let store = presets::Store::new(directory.clone());
+    let mut preferences = settings::Preferences::load(directory);
     let (mut presets, mut error) = match store.read() {
         Ok(presets) => (presets, None),
         Err(reason) => (Vec::new(), Some(reason.to_owned())),
@@ -336,9 +337,6 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
     let mut media: Option<media::Backend> = None;
     let mut track: Option<Track> = None;
     let mut track_generation = 0_u64;
-    let mut volume = 1.0;
-    let mut speed = 1.0;
-    let mut reverb = ReverbSettings::default();
     let mut equalizer = equalizer::Profile::default();
     let mut queue = queue::Queue::default();
     let mut deadline = None;
@@ -347,26 +345,28 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
 
     event_loop.run(move |event, _, flow| {
         let _keep_menu_alive = &menu;
-        let was_opening = queue.opening();
-        let mut dropped_files = None;
-        let mut requested_path = None;
-        let action = match event {
+        let closing = match &event {
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::CloseRequested,
                 ..
-            } if window_id == window.id() => {
-                media.take();
-                track.take();
-                *flow = ControlFlow::Exit;
-                return;
+            } => *window_id == window.id(),
+            Event::UserEvent(AudioEvent::Menu(event)) => event.id == *quit.id(),
+            _ => false,
+        };
+        if closing {
+            media.take();
+            track.take();
+            if let Err(problem) = preferences.flush_on_exit() {
+                eprintln!("{problem}");
             }
-            Event::UserEvent(AudioEvent::Menu(event)) if event.id == *quit.id() => {
-                media.take();
-                track.take();
-                *flow = ControlFlow::Exit;
-                return;
-            }
+            *flow = ControlFlow::Exit;
+            return;
+        }
+        let was_opening = queue.opening();
+        let mut dropped_files = None;
+        let mut requested_path = None;
+        let action = match event {
             Event::UserEvent(AudioEvent::Menu(event)) if event.id == *open.id() => {
                 Some(AudioCommand::Open {})
             }
@@ -441,9 +441,10 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                             media = media::Backend::new(dispatch_media.clone());
                         }
                         let (play, skipped) = queue.finish();
-                        engine.set_volume(volume);
-                        engine.set_speed(speed);
-                        engine.set_reverb(reverb);
+                        let settings = preferences.current();
+                        engine.set_volume(settings.volume);
+                        engine.set_speed(settings.speed);
+                        engine.set_reverb(settings.reverb());
                         error = equalizer.apply(&mut engine).err().map(str::to_owned);
                         if error.is_some() {
                             equalizer.disable();
@@ -537,30 +538,38 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                             *stopped = false;
                             engine.seek_ms(position_ms);
                         }
-                        AudioCommand::SetVolume { volume: value }
-                            if (0.0..=1.0).contains(&value) =>
-                        {
-                            volume = value;
-                            engine.set_volume(volume);
+                        AudioCommand::SetVolume { volume } => {
+                            let next = Settings {
+                                volume,
+                                ..preferences.current()
+                            };
+                            if preferences.update(next, Instant::now()) {
+                                engine.set_volume(volume);
+                            }
                         }
-                        AudioCommand::SetSpeed { speed: value } if (0.7..=1.3).contains(&value) => {
-                            speed = value;
-                            engine.set_speed(speed);
+                        AudioCommand::SetSpeed { speed } => {
+                            let next = Settings {
+                                speed,
+                                ..preferences.current()
+                            };
+                            if preferences.update(next, Instant::now()) {
+                                engine.set_speed(speed);
+                            }
                         }
                         AudioCommand::SetReverb {
                             intensity,
                             high_pass_hz,
                             low_pass_hz,
-                        } if (0.0..=1.0).contains(&intensity)
-                            && (20.0..=20_000.0).contains(&high_pass_hz)
-                            && (20.0..=20_000.0).contains(&low_pass_hz) =>
-                        {
-                            reverb = ReverbSettings {
+                        } => {
+                            let next = Settings {
                                 intensity,
                                 high_pass_hz,
                                 low_pass_hz,
+                                ..preferences.current()
                             };
-                            engine.set_reverb(reverb);
+                            if preferences.update(next, Instant::now()) {
+                                engine.set_reverb(next.reverb());
+                            }
                         }
                         AudioCommand::SetEqualizer { profile, .. } => match profile.normalize() {
                             Some(profile) => match profile.apply(engine) {
@@ -611,6 +620,9 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             None if !deadline.is_some_and(|when| Instant::now() >= when) => return,
             None => {}
         }
+        let now = Instant::now();
+        preferences.save_if_due(now);
+        let settings = preferences.current();
         let transport = track.as_mut().map(|track| {
             let snapshot = track.engine.snapshot(queue.opening());
             if !snapshot.finished || requested_path.is_some() {
@@ -677,8 +689,8 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                             duration_ms: snapshot.duration_ms,
                             position_ms: snapshot.position_ms,
                             position_revision: snapshot.position_revision,
-                            speed,
-                            volume,
+                            speed: settings.speed,
+                            volume: settings.volume,
                             status,
                             can_previous: previous.is_some(),
                             can_next: next.is_some(),
@@ -691,13 +703,15 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             .as_ref()
             .filter(|snapshot| snapshot.error.is_none())
             .map(|snapshot| {
-                Instant::now()
-                    + if snapshot.playing {
-                        UPDATE_INTERVAL
-                    } else {
-                        IDLE_UPDATE_INTERVAL
-                    }
-            });
+                now + if snapshot.playing {
+                    UPDATE_INTERVAL
+                } else {
+                    IDLE_UPDATE_INTERVAL
+                }
+            })
+            .into_iter()
+            .chain(preferences.deadline())
+            .min();
         #[cfg(target_os = "linux")]
         {
             deadline = timer.schedule(deadline);
@@ -709,16 +723,10 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             artist: metadata.and_then(|metadata| metadata.artist.as_deref()),
             album: metadata.and_then(|metadata| metadata.album.as_deref()),
             transport,
-            error: error.as_deref(),
+            error: error.as_deref().or(preferences.problem()),
             opening,
             queue: send_queue.then(|| queue.view()),
-            settings: send_settings.then_some(Settings {
-                volume,
-                speed,
-                intensity: reverb.intensity,
-                high_pass_hz: reverb.high_pass_hz,
-                low_pass_hz: reverb.low_pass_hz,
-            }),
+            settings: send_settings.then_some(settings),
             equalizer: (send_settings || eq_revision.is_some()).then_some(&equalizer),
             eq_revision,
             presets: send_presets
@@ -736,7 +744,6 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     #[test]
     fn local_queue_keeps_the_old_selection_until_a_batch_opens() {

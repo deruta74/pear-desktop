@@ -1,7 +1,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use serde::{Deserialize, Serialize};
@@ -26,13 +26,8 @@ pub(super) struct Store {
 }
 
 impl Store {
-    pub(super) fn from_environment() -> crate::Result<Self> {
-        let directory = match std::env::var_os("PEAR_LOCAL_AUDIO_DIR") {
-            Some(path) if Path::new(&path).is_absolute() => PathBuf::from(path),
-            Some(_) => return Err("PEAR_LOCAL_AUDIO_DIR must be an absolute path.".into()),
-            None => crate::player::data_root()?.join("com.pear-desktop.rust-preview-local-audio"),
-        };
-        Ok(Self { directory })
+    pub(super) fn new(directory: PathBuf) -> Self {
+        Self { directory }
     }
 
     pub(super) fn read(&self) -> Result<Vec<Preset>, &'static str> {
