@@ -13,6 +13,7 @@ impl PreviewPage {
     pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Self, &'static str> {
         match args.next().as_deref() {
             None => Ok(Self::Music),
+            Some("--site-probe") if args.next().is_none() => Ok(Self::Music),
             #[cfg(feature = "benchmark")]
             Some("--benchmark-url") => {
                 let input = args.next().ok_or("Missing benchmark URL")?;

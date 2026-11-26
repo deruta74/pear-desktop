@@ -51,20 +51,20 @@ To enable **Search**, store a developer key restricted to YouTube Data API v3 in
 
 ## Run the queue on Linux or Windows
 
-The queue is opt-in while these platforms are being tested. On Debian or Ubuntu, install `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`, a C toolchain and `pkg-config`. On Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app checks that both native WebView2 controllers support InPrivate mode before loading a page.
+The preview opens the queue by default on Linux and Windows. To build it on Debian or Ubuntu, install `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`, a C toolchain and `pkg-config`. To build on Windows, use the MSVC Rust toolchain and a current Microsoft Edge WebView2 Evergreen Runtime. The app checks that both native WebView2 controllers support InPrivate mode before loading a page.
 
 ```sh
-cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --queue
+cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview
 ```
 
 The queue file is `com.pear-desktop.rust-preview/queue.json` under `$XDG_DATA_HOME` (or `~/.local/share`) on Linux and under `%LOCALAPPDATA%` on Windows. To test with a fresh queue, set `PEAR_PREVIEW_QUEUE_DIR` to a separate absolute directory. **View → Hide Queue** and **File → Add Video** are available from the native menus.
 
 On Ubuntu ARM64 with WebKitGTK 4.1, an Xvfb test confirmed the controls acknowledgement and title persistence. The example video played in the VM, with audio verified on a PulseAudio test sink. The isolated test queue and an ordinary queue ran at the same time on one GTK session bus. On a Windows x64 runner, the native WebView2 queue opened, completed the controls handshake, and reached the official embed in an onscreen window. The embed did not expose a visible Play control on that runner. Windows video and audio playback still need verification. [Windows verification run](https://github.com/deruta74/pear-desktop/actions/runs/45744454411)
 
-Omit `--queue` to run the original system WebView compatibility experiment from Cargo:
+Pass `--site-probe` to run the original system WebView compatibility experiment from Cargo:
 
 ```sh
-cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview
+cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --site-probe
 ```
 
 ### Official YouTube Embed probe

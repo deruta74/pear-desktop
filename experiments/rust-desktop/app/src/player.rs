@@ -130,7 +130,8 @@ pub struct LaunchMode {
 
 pub fn launch_mode() -> Result<Option<LaunchMode>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let queue = args.len() == 1 && args[0] == "--queue";
+    let queue = (args.is_empty() && !cfg!(target_os = "macos"))
+        || (args.len() == 1 && args[0] == "--queue");
     let iframe_smoke =
         cfg!(feature = "benchmark") && args.len() == 1 && args[0] == "--iframe-player-smoke";
     let smoke = iframe_smoke

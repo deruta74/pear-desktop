@@ -273,5 +273,14 @@ mod tests {
     #[test]
     fn rejects_unexpected_arguments() {
         assert!(PreviewPage::parse(["https://example.org/".into()].into_iter()).is_err());
+        assert!(PreviewPage::parse(["--site-probe".into(), "--queue".into()].into_iter()).is_err());
+    }
+
+    #[test]
+    fn accepts_the_explicit_site_probe() {
+        assert!(matches!(
+            PreviewPage::parse(["--site-probe".into()].into_iter()),
+            Ok(PreviewPage::Music)
+        ));
     }
 }
