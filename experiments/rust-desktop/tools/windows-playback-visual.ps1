@@ -112,6 +112,11 @@ try {
     if (Test-Path -LiteralPath $artifact) { throw 'stale-image' }
     $null = New-Item -ItemType Directory -Path $root, $fixtureProfile
     $stage = 'fixture-source'
+    & git -C $repo cat-file -e "${base}^{commit}" *> $null
+    if ($LASTEXITCODE -ne 0) {
+        & git -C $repo fetch --no-tags --depth=1 origin $base *> $null
+        if ($LASTEXITCODE -ne 0) { throw 'fixture-fetch' }
+    }
     & git -C $repo worktree add --detach $source $base *> $null
     if ($LASTEXITCODE -ne 0) { throw 'source-worktree' }
     $registeredSource = $true
