@@ -187,7 +187,8 @@ fn run() -> Result<()> {
 fn main() {
     let result = match player::launch_mode() {
         Ok(Some(mode)) => player::run(mode),
-        Ok(None) => run(),
+        Ok(None) if cfg!(feature = "benchmark") => run(),
+        Ok(None) => Err("Unexpected argument".into()),
         Err(error) => Err(error),
     };
 
@@ -273,5 +274,21 @@ mod tests {
     #[test]
     fn rejects_unexpected_arguments() {
         assert!(PreviewPage::parse(["https://example.org/".into()].into_iter()).is_err());
+        assert!(PreviewPage::parse(["--site-probe".into(), "--queue".into()].into_iter()).is_err());
+    }
+
+    #[cfg(feature = "benchmark")]
+    #[test]
+    fn accepts_the_explicit_site_probe() {
+        assert!(matches!(
+            PreviewPage::parse(["--site-probe".into()].into_iter()),
+            Ok(PreviewPage::Music)
+        ));
+    }
+
+    #[cfg(not(feature = "benchmark"))]
+    #[test]
+    fn rejects_the_development_probe_in_a_normal_build() {
+        assert!(PreviewPage::parse(["--site-probe".into()].into_iter()).is_err());
     }
 }

@@ -100,12 +100,18 @@ pub(super) fn configure_event_loop(
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-pub(super) fn child_bounds(window: &Window, queue_visible: bool) -> (Rect, Rect) {
+pub(super) fn child_bounds(
+    window: &Window,
+    queue_visible: bool,
+    player_present: bool,
+) -> (Rect, Rect) {
     let size = window.inner_size().to_logical::<f64>(window.scale_factor());
-    let panel_width = if queue_visible {
+    let panel_width = if !queue_visible {
+        0.0
+    } else if player_present {
         f64::from(PANEL_WIDTH)
     } else {
-        0.0
+        size.width
     };
     let player_width = (size.width - panel_width).max(0.0);
     (

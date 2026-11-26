@@ -44,7 +44,7 @@ async function panel(t, { withoutObjectHasOwn = false } = {}) {
       body: body ?? 'Missing queue panel asset',
       headers: {
         'Content-Security-Policy':
-          "default-src 'none'; script-src 'self'; style-src 'self'",
+          "default-src 'none'; script-src 'self'; style-src 'self'; img-src https://i.ytimg.com/vi/",
       },
     });
   });
@@ -67,6 +67,150 @@ function messages(page) {
   return page.evaluate(() => window.pearMessages);
 }
 
+function legalState(overrides = {}) {
+  return {
+    accepted: false,
+    show: true,
+    revision: 3,
+    problem: null,
+    ...overrides,
+  };
+}
+
+test('requires deliberate agreement before mounting playback or requesting artwork', async (t) => {
+  const page = await panel(t);
+  const artwork = page.locator('#selection-artwork');
+  const queueForm = page.locator('#add-video');
+  const heading = page.getByRole('heading', { name: 'Terms & Privacy' });
+  const agree = page.getByRole('button', { name: 'Agree and continue' });
+  const quit = page.getByRole('button', { name: 'Quit' });
+  const url = `https://i.ytimg.com/vi/${first}/hqdefault.jpg`;
+  const artworkRequests = [];
+  await page.route(url, (route) => {
+    artworkRequests.push(route.request().url());
+    return route.abort();
+  });
+  const render = (legal, error = null, sequence) =>
+    state(page, [first], first, error, null, sequence, {
+      legal,
+      metadata: { title: 'Saved video', channel: 'Artist', thumbnailUrl: url },
+    });
+  await expect(queueForm).toBeHidden();
+  await render(legalState({ show: false }));
+  await expect(heading).toBeFocused();
+  await expect(queueForm).toBeHidden();
+  await expect(page.locator('#queue-items').getByRole('listitem')).toHaveCount(
+    0,
+  );
+  await expect(artwork).not.toHaveAttribute('src');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => {
+    window.focusPearAdd();
+    document
+      .getElementById('add-video')
+      .dispatchEvent(new Event('submit', { cancelable: true }));
+  });
+  await expect(heading).toBeFocused();
+  expect(await messages(page)).toHaveLength(1);
+  expect(artworkRequests).toEqual([]);
+
+  await agree.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'accept_legal',
+    revision: 3,
+  });
+  await render(legalState(), null, null);
+  await expect(agree).toBeDisabled();
+  await render(legalState(), 'Could not save the agreement.');
+  await expect(page.getByRole('alert')).toHaveText(
+    'Could not save the agreement.',
+  );
+  await expect(heading).toBeVisible();
+  await expect(quit).toBeEnabled();
+  await agree.press('Enter');
+  await render(legalState({ accepted: true, show: false }));
+  await expect(heading).toBeHidden();
+  await expect(
+    page.getByRole('textbox', { name: 'YouTube link or video ID' }),
+  ).toBeFocused();
+  await expect(page.locator('#selection-id')).toHaveText('Saved video');
+  await expect(page.getByRole('status')).not.toContainText('Loading queue');
+  await expect.poll(() => artworkRequests).toEqual([url]);
+});
+
+test('reopens Terms & Privacy without losing drafts or navigating the panel to external links', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const accepted = legalState({ accepted: true, show: false });
+  const render = (legal, sequence) =>
+    state(page, [first], first, null, null, sequence, {
+      legal,
+      catalog: searchState(),
+    });
+  await render(accepted);
+  const source = page.getByRole('textbox', {
+    name: 'YouTube link or video ID',
+  });
+  await source.fill('My queue draft');
+  await page.getByRole('button', { name: 'Search' }).click();
+  const query = page.getByRole('searchbox', { name: 'Search YouTube' });
+  await query.fill('My search draft');
+  await render({ ...accepted, show: true }, null);
+  await expect(
+    page.getByRole('heading', { name: 'Terms & Privacy' }),
+  ).toBeFocused();
+  await expect(query).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: 'Agree and continue' }),
+  ).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Quit' })).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+  const region = page.getByRole('main', { name: 'Terms & Privacy' });
+  expect(
+    await region.evaluate((node) => node.scrollHeight - node.clientHeight),
+  ).toBeGreaterThan(0);
+
+  for (const [label, link] of [
+    ['YouTube Terms of Service', 'youtube_terms'],
+    ['Google Privacy Policy', 'google_privacy'],
+  ]) {
+    const button = page.getByRole('button', { name: label });
+    await button.press('Enter');
+    expect((await messages(page)).at(-1).command).toEqual({
+      type: 'open_legal_link',
+      link,
+    });
+    await render({ ...accepted, show: true });
+    await expect(button).toBeFocused();
+    await expect(button).toBeInViewport();
+    expect(page.url()).toBe(`${origin}/`);
+  }
+  await page.getByRole('button', { name: 'Close' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'close_legal',
+  });
+  await render(accepted);
+  await expect(query).toBeFocused();
+  await expect(query).toHaveValue('My search draft');
+  await page.getByRole('button', { name: 'Queue' }).click();
+  await expect(source).toHaveValue('My queue draft');
+});
+
+test('offers Quit before agreement without accepting or dismissing the disclosure', async (t) => {
+  const page = await panel(t);
+  await state(page, [], null, null, null, 1, { legal: legalState() });
+  await page.getByRole('button', { name: 'Quit' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'decline_legal',
+  });
+  await expect(
+    page.getByRole('heading', { name: 'Terms & Privacy' }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close' })).toBeHidden();
+});
+
 async function state(
   page,
   entries,
@@ -74,7 +218,17 @@ async function state(
   error = null,
   notice = null,
   sequence,
-  { titles, playerProblem, metadata, metadataProblem, catalog } = {},
+  {
+    titles,
+    playerProblem,
+    metadata,
+    metadataProblem,
+    catalog,
+    lyrics,
+    savedPlaylists,
+    preferencesProblem,
+    legal,
+  } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
   return page.evaluate(
@@ -95,6 +249,10 @@ async function state(
         metadata,
         metadataProblem,
         catalog,
+        lyrics,
+        savedPlaylists,
+        preferencesProblem,
+        legal,
       },
       error,
       notice,
@@ -498,7 +656,10 @@ test('renders literal titles and ID fallbacks without Object.hasOwn', async (t) 
   const selected = page.getByRole('button', { name: `Select ${title}` });
   await expect(selected).toHaveText(title);
   await expect(selected).toBeFocused();
-  await expect(page.locator('img')).toHaveCount(0);
+  await expect(page.locator('img:not(#selection-artwork)')).toHaveCount(0);
+  expect(
+    await page.locator('#selection-artwork').getAttribute('src'),
+  ).toBeNull();
   await expect(
     page.getByRole('button', { name: `Select ${second}` }),
   ).toBeVisible();
@@ -576,6 +737,63 @@ test('shows a supplied metadata problem independently of playback and queue feed
   await expect(problemText).toHaveCount(0);
 });
 
+test('keeps failed playback preference feedback visible outside the Queue view', async (t) => {
+  const page = await panel(t);
+  const saved = savedPlaylists();
+  await state(page, [first], first, null, null, 1, { savedPlaylists: saved });
+  await page.getByRole('button', { name: 'Library' }).click();
+  const warning =
+    'Playback mode changed for this session. The preference could not be saved.';
+  await state(page, [first], first, null, null, undefined, {
+    savedPlaylists: saved,
+    preferencesProblem: warning,
+  });
+  await expect(page.getByText(warning)).toBeVisible();
+  await state(page, [first], first, null, null, undefined, {
+    savedPlaylists: saved,
+  });
+  await expect(page.getByText(warning)).toHaveCount(0);
+});
+
+test('loads only artwork matching the current video and clears it on selection change', async (t) => {
+  const page = await panel(t);
+  const cover = page.locator('#selection-artwork');
+  const url = `https://i.ytimg.com/vi/${first}/hqdefault.jpg`;
+  let requested = 0;
+  await page.route(url, (route) => {
+    requested += 1;
+    return route.fulfill({
+      contentType: 'image/gif',
+      body: Buffer.from(
+        'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+        'base64',
+      ),
+    });
+  });
+  const metadata = { title: 'Track', channel: 'Band' };
+  for (const thumbnailUrl of [
+    `https://i.ytimg.com/vi/${second}/hqdefault.jpg`,
+    `${url}?other=1`,
+  ]) {
+    await state(page, [first, second], first, null, null, undefined, {
+      metadata: { ...metadata, thumbnailUrl },
+    });
+    expect(await cover.getAttribute('src')).toBeNull();
+  }
+  await state(page, [first, second], first, null, null, undefined, {
+    metadata: { ...metadata, thumbnailUrl: url },
+  });
+  await expect(cover).toBeVisible();
+  await expect(cover).toHaveAttribute('referrerpolicy', 'no-referrer');
+  await expect
+    .poll(() => cover.evaluate((image) => image.naturalWidth))
+    .toBe(1);
+  expect(requested).toBe(1);
+  await state(page, [first, second], second);
+  await expect(cover).toBeHidden();
+  expect(await cover.getAttribute('src')).toBeNull();
+});
+
 test('fits a queue row at the minimum panel size while displaying long YouTube metadata', async (t) => {
   const page = await panel(t);
   await page.setViewportSize({ width: 384, height: 520 });
@@ -585,7 +803,11 @@ test('fits a queue row at the minimum panel size while displaying long YouTube m
       title: 'A long video title that takes multiple lines '.repeat(5),
       channel: 'A channel with a long display name '.repeat(8),
     },
+    catalog: searchState(),
+    lyrics: lyricsState(),
+    savedPlaylists: savedPlaylists(),
   });
+  await expect(page.getByRole('navigation').getByRole('button')).toHaveCount(4);
   await transport(page, readyTransport);
   const attribution = page.getByText(/^YouTube · A channel/);
   await expect(attribution).toBeVisible();
@@ -861,6 +1083,553 @@ test('fits Queue and Search rows at the minimum panel size alongside playback co
   const list = page.getByRole('list', { name: 'YouTube results' });
   const row = list.getByRole('listitem').first();
   assertVisibleQueueRow(await list.boundingBox(), await row.boundingBox());
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+});
+
+function lyricsState(overrides = {}) {
+  return {
+    track: 'Original track',
+    artist: 'Original artist',
+    duration: 180,
+    pending: false,
+    problem: null,
+    result: null,
+    ...overrides,
+  };
+}
+
+test('only looks up explicitly submitted Lyrics and clears old drafts and results on selection change', async (t) => {
+  const page = await panel(t);
+  const navigation = page.getByRole('navigation');
+  const tab = navigation.getByRole('button', { name: 'Lyrics' });
+  const track = page.getByRole('textbox', { name: 'Track' });
+  const artist = page.getByRole('textbox', { name: 'Artist' });
+  const lookup = page.getByRole('button', { name: 'Find lyrics' });
+  const entries = [first, second];
+  const catalog = searchState();
+  await state(page, entries, first, null, null, 1, { catalog });
+  await expect(tab).toHaveCount(0);
+
+  const result = { kind: 'plain', lines: ['<em>Original words</em>'] };
+  await state(page, entries, first, null, null, null, {
+    catalog,
+    lyrics: lyricsState({ duration: null, result }),
+  });
+  await expect(tab).toBeVisible();
+  await tab.press('Enter');
+  await expect(track).toBeFocused();
+  await expect(track).toHaveValue('Original track');
+  await expect(artist).toHaveValue('Original artist');
+  await expect(lookup).toBeDisabled();
+  await expect(page.getByText('Waiting for video duration…')).toBeVisible();
+  await track.fill('  Edited track  ');
+  await state(page, entries, first, null, null, null, {
+    catalog,
+    lyrics: lyricsState({ artist: 'Updated artist', result }),
+  });
+  await expect(track).toHaveValue('  Edited track  ');
+  await expect(artist).toHaveValue('Updated artist');
+  await expect(
+    page.getByText('<em>Original words</em>', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Lyrics from LRCLIB', { exact: true }),
+  ).toBeVisible();
+  await artist.fill('  Edited artist  ');
+  expect(await messages(page)).toHaveLength(1);
+  await artist.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: {
+      type: 'find_lyrics',
+      title: 'Edited track',
+      artist: 'Edited artist',
+    },
+  });
+  await expect(
+    page.getByText('<em>Original words</em>', { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText('Finding lyrics…')).toBeVisible();
+
+  await state(page, entries, second, null, null, 2, {
+    catalog,
+    lyrics: lyricsState({ track: 'Next track', artist: 'Next artist' }),
+  });
+  await expect(track).toHaveValue('Next track');
+  await expect(artist).toHaveValue('Next artist');
+  await expect(page.getByText('Finding lyrics…')).toHaveCount(0);
+  await expect(page.locator('#selection-id')).toHaveText(second);
+  await state(page, entries, second, null, null, null, {
+    catalog,
+    lyrics: null,
+  });
+  await expect(tab).toHaveCount(0);
+  await expect(
+    page.getByRole('textbox', { name: 'YouTube link or video ID' }),
+  ).toBeFocused();
+});
+
+test('uses sampled lyric timing for one active line, word or instrumental gap', async (t) => {
+  const page = await panel(t);
+  const result = {
+    kind: 'synced',
+    lines: [
+      { timeMs: 0, text: '', words: [] },
+      {
+        timeMs: 1000,
+        text: '<b>Words</b> here',
+        words: [
+          { timeMs: 1000, text: '<b>Words</b> ' },
+          { timeMs: 1500, text: 'here' },
+        ],
+      },
+      { timeMs: 2400, text: '', words: [] },
+      {
+        timeMs: 3500,
+        text: 'Plain fallback',
+        words: [{ timeMs: 3500, text: 'Other words' }],
+      },
+    ],
+  };
+  const sample = (positionMs, clockRunning) =>
+    transport(page, { ...readyTransport, positionMs, clockRunning });
+  await state(page, [first], first, null, null, 1, {
+    lyrics: lyricsState({ result }),
+  });
+  const tab = page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Lyrics' });
+  await expect(tab).toBeVisible();
+  await tab.click();
+  const list = page.getByRole('list', { name: 'Lyrics' });
+  const lines = list.getByRole('listitem');
+  const gap = list.getByRole('img', { name: 'Instrumental break' });
+  await sample(400, true);
+  await expect(gap).toHaveCount(1);
+  await expect(gap.locator('span')).toHaveCount(3);
+  await expect(lines.nth(0)).toHaveAttribute('aria-current', 'true');
+  await expect(gap).toHaveAttribute('data-running', '');
+  await sample(1100, true);
+  await expect(gap).toHaveCount(0);
+  await expect(lines.nth(1)).toHaveAttribute('aria-current', 'true');
+  await expect(lines.nth(1)).toHaveText('<b>Words</b> here');
+  await expect(lines.nth(1).locator('b')).toHaveCount(0);
+  await expect(list.locator('[data-active-word]')).toHaveText('<b>Words</b>');
+  await sample(1500, false);
+  await expect(list.locator('[data-active-word]')).toHaveText('here');
+  await sample(2600, false);
+  await expect(gap).toHaveCount(1);
+  await expect(gap).not.toHaveAttribute('data-running', '');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await sample(2600, true);
+  await expect(gap).toHaveCSS('animation-name', 'none');
+  await sample(3600, true);
+  await expect(lines.nth(3)).toHaveAttribute('aria-current', 'true');
+  await expect(lines.nth(3)).toHaveText('Plain fallback');
+  await expect(list.locator('[data-active-word]')).toHaveCount(0);
+  await sample(null, false);
+  await expect(list.locator('[aria-current]')).toHaveCount(0);
+
+  await state(page, [first], first, null, null, null, {
+    lyrics: lyricsState({ result: { kind: 'instrumental' } }),
+  });
+  await expect(page.getByText('Instrumental track.')).toBeVisible();
+  await expect(gap).toHaveCount(0);
+});
+
+async function timedLyricsPane(t) {
+  const page = await panel(t);
+  const result = {
+    kind: 'synced',
+    lines: [
+      {
+        timeMs: 1000,
+        text: 'One two',
+        words: [
+          { timeMs: 1000, text: 'One ' },
+          { timeMs: 1200, text: 'two' },
+        ],
+      },
+      { timeMs: 1500, text: 'Second line', words: [] },
+      { timeMs: 1900, text: 'Last line in this sample', words: [] },
+      { timeMs: 2150, text: 'Beyond the first sample', words: [] },
+      { timeMs: 3100, text: 'Beyond duration', words: [] },
+    ],
+  };
+  const lyrics = lyricsState({ result });
+  const entries = [first, second];
+  await state(page, entries, first, null, null, 1, { lyrics });
+  await page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Lyrics' })
+    .click();
+  const time = new Date('2026-01-01T00:00:00Z');
+  await page.clock.install({ time });
+  await page.clock.pauseAt(new Date(time.getTime() + 1000));
+  return {
+    page,
+    lyrics,
+    entries,
+    activeLine: page.locator('#lyrics-lines [aria-current]'),
+    activeWord: page.locator('#lyrics-lines [data-active-word]'),
+    sample: (positionMs, options = {}) =>
+      transport(page, {
+        ...readyTransport,
+        position: Math.floor(positionMs / 1000),
+        duration: 3,
+        positionMs,
+        clockRunning: true,
+        ...options,
+      }),
+  };
+}
+
+test('advances subsecond lyric cues from one sample and stops at the clock and duration bounds', async (t) => {
+  const { page, lyrics, entries, activeLine, activeWord, sample } =
+    await timedLyricsPane(t);
+  await sample(1000);
+  await expect(activeWord).toHaveText('One');
+  await page.clock.runFor(225);
+  await expect(activeWord).toHaveText('two');
+  await state(page, entries, first, null, null, null, { lyrics });
+  await sample(1000);
+  await page.clock.runFor(325);
+  await expect(activeLine).toHaveText('Second line');
+  await page.clock.runFor(1600);
+  await expect(activeLine).toHaveText('Last line in this sample');
+
+  await sample(1800, { playbackRate: 2 });
+  await page.clock.runFor(85);
+  await expect(activeLine).toHaveText('Last line in this sample');
+  await page.clock.runFor(145);
+  await expect(activeLine).toHaveText('Beyond the first sample');
+  await page.clock.runFor(750);
+  await expect(activeLine).toHaveText('Beyond the first sample');
+});
+
+test('cancels lyric cue timers during pause, seek and panel or document hide', async (t) => {
+  const { page, activeLine, activeWord, sample } = await timedLyricsPane(t);
+  await sample(1000);
+  await page.clock.runFor(80);
+  await sample(1080, { clockRunning: false });
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+
+  await sample(1020);
+  const seek = page.getByRole('slider', { name: 'Playback position' });
+  await seek.dispatchEvent('pointerdown');
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+  await seek.dispatchEvent('pointercancel');
+
+  await sample(1030);
+  const navigation = page.getByRole('navigation');
+  await navigation.getByRole('button', { name: 'Queue' }).press('Enter');
+  await page.clock.runFor(700);
+  await navigation.getByRole('button', { name: 'Lyrics' }).press('Enter');
+  await expect(activeWord).toHaveText('One');
+
+  await sample(1040);
+  await page.evaluate(() => window.setPearPanelVisible?.(false));
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+  await page.evaluate(() => window.setPearPanelVisible?.(true));
+  await sample(1060);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      value: true,
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+  await page.evaluate(() => {
+    delete document.hidden;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+  await sample(1065);
+  await sample(1080, { playing: true, clockRunning: false });
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+
+  await sample(1070);
+  await page.getByRole('button', { name: 'Next video' }).press('Enter');
+  await page.clock.runFor(700);
+  await expect(activeLine).toHaveText('One two');
+  await expect(activeWord).toHaveText('One');
+});
+
+test('fits a complete lyric line at the minimum panel size with all views and long playing metadata', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  await state(page, [first], first, null, null, 1, {
+    catalog: searchState(),
+    metadata: {
+      title: 'Current video with a long title and multiple lines '.repeat(8),
+      channel: 'Current channel with a long display name '.repeat(8),
+    },
+    lyrics: lyricsState({
+      result: {
+        kind: 'plain',
+        lines: ['A long lyric line that still wraps safely. '.repeat(5)],
+      },
+    }),
+  });
+  await transport(page, {
+    ...readyTransport,
+    positionMs: 9000,
+    clockRunning: true,
+  });
+  const tab = page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Lyrics' });
+  await expect(tab).toBeVisible();
+  await tab.click();
+  const list = page.getByRole('list', { name: 'Lyrics' });
+  assertVisibleQueueRow(
+    await list.boundingBox(),
+    await list.getByRole('listitem').first().boundingBox(),
+  );
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+});
+
+function savedPlaylists(overrides = {}) {
+  return {
+    lists: [],
+    selected: null,
+    problem: null,
+    canSave: true,
+    ...overrides,
+  };
+}
+
+test('saves the queue with a validated playlist name and preserves a draft on an unrelated update', async (t) => {
+  const page = await panel(t);
+  const library = page.getByRole('button', { name: 'Library' });
+  await state(page, [first], first);
+  await expect(library).toHaveCount(0);
+  const render = (snapshot, sequence) =>
+    state(page, [first], first, null, null, sequence, {
+      savedPlaylists: snapshot,
+    });
+  await render(
+    savedPlaylists({ problem: 'Playlists are unavailable.', canSave: false }),
+    null,
+  );
+  await library.click();
+  await expect(page.getByText('Playlists are unavailable.')).toBeVisible();
+  const save = page.getByRole('button', { name: 'Save queue' });
+  await expect(save).toBeDisabled();
+  expect(await save.getAttribute('aria-disabled')).toBeNull();
+
+  await render(savedPlaylists(), null);
+  const name = page.getByRole('textbox', { name: 'Playlist name' });
+  await name.fill('🌿'.repeat(81));
+  await name.press('Enter');
+  await expect(page.getByText(/80 characters/)).toBeVisible();
+  expect(await messages(page)).toHaveLength(1);
+
+  const playlistName = '🌿'.repeat(80);
+  await name.fill(playlistName);
+  await name.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'save_playlist',
+    name: playlistName,
+  });
+  await render(savedPlaylists(), null);
+  await expect(name).toHaveValue(playlistName);
+  await expect(name).toBeFocused();
+  await render(
+    savedPlaylists({ lists: [{ id: 1, name: playlistName, count: 1 }] }),
+  );
+  await expect(name).toHaveValue('');
+  await expect(page.getByRole('button', { name: playlistName })).toBeVisible();
+  await expect(page.locator('#selection-id')).toHaveText(first);
+});
+
+test('browses and edits a playlist, with separate queue and playback commands', async (t) => {
+  const page = await panel(t);
+  const id = 1;
+  const name = '<b>Morning</b>';
+  const title = '<em>Track & more</em>';
+  const selected = { id, name, entries: [second], titles: { [second]: title } };
+  const lists = [{ id, name, count: 1 }];
+  const render = ({
+    entries = [first],
+    current = first,
+    snapshot = savedPlaylists({ lists }),
+    error = null,
+    sequence,
+  } = {}) =>
+    state(page, entries, current, error, null, sequence, {
+      savedPlaylists: snapshot,
+    });
+  await render();
+  await page.getByRole('button', { name: 'Library' }).click();
+  const playlist = page.getByRole('button', { name });
+  await playlist.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'open_playlist',
+    id,
+  });
+  await render({ snapshot: savedPlaylists({ lists, selected }) });
+  const heading = page.getByRole('heading', { name });
+  await expect(heading).toBeFocused();
+  await expect(heading.locator('b')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Add to queue' }).click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'append_playlist',
+    id,
+  });
+  await render({
+    entries: [first, second],
+    snapshot: savedPlaylists({ lists, selected }),
+  });
+  await expect(page.locator('#selection-id')).toHaveText(first);
+  await page.getByRole('button', { name: `Select ${title}` }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'select_playlist_track',
+    id,
+    video: second,
+  });
+  await render({
+    entries: [first, second],
+    current: second,
+    snapshot: savedPlaylists({ lists, selected }),
+  });
+  await expect(page.locator('#selection-id')).toHaveText(second);
+
+  await page.getByRole('button', { name: 'Rename' }).click();
+  const rename = page.getByRole('textbox', { name: 'Playlist name' });
+  await expect(rename).toBeFocused();
+  await rename.fill('Evening');
+  await rename.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'rename_playlist',
+    id,
+    name: 'Evening',
+  });
+  await render({
+    snapshot: savedPlaylists({ lists, selected }),
+    error: 'Could not update playlist.',
+  });
+  await expect(rename).toHaveValue('Evening');
+  await expect(page.getByText('Could not update playlist.')).toBeVisible();
+  await rename.press('Enter');
+  await rename.fill('Midnight');
+  await render({
+    snapshot: savedPlaylists({
+      lists: [{ id, name: 'Evening', count: 1 }],
+      selected: { ...selected, name: 'Evening' },
+    }),
+  });
+  await expect(rename).toBeVisible();
+  await expect(rename).toHaveValue('Midnight');
+  await expect(rename).toBeFocused();
+  await rename.press('Enter');
+  const renamed = { ...selected, name: 'Midnight' };
+  const updated = [{ id, name: renamed.name, count: 1 }];
+  await render({
+    snapshot: savedPlaylists({ lists: updated, selected: renamed }),
+  });
+  await expect(page.getByRole('heading', { name: 'Midnight' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rename' })).toBeFocused();
+
+  await page.getByRole('button', { name: 'Back to playlists' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'close_playlist',
+  });
+  await render({ snapshot: savedPlaylists({ lists: updated }) });
+  const renamedRow = page.getByRole('button', { name: 'Midnight' });
+  await expect(renamedRow).toBeFocused();
+  await renamedRow.press('Enter');
+  await render({
+    snapshot: savedPlaylists({ lists: updated, selected: renamed }),
+  });
+
+  const sent = (await messages(page)).length;
+  await page
+    .getByRole('button', { name: 'Remove', exact: true })
+    .press('Enter');
+  await expect(page.getByText('Remove this playlist?')).toBeVisible();
+  expect(await messages(page)).toHaveLength(sent);
+  await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await page.getByRole('button', { name: 'Remove playlist' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'remove_playlist',
+    id,
+  });
+  await render({ snapshot: savedPlaylists() });
+  await expect(
+    page.getByRole('textbox', { name: 'Playlist name' }),
+  ).toBeFocused();
+});
+
+test('keeps Library rows scrollable and preserves focus on unrelated updates at 384×520', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const long = 'A long name that still fits at minimum width '.repeat(7);
+  const lists = Array.from({ length: 24 }, (_, i) => ({
+    id: i + 1,
+    name: `Playlist ${i}`,
+    count: 1,
+  }));
+  const snapshot = savedPlaylists({ lists });
+  const render = (savedPlaylists, sequence) =>
+    state(page, [first], first, null, null, sequence, {
+      savedPlaylists,
+      catalog: searchState(),
+      lyrics: lyricsState(),
+      metadata: { title: long, channel: long },
+    });
+  await render(snapshot);
+  await transport(page, readyTransport);
+  await page.getByRole('button', { name: 'Library' }).click();
+  const list = page.getByRole('list', { name: 'Saved playlists' });
+  const row = list.getByRole('button', { name: 'Playlist 9', exact: true });
+  await row.focus();
+  const scroll = await list.evaluate((element) => element.scrollTop);
+  expect(scroll).toBeGreaterThan(0);
+  await row.evaluate((element) => {
+    window.savedPlaylistRow = element;
+  });
+  await render(snapshot, null);
+  await expect(row).toBeFocused();
+  expect(
+    await row.evaluate((element) => element === window.savedPlaylistRow),
+  ).toBe(true);
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(scroll);
+  await row.press('Enter');
+  await render(
+    savedPlaylists({
+      lists,
+      selected: {
+        id: 10,
+        name: long,
+        entries: [second],
+        titles: { [second]: long },
+      },
+    }),
+  );
+  const tracks = page.getByRole('list', { name: 'Playlist tracks' });
+  assertVisibleQueueRow(
+    await tracks.boundingBox(),
+    await tracks.getByRole('listitem').first().boundingBox(),
+  );
+  await page.getByRole('button', { name: 'Back to playlists' }).press('Enter');
+  await render(snapshot);
+  await expect(row).toBeFocused();
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(scroll);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     384,
   );

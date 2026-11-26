@@ -26,8 +26,6 @@ jobs:
           package-manager-cache: false
       - name: Build preview and run Rust tests on MSVC
         id: build
-        env:
-          PEAR_WINDOWS_PLAYBACK_QA: ${{ contains(github.event.head_commit.message, '[webview2-playback]') }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
           $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
@@ -51,8 +49,7 @@ jobs:
           Copy-Item (Join-Path $env:CARGO_TARGET_DIR "$target/release/pear-desktop-preview.exe") $artifactDir
           'portable=true' >> $env:GITHUB_OUTPUT
           Invoke-Rustup run $toolchain cargo test --locked --target $target --workspace --all-features
-          $qaFeatures = if ($env:PEAR_WINDOWS_PLAYBACK_QA -eq 'true') { 'windows-playback-qa' } else { 'benchmark' }
-          Invoke-Rustup run $toolchain cargo build --locked --target $target --features $qaFeatures -p pear-desktop-preview
+          Invoke-Rustup run $toolchain cargo build --locked --target $target --features benchmark -p pear-desktop-preview
       - name: Run the native WebView2 queue smoke
         timeout-minutes: 3
         run: |
@@ -140,13 +137,74 @@ jobs:
               }
             }
           }
-      - name: Check playback in the native WebView2 player
-        if: >-
-          github.repository == 'deruta74/pear-desktop' &&
-          github.ref == 'refs/heads/experiment/rust-windows-qa' &&
-          contains(github.event.head_commit.message, '[webview2-playback]')
-        timeout-minutes: 3
-        run: ./tools/webview2-playback.ps1
+      - name: Verify the packaged preview first launch without arguments
+        timeout-minutes: 2
+        run: |
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
+          $log = Join-Path $artifactDir 'qa.log'
+          $queueDir = Join-Path $env:RUNNER_TEMP "pear-package-queue-$([guid]::NewGuid().ToString('N'))"
+          $lock = Join-Path $queueDir 'queue.lock'
+          $consent = Join-Path $queueDir 'consent.json'
+          $preview = $null
+          try {
+            $null = New-Item -ItemType Directory -Path $queueDir
+            $options = [Diagnostics.ProcessStartInfo]::new()
+            $options.FileName = Join-Path $artifactDir 'pear-desktop-preview.exe'
+            $options.WorkingDirectory = $queueDir
+            $options.UseShellExecute = $false
+            $options.RedirectStandardOutput = $true
+            $options.RedirectStandardError = $true
+            $options.Environment['PEAR_PREVIEW_QUEUE_DIR'] = $queueDir
+            $null = $options.Environment.Remove('PEAR_YOUTUBE_API_KEY_FILE')
+            $preview = [Diagnostics.Process]::Start($options)
+            $stdout = $preview.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
+            $stderr = $preview.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $readySince = $null
+            $confirmed = $false
+            while ($clock.Elapsed.TotalSeconds -lt 30) {
+              if ($preview.HasExited) { throw "Packaged preview exited during startup with code $($preview.ExitCode)." }
+              if (Test-Path -LiteralPath $consent) { throw 'Packaged preview recorded consent without acceptance.' }
+              $preview.Refresh()
+              $window = $preview.MainWindowHandle -ne [IntPtr]::Zero -and
+                $preview.MainWindowTitle -ceq 'Pear Desktop Rust Preview' -and $preview.Responding
+              if ($window -and (Test-Path -LiteralPath $lock -PathType Leaf)) {
+                if ($null -eq $readySince) { $readySince = $clock.Elapsed }
+                if (($clock.Elapsed - $readySince).TotalSeconds -ge 1) {
+                  $confirmed = $true
+                  break
+                }
+              } else {
+                $readySince = $null
+              }
+              Start-Sleep -Milliseconds 250
+            }
+            if (!$confirmed -or $preview.HasExited) {
+              throw 'Packaged preview did not keep a responsive window and queue.lock alive.'
+            }
+          } finally {
+            if ($null -ne $preview) {
+              try {
+                $forced = $false
+                if (!$preview.HasExited -and (!$preview.CloseMainWindow() -or !$preview.WaitForExit(3000))) {
+                  if (!$preview.HasExited) {
+                    $preview.Kill()
+                    $forced = $true
+                  }
+                }
+                if (!$preview.WaitForExit(5000)) { throw 'Packaged preview did not exit after cleanup.' }
+                if ($preview.ExitCode -ne 0 -and !($forced -and $preview.ExitCode -eq -1)) {
+                  throw "Packaged preview exited with code $($preview.ExitCode)."
+                }
+              } finally {
+                $preview.Dispose()
+              }
+            }
+          }
+          if (Test-Path -LiteralPath $consent) { throw 'Packaged preview recorded consent without acceptance.' }
+          'PEAR_WINDOWS_PACKAGE_SMOKE queue_lock=true responsive_window=true consent_created=false' |
+            Tee-Object -FilePath $log -Append
       - name: Upload Windows QA logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f

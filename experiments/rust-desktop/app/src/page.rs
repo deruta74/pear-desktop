@@ -14,6 +14,8 @@ impl PreviewPage {
         match args.next().as_deref() {
             None => Ok(Self::Music),
             #[cfg(feature = "benchmark")]
+            Some("--site-probe") if args.next().is_none() => Ok(Self::Music),
+            #[cfg(feature = "benchmark")]
             Some("--benchmark-url") => {
                 let input = args.next().ok_or("Missing benchmark URL")?;
                 if args.next().is_some() {

@@ -8,7 +8,7 @@
     <script src="/controls.js" defer></script>
   </head>
   <body>
-    <main class="panel">
+    <main id="pear-panel" class="panel" hidden inert>
       <header class="panel-header">
         <h1>Pear</h1>
       </header>
@@ -18,14 +18,28 @@
           <h2 id="selection-heading">Current video</h2>
           <span id="position" class="position"></span>
         </div>
-        <p
-          id="selection-id"
-          class="selection-title"
-          dir="auto"
-          aria-live="polite"
-        >
-          No video selected
-        </p>
+        <div class="selection-media">
+          <img
+            id="selection-artwork"
+            class="selection-artwork"
+            width="72"
+            height="54"
+            alt=""
+            decoding="async"
+            referrerpolicy="no-referrer"
+            hidden
+          />
+          <div class="selection-description">
+            <p
+              id="selection-id"
+              class="selection-title"
+              dir="auto"
+              aria-live="polite"
+            >
+              No video selected
+            </p>
+          </div>
+        </div>
         <div class="playback-actions">
           <button
             id="previous"
@@ -84,6 +98,7 @@
         <p id="transport-hint" class="feedback" aria-live="polite"></p>
         <p id="player-problem" class="feedback error" role="alert"></p>
         <p id="metadata-problem" class="feedback" aria-live="polite"></p>
+        <p id="preferences-problem" class="feedback" aria-live="polite"></p>
       </section>
 
       <form id="add-video">
@@ -143,8 +158,8 @@
         ></ol>
       </section>
 
-      <template id="catalog-template">
-        <nav class="catalog-nav" aria-label="Queue and search">
+      <template id="view-switcher-template">
+        <nav class="view-switcher">
           <button
             id="show-queue"
             type="button"
@@ -161,7 +176,26 @@
           >
             Search
           </button>
+          <button
+            id="show-lyrics"
+            type="button"
+            aria-controls="lyrics-form lyrics-lines"
+            aria-pressed="false"
+          >
+            Lyrics
+          </button>
+          <button
+            id="show-library"
+            type="button"
+            aria-controls="library-panel"
+            aria-pressed="false"
+          >
+            Library
+          </button>
         </nav>
+      </template>
+
+      <template id="catalog-template">
         <form id="catalog-form" hidden>
           <label for="catalog-query">Search YouTube</label>
           <div class="add-controls">
@@ -185,6 +219,234 @@
           hidden
         ></ul>
       </template>
+
+      <template id="lyrics-template">
+        <form id="lyrics-form" hidden>
+          <div class="lyrics-fields">
+            <div>
+              <label for="lyrics-track">Track</label>
+              <input
+                id="lyrics-track"
+                type="text"
+                dir="auto"
+                autocomplete="off"
+                aria-describedby="lyrics-feedback"
+                required
+              />
+            </div>
+            <div>
+              <label for="lyrics-artist">Artist</label>
+              <input
+                id="lyrics-artist"
+                type="text"
+                dir="auto"
+                autocomplete="off"
+                aria-describedby="lyrics-feedback"
+                required
+              />
+            </div>
+            <button class="add-button" type="submit">Find lyrics</button>
+          </div>
+          <p class="lyrics-attribution">Lyrics from LRCLIB</p>
+          <p id="lyrics-feedback" class="feedback" aria-live="polite"></p>
+        </form>
+        <ol
+          id="lyrics-lines"
+          class="queue-items lyrics-lines"
+          role="list"
+          aria-label="Lyrics"
+          tabindex="0"
+          hidden
+        ></ol>
+      </template>
+
+      <template id="library-template">
+        <section id="library-panel" class="library" aria-label="Library" hidden>
+          <div class="library-toolbar">
+            <div id="playlist-browser">
+              <h2 id="playlist-heading" tabindex="-1">Saved playlists</h2>
+              <form id="save-playlist" class="playlist-form" novalidate>
+                <label for="save-playlist-name">Playlist name</label>
+                <div class="add-controls">
+                  <input
+                    id="save-playlist-name"
+                    type="text"
+                    dir="auto"
+                    autocomplete="off"
+                    aria-describedby="library-problem library-feedback"
+                    required
+                  />
+                  <button
+                    id="save-playlist-button"
+                    class="add-button"
+                    type="submit"
+                  >
+                    Save queue
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div id="playlist-detail" hidden>
+              <div class="playlist-heading">
+                <button id="close-playlist" type="button">
+                  Back to playlists
+                </button>
+                <h2
+                  id="playlist-title"
+                  class="queue-title"
+                  tabindex="-1"
+                  dir="auto"
+                ></h2>
+              </div>
+              <div id="playlist-actions" class="playlist-actions">
+                <button id="append-playlist" class="add-button" type="button">
+                  Add to queue
+                </button>
+                <button id="edit-playlist" type="button">Rename</button>
+                <button id="delete-playlist" type="button">Remove</button>
+              </div>
+              <form
+                id="rename-playlist"
+                class="playlist-form"
+                novalidate
+                hidden
+              >
+                <label for="rename-playlist-name">Playlist name</label>
+                <div class="add-controls">
+                  <input
+                    id="rename-playlist-name"
+                    type="text"
+                    dir="auto"
+                    autocomplete="off"
+                    aria-describedby="library-problem library-feedback"
+                    required
+                  />
+                  <button
+                    id="rename-playlist-button"
+                    class="add-button"
+                    type="submit"
+                  >
+                    Save name
+                  </button>
+                  <button id="cancel-rename" type="button">Cancel</button>
+                </div>
+              </form>
+              <div
+                id="confirm-playlist-removal"
+                class="playlist-form"
+                role="group"
+                aria-labelledby="remove-playlist-question"
+                hidden
+              >
+                <p id="remove-playlist-question">Remove this playlist?</p>
+                <div class="playlist-actions">
+                  <button id="cancel-removal" type="button">Cancel</button>
+                  <button
+                    id="remove-playlist-button"
+                    class="playlist-remove"
+                    type="button"
+                  >
+                    Remove playlist
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p id="library-problem" class="feedback error" role="alert"></p>
+            <p id="library-feedback" class="feedback" aria-live="polite"></p>
+          </div>
+          <p id="library-empty" class="queue-empty" hidden>
+            No saved playlists yet.
+          </p>
+          <ul
+            id="saved-playlists"
+            class="queue-items playlist-list"
+            role="list"
+            aria-labelledby="playlist-heading"
+            hidden
+          ></ul>
+          <ol
+            id="playlist-tracks"
+            class="queue-items playlist-list"
+            role="list"
+            aria-label="Playlist tracks"
+            hidden
+          ></ol>
+        </section>
+      </template>
+    </main>
+
+    <main
+      id="legal-panel"
+      class="legal-panel"
+      aria-labelledby="legal-heading"
+      hidden
+    >
+      <article class="legal-content">
+        <header>
+          <h1 id="legal-heading" tabindex="-1">Terms &amp; Privacy</h1>
+          <p>
+            Pear Desktop Rust Preview uses YouTube API Services. By using this
+            preview, you agree to be bound by the YouTube Terms of Service.
+          </p>
+        </header>
+
+        <section aria-labelledby="legal-local">
+          <h2 id="legal-local">On this device</h2>
+          <p>
+            Pear stores your queue, selected video, known titles, playlists,
+            playback preference, and agreement in its local profile. You can
+            remove queue entries and playlists in Pear. To erase the profile,
+            close Pear and delete its profile directory.
+          </p>
+        </section>
+
+        <section aria-labelledby="legal-youtube">
+          <h2 id="legal-youtube">YouTube and Google</h2>
+          <p>
+            When you select or restore a video, Pear shares its ID with YouTube
+            to load the embedded player and fetch details and artwork. Details
+            use YouTube oEmbed or the YouTube Data API with a key you configure.
+            Searches you submit send your search text to YouTube and use the
+            configured key’s API quota.
+          </p>
+          <p>
+            Pear uses separate private WebViews for the controls and player.
+            YouTube and Google may receive your IP address and playback
+            activity, use cookies or similar technologies, and serve videos,
+            artwork, or ads. Links you open in your browser use that browser’s
+            session.
+          </p>
+        </section>
+
+        <section aria-labelledby="legal-lyrics">
+          <h2 id="legal-lyrics">Lyrics</h2>
+          <p>
+            When you choose Find lyrics, Pear sends the track title, artist, and
+            duration when available to LRCLIB, which also receives your IP
+            address. Pear keeps lyrics in memory and clears them when you change
+            videos or quit.
+          </p>
+        </section>
+
+        <div class="legal-links">
+          <button id="legal-youtube-terms" type="button">
+            YouTube Terms of Service
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+          <button id="legal-google-privacy" type="button">
+            Google Privacy Policy
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p id="legal-problem" class="feedback error" role="alert"></p>
+        <footer class="legal-actions">
+          <button id="decline-legal" type="button">Quit</button>
+          <button id="accept-legal" class="add-button" type="button">
+            Agree and continue
+          </button>
+          <button id="close-legal" type="button" hidden>Close</button>
+        </footer>
+      </article>
     </main>
   </body>
 </html>

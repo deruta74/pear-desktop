@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-1LwkXSfp/2SRQuP504W9uts9eUHXyZ8ko4l4D9kCSSo=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-KyCnlAcjuii3zygZ4DBOURs31MWteJxjgLmGarnF2Tg=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
   <title>YouTube player</title>
   <style>
     html, body { width: 100%; height: 100%; margin: 0; background: #000; }
@@ -74,20 +74,27 @@
       function snapshot() {
         if (!isWrapper()) return null;
         let position = null;
+        let positionMs = null;
+        let playbackRate = null;
         let duration = null;
         if (ready && error === null) {
           try {
             const length = boundedSeconds(player.getDuration());
             const time = boundedSeconds(player.getCurrentTime());
+            const rate = player.getPlaybackRate();
+            if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) playbackRate = rate;
             if (length > 0) duration = Math.ceil(length);
-            if (time !== null) position = Math.min(Math.floor(time), duration ?? maxSeconds);
+            if (time !== null) {
+              positionMs = Math.floor(Math.min(time, duration ?? maxSeconds) * 1000);
+              position = Math.floor(positionMs / 1000);
+            }
           } catch {
             fail();
           }
         }
         return {
           ready, hasPlayed: ready && hasPlayed, state: ready ? state : null,
-          position, duration, ended: ready && ended, error, blocked,
+          position, positionMs, playbackRate, duration, ended: ready && ended, error, blocked,
         };
       }
 

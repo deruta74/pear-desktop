@@ -54,6 +54,7 @@ impl Drop for DeadlineTimer {
 }
 
 pub(in crate::player) struct Layout {
+    row: GtkBox,
     video: GtkBox,
     queue: GtkBox,
 }
@@ -76,7 +77,7 @@ impl Layout {
         video.show();
         row.show();
 
-        Ok(Self { video, queue })
+        Ok(Self { row, video, queue })
     }
 
     pub(in crate::player) fn build(
@@ -101,10 +102,13 @@ impl Layout {
     pub(in crate::player) fn arrange(
         &self,
         _window: &Window,
-        _player: Option<&WebView>,
+        player: Option<&WebView>,
         _controls: &WebView,
         queue_visible: bool,
     ) -> Result<()> {
+        self.video.set_visible(player.is_some());
+        self.row
+            .set_child_packing(&self.queue, player.is_none(), true, 0, gtk::PackType::Start);
         self.queue.set_visible(queue_visible);
         Ok(())
     }

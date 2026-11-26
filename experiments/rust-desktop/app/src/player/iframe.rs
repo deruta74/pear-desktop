@@ -152,6 +152,8 @@ pub(super) struct Snapshot {
     pub(super) state: Option<i32>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
     pub(super) position: Option<u32>,
+    pub(super) position_ms: Option<u32>,
+    pub(super) playback_rate: Option<f64>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
     pub(super) duration: Option<u32>,
     pub(super) ended: bool,
@@ -176,6 +178,16 @@ impl Snapshot {
             || snapshot
                 .position
                 .is_some_and(|position| position > MAX_SECONDS)
+            || snapshot.position_ms.is_some_and(|millis| {
+                millis > MAX_SECONDS * 1000
+                    || snapshot.position != Some(millis / 1000)
+                    || snapshot
+                        .duration
+                        .is_some_and(|duration| millis > duration.saturating_mul(1000))
+            })
+            || snapshot
+                .playback_rate
+                .is_some_and(|rate| !(0.25..=4.0).contains(&rate))
             || snapshot
                 .duration
                 .is_some_and(|duration| !(1..=MAX_SECONDS).contains(&duration))
@@ -187,6 +199,8 @@ impl Snapshot {
                 && (snapshot.has_played
                     || snapshot.state.is_some()
                     || snapshot.position.is_some()
+                    || snapshot.position_ms.is_some()
+                    || snapshot.playback_rate.is_some()
                     || snapshot.duration.is_some()))
             || (snapshot.state == Some(1) && (!snapshot.has_played || snapshot.ended))
             || (snapshot.ended && !snapshot.has_played)
@@ -269,6 +283,25 @@ mod tests {
             .replace("\"state\":1", "\"state\":0")
             .replace("\"ended\":false", "\"ended\":true");
         assert!(Snapshot::parse(&ended).unwrap().ended);
+    }
+
+    #[test]
+    fn accepts_millisecond_samples_only_when_they_agree_with_the_timeline() {
+        let sample = |millis: u32| {
+            PLAYING.replace(
+                "\"position\":172",
+                &format!("\"position\":172,\"positionMs\":{millis}"),
+            )
+        };
+        assert_eq!(
+            Snapshot::parse(&sample(172_345)).unwrap().position_ms,
+            Some(172_345)
+        );
+        assert!(Snapshot::parse(&sample(171_999)).is_none());
+        assert!(
+            Snapshot::parse(&sample(172_001).replace("\"duration\":320", "\"duration\":172"))
+                .is_none()
+        );
     }
 
     #[test]

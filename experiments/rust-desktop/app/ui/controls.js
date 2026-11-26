@@ -7,7 +7,9 @@ const errorText = document.getElementById('queue-error');
 const statusText = document.getElementById('queue-status');
 const playerProblemText = document.getElementById('player-problem');
 const metadataProblemText = document.getElementById('metadata-problem');
+const preferencesProblemText = document.getElementById('preferences-problem');
 const selection = document.getElementById('selection-id');
+const selectionArtwork = document.getElementById('selection-artwork');
 const selectionPanel = selection.closest('.selection');
 const position = document.getElementById('position');
 const previous = document.getElementById('previous');
@@ -24,25 +26,67 @@ const queuePanel = document.getElementById('queue-panel');
 const count = document.getElementById('queue-count');
 const empty = document.getElementById('queue-empty');
 const filter = document.getElementById('queue-filter');
+const viewSwitcherTemplate = document.getElementById('view-switcher-template');
 const catalogTemplate = document.getElementById('catalog-template');
+const lyricsTemplate = document.getElementById('lyrics-template');
+const libraryTemplate = document.getElementById('library-template');
 const panel = catalogTemplate.parentElement;
+const legalPanel = document.getElementById('legal-panel');
+const legalHeading = document.getElementById('legal-heading');
+const legalProblemText = document.getElementById('legal-problem');
+const acceptLegal = document.getElementById('accept-legal');
+const declineLegal = document.getElementById('decline-legal');
+const closeLegal = document.getElementById('close-legal');
+const legalButtons = legalPanel.querySelectorAll('button');
 const encoder = new TextEncoder();
+// The native transport polls once per second.
+const LYRIC_SAMPLE_INTERVAL_MS = 1000;
 
 let nextSequence = 1;
 let pending = null;
 let renderedState = null;
 let renderedTransport = null;
+let activeView = 'queue';
+let viewSwitcher = null;
 let renderedCatalog = null;
 let catalogView = null;
 let catalogSearchError = '';
 let catalogAddFeedback = null;
+let renderedLyrics = null;
+let lyricsView = null;
+let lyricsError = '';
+let renderedLibrary = null;
+let libraryView = null;
+let libraryFeedback = null;
+let lyricsClock = null;
+let lyricCueTimer = null;
+let lyricCueDeadline = null;
+let pearPanelVisible = true;
 let focusAddOnReady = false;
 let editingPosition = false;
+let renderedLegal = null;
+let legalCommandProblem = '';
+let focusBeforeLegal = null;
 
 function commandProblem(message, context) {
+  if (context === 'legal') {
+    legalCommandProblem = message;
+    updateLegalControls();
+    return;
+  }
   if (context === 'queue') {
     errorText.textContent = message;
     statusText.textContent = '';
+    return;
+  }
+  if (context === 'lyrics') {
+    lyricsError = message;
+    updateLyrics(renderedLyrics);
+    return;
+  }
+  if (context === 'library') {
+    libraryFeedback = { message, error: true };
+    updateLibrary(renderedLibrary);
     return;
   }
   if (context === 'search') catalogSearchError = message;
@@ -51,21 +95,59 @@ function commandProblem(message, context) {
 }
 
 function primaryInput() {
-  return form.hidden ? catalogView.query : source;
+  if (activeView === 'search') return catalogView?.query ?? source;
+  if (activeView === 'lyrics') return lyricsView?.track ?? source;
+  if (activeView === 'library' && libraryView) {
+    if (renderedLibrary?.selected) return libraryView.title;
+    return libraryView.saveName.disabled
+      ? libraryView.heading
+      : libraryView.saveName;
+  }
+  return source;
+}
+
+function interruptsLyricsClock(command) {
+  switch (command?.type) {
+    case 'seek':
+    case 'set_playback':
+    case 'previous':
+    case 'next':
+      return true;
+    case 'select':
+      return command.id !== renderedState?.current;
+    case 'select_playlist_track':
+      return command.video !== renderedState?.current;
+    case 'remove':
+      return command.id === renderedState?.current;
+    default:
+      return false;
+  }
 }
 
 function send(command, context = 'queue') {
   if (pending) return;
+  if (
+    context === 'legal'
+      ? legalPanel.hidden
+      : panel.hidden && command.type !== 'ready'
+  )
+    return;
 
+  if (context === 'legal') legalCommandProblem = '';
   if (context === 'search') catalogSearchError = '';
-  if (context !== 'queue') catalogAddFeedback = null;
+  if (context === 'search' || context === 'result-add')
+    catalogAddFeedback = null;
+  if (context === 'lyrics') lyricsError = '';
+  if (context === 'library') libraryFeedback = null;
   const sequence = nextSequence;
   const message = JSON.stringify({ sequence, command });
   if (message.length > 4096 || encoder.encode(message).length > 4096) {
     commandProblem(
       context === 'search'
         ? 'Enter a search of up to 160 characters.'
-        : 'This input is too long. Use shorter links or add fewer videos at a time.',
+        : context === 'lyrics'
+          ? 'Enter a track and artist of up to 160 characters each.'
+          : 'This input is too long. Use shorter links or add fewer videos at a time.',
       context,
     );
     primaryInput().focus();
@@ -77,11 +159,16 @@ function send(command, context = 'queue') {
     sequence,
     command,
     context,
+    current: renderedState?.current,
     entryCount: renderedState?.entries.length ?? 0,
     entryIndex: renderedState?.entries.indexOf(command.id) ?? -1,
   };
   if (context === 'queue' && command.type === 'add') {
     add.setAttribute('aria-disabled', 'true');
+  }
+  if (interruptsLyricsClock(command)) {
+    cancelLyricsClock();
+    updateLyricsTiming();
   }
 
   try {
@@ -90,12 +177,57 @@ function send(command, context = 'queue') {
     pending = null;
     add.removeAttribute('aria-disabled');
     commandProblem(
-      'Could not connect to the queue. Close and reopen the window to try again.',
+      context === 'legal'
+        ? 'Could not connect to Pear. Close and reopen the window to try again.'
+        : 'Could not connect to the queue. Close and reopen the window to try again.',
       context,
     );
     return;
   }
+  if (context === 'legal') {
+    updateLegalControls();
+    return;
+  }
   if (catalogView) updateCatalog(renderedCatalog);
+  if (lyricsView) updateLyrics(renderedLyrics);
+  if (libraryView) updateLibrary(renderedLibrary);
+}
+
+function updateLegalControls() {
+  const accepted = Boolean(renderedLegal?.accepted);
+  acceptLegal.hidden = declineLegal.hidden = accepted;
+  closeLegal.hidden = !accepted;
+  const disabled = String(Boolean(pending));
+  for (const button of legalButtons) {
+    if (button.getAttribute('aria-disabled') !== disabled)
+      button.setAttribute('aria-disabled', disabled);
+  }
+  const problem = legalCommandProblem || renderedLegal?.problem || '';
+  if (legalProblemText.textContent !== problem)
+    legalProblemText.textContent = problem;
+}
+
+function updateLegal(legal) {
+  const wasVisible = !legalPanel.hidden;
+  const visible = Boolean(legal && (!legal.accepted || legal.show));
+  renderedLegal = legal ?? null;
+
+  if (visible && !wasVisible) {
+    const active = document.activeElement;
+    focusBeforeLegal = panel.contains(active) ? active : null;
+    editingPosition = false;
+    cancelLyricsClock();
+  }
+  if (!visible) legalCommandProblem = '';
+  panel.hidden = visible;
+  panel.toggleAttribute('inert', visible);
+  legalPanel.hidden = !visible;
+  if (visible) updateLegalControls();
+  if (visible && !wasVisible) {
+    legalPanel.scrollTop = 0;
+    legalHeading.focus({ preventScroll: true });
+  }
+  return wasVisible && !visible;
 }
 
 function formatTime(seconds) {
@@ -176,9 +308,34 @@ function updateTransport() {
 }
 
 window.renderPearTransport = (transport) => {
+  if (panel.hidden && !renderedLegal?.accepted) return;
+  const clockChanged =
+    transport?.positionMs !== renderedTransport?.positionMs ||
+    transport?.clockRunning !== renderedTransport?.clockRunning ||
+    transport?.playbackRate !== renderedTransport?.playbackRate ||
+    transport?.duration !== renderedTransport?.duration ||
+    transport?.blocked !== renderedTransport?.blocked;
   renderedTransport = transport;
   updateTransport();
+  if (clockChanged) receiveLyricsClock(transport);
+  updateLyricsTiming();
 };
+
+function lyricsPanelVisible() {
+  return pearPanelVisible && !panel.hidden && !document.hidden;
+}
+
+function updateLyricsVisibility() {
+  if (!lyricsPanelVisible()) cancelLyricsClock();
+  updateLyricsTiming();
+}
+
+window.setPearPanelVisible = (visible) => {
+  pearPanelVisible = Boolean(visible);
+  updateLyricsVisibility();
+};
+document.addEventListener('visibilitychange', updateLyricsVisibility);
+window.addEventListener('pagehide', cancelLyricsClock);
 
 function videoTitle(titles, id) {
   const title =
@@ -204,6 +361,21 @@ function updateSelectionAttribution(channel) {
     attribution.textContent = label;
     attribution.title = label;
   }
+}
+
+selectionArtwork.addEventListener('error', () => {
+  if (selectionArtwork.naturalWidth === 0) selectionArtwork.hidden = true;
+});
+
+function updateSelectionArtwork(id, url) {
+  const approved =
+    typeof id === 'string' &&
+    /^[0-9A-Za-z_-]{11}$/.test(id) &&
+    url === `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+  if (selectionArtwork.getAttribute('src') === (approved ? url : null)) return;
+  selectionArtwork.hidden = !approved;
+  if (approved) selectionArtwork.src = url;
+  else selectionArtwork.removeAttribute('src');
 }
 
 function rowAction(type, label, id, icon, disabled = false) {
@@ -338,36 +510,107 @@ function updateQueue(entries, current, entryTitles) {
   }
 }
 
-function showCatalog(open) {
-  const view = catalogView;
-  form.hidden = open;
-  queuePanel.hidden = open;
-  view.showQueue.setAttribute('aria-pressed', String(!open));
-  view.showSearch.setAttribute('aria-pressed', String(open));
-  view.form.hidden = !open;
-  view.results.hidden = !open || !view.results.childElementCount;
+function updateViews() {
+  if (
+    (activeView === 'search' && !catalogView) ||
+    (activeView === 'lyrics' && !lyricsView) ||
+    (activeView === 'library' && !libraryView)
+  ) {
+    activeView = 'queue';
+  }
+
+  const hasOptionalView = Boolean(catalogView || lyricsView || libraryView);
+  const active = document.activeElement;
+  let restoreFocus = false;
+  if (hasOptionalView && !viewSwitcher) {
+    viewSwitcher =
+      viewSwitcherTemplate.content.firstElementChild.cloneNode(true);
+    const [queueButton, searchButton, lyricsButton, libraryButton] =
+      viewSwitcher.children;
+    queueButton.addEventListener('click', focusQueueAdd);
+    searchButton.addEventListener('click', () => showView('search'));
+    lyricsButton.addEventListener('click', () => showView('lyrics'));
+    libraryButton.addEventListener('click', () => showView('library'));
+    panel.querySelector('.panel-header').append(viewSwitcher);
+  } else if (!hasOptionalView && viewSwitcher) {
+    restoreFocus = viewSwitcher.contains(active);
+    viewSwitcher.remove();
+    viewSwitcher = null;
+  }
+  panel.toggleAttribute('data-view-switcher', hasOptionalView);
+
+  if (viewSwitcher) {
+    const [queueButton, searchButton, lyricsButton, libraryButton] =
+      viewSwitcher.children;
+    const names = ['Queue'];
+    if (catalogView) names.push('search');
+    if (lyricsView) names.push('lyrics');
+    if (libraryView) names.push('library');
+    const lastName = names.pop();
+    viewSwitcher.setAttribute(
+      'aria-label',
+      `${names.join(', ')} and ${lastName}`,
+    );
+    searchButton.hidden = !catalogView;
+    lyricsButton.hidden = !lyricsView;
+    libraryButton.hidden = !libraryView;
+    restoreFocus =
+      (active === searchButton && searchButton.hidden) ||
+      (active === lyricsButton && lyricsButton.hidden) ||
+      (active === libraryButton && libraryButton.hidden);
+    queueButton.setAttribute('aria-pressed', String(activeView === 'queue'));
+    searchButton.setAttribute('aria-pressed', String(activeView === 'search'));
+    lyricsButton.setAttribute('aria-pressed', String(activeView === 'lyrics'));
+    libraryButton.setAttribute(
+      'aria-pressed',
+      String(activeView === 'library'),
+    );
+  }
+
+  form.hidden = queuePanel.hidden = activeView !== 'queue';
+  if (catalogView) {
+    catalogView.form.hidden = activeView !== 'search';
+    catalogView.results.hidden =
+      catalogView.form.hidden || !catalogView.results.childElementCount;
+  }
+  if (lyricsView) {
+    lyricsView.form.hidden = activeView !== 'lyrics';
+    lyricsView.lines.hidden =
+      lyricsView.form.hidden || !lyricsView.lines.childElementCount;
+    if (lyricsView.form.hidden) lyricsView.gap.removeAttribute('data-running');
+  }
+  if (libraryView) libraryView.element.hidden = activeView !== 'library';
+  if (restoreFocus) primaryInput().focus();
+  updateLyricsTiming();
+}
+
+function showView(view) {
+  if (panel.hidden) return;
+  if (activeView === 'lyrics' && view !== 'lyrics') cancelLyricsClock();
+  activeView = view;
+  updateViews();
   primaryInput().focus();
 }
 
 function focusQueueAdd() {
+  if (panel.hidden) {
+    if (legalPanel.hidden) focusAddOnReady = true;
+    return;
+  }
   focusAddOnReady = source.disabled;
-  if (catalogView) showCatalog(false);
-  else source.focus();
+  showView('queue');
 }
 
 window.focusPearAdd = focusQueueAdd;
 
 function mountCatalog(query) {
-  const [navigation, searchForm, results] =
+  const [searchForm, results] =
     catalogTemplate.content.cloneNode(true).children;
-  const [showQueue, showSearch] = navigation.children;
   const input = searchForm.querySelector('#catalog-query');
   const submit = searchForm.querySelector('button');
   const feedback = searchForm.querySelector('#catalog-feedback');
   const addFeedback = searchForm.querySelector('#catalog-add-feedback');
   input.value = query;
-  showQueue.addEventListener('click', focusQueueAdd);
-  showSearch.addEventListener('click', () => showCatalog(true));
   searchForm.addEventListener('submit', (event) => {
     event.preventDefault();
     if (pending) return;
@@ -381,13 +624,8 @@ function mountCatalog(query) {
     input.value = query;
     send({ type: 'search', query }, 'search');
   });
-  panel.querySelector('.panel-header').append(navigation);
-  panel.setAttribute('data-catalog', '');
   catalogTemplate.before(searchForm, results);
   return {
-    navigation,
-    showQueue,
-    showSearch,
     form: searchForm,
     query: input,
     submit,
@@ -396,6 +634,14 @@ function mountCatalog(query) {
     results,
     renderedResults: [],
   };
+}
+
+function removeView(form, results) {
+  const active = document.activeElement;
+  const focused = form.contains(active) || results.contains(active);
+  form.remove();
+  results.remove();
+  return focused;
 }
 
 function createCatalogResult({ id, title, channel }) {
@@ -429,21 +675,11 @@ function updateCatalog(catalog) {
     catalogSearchError = '';
     catalogAddFeedback = null;
     if (catalogView) {
-      const panels = [
-        catalogView.navigation,
-        catalogView.form,
-        catalogView.results,
-      ];
-      const wasFocused = panels.some((element) =>
-        element.contains(document.activeElement),
-      );
-      for (const element of panels) element.remove();
-      panel.removeAttribute('data-catalog');
-      form.hidden = queuePanel.hidden = false;
+      const wasFocused = removeView(catalogView.form, catalogView.results);
       catalogView = null;
-      if (wasFocused) source.focus();
+      return wasFocused;
     }
-    return;
+    return false;
   }
 
   catalogView ??= mountCatalog(catalog.query);
@@ -498,10 +734,605 @@ function updateCatalog(catalog) {
   if (view.addFeedback.textContent !== addMessage) {
     view.addFeedback.textContent = addMessage;
   }
+  return false;
+}
+
+function playlistName(input) {
+  const name = input.value.trim();
+  if (name && [...name].length <= 80) return name;
+  commandProblem('Enter a playlist name from 1 to 80 characters.', 'library');
+  input.focus();
+  return null;
+}
+
+function mountLibrary() {
+  const element = libraryTemplate.content.firstElementChild.cloneNode(true);
+  const get = (id) => element.querySelector(`#${id}`);
+  const view = {
+    element,
+    browser: get('playlist-browser'),
+    heading: get('playlist-heading'),
+    saveForm: get('save-playlist'),
+    saveName: get('save-playlist-name'),
+    save: get('save-playlist-button'),
+    detail: get('playlist-detail'),
+    back: get('close-playlist'),
+    title: get('playlist-title'),
+    actions: get('playlist-actions'),
+    append: get('append-playlist'),
+    rename: get('edit-playlist'),
+    remove: get('delete-playlist'),
+    renameForm: get('rename-playlist'),
+    renameName: get('rename-playlist-name'),
+    saveRename: get('rename-playlist-button'),
+    cancelRename: get('cancel-rename'),
+    confirm: get('confirm-playlist-removal'),
+    cancelRemoval: get('cancel-removal'),
+    removePermanently: get('remove-playlist-button'),
+    problem: get('library-problem'),
+    feedback: get('library-feedback'),
+    empty: get('library-empty'),
+    list: get('saved-playlists'),
+    tracks: get('playlist-tracks'),
+    mode: null,
+    listScroll: 0,
+  };
+
+  view.saveForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (pending || view.save.disabled) return;
+    const name = playlistName(view.saveName);
+    if (name) send({ type: 'save_playlist', name }, 'library');
+  });
+  view.renameForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (pending || view.saveRename.disabled) return;
+    const name = playlistName(view.renameName);
+    if (name)
+      send(
+        { type: 'rename_playlist', id: renderedLibrary.selected.id, name },
+        'library',
+      );
+  });
+  view.list.addEventListener('click', (event) => {
+    const row = event.target.closest('button[data-id]');
+    if (row)
+      send({ type: 'open_playlist', id: Number(row.dataset.id) }, 'library');
+  });
+  view.tracks.addEventListener('click', (event) => {
+    const row = event.target.closest('button[data-id]');
+    if (row)
+      send(
+        {
+          type: 'select_playlist_track',
+          id: renderedLibrary.selected.id,
+          video: row.dataset.id,
+        },
+        'library',
+      );
+  });
+  view.back.addEventListener('click', () =>
+    send({ type: 'close_playlist' }, 'library'),
+  );
+  view.append.addEventListener('click', () =>
+    send(
+      { type: 'append_playlist', id: renderedLibrary.selected.id },
+      'library',
+    ),
+  );
+  view.removePermanently.addEventListener('click', () =>
+    send(
+      { type: 'remove_playlist', id: renderedLibrary.selected.id },
+      'library',
+    ),
+  );
+
+  function changeMode(mode, focus) {
+    if (pending) return;
+    view.mode = mode;
+    libraryFeedback = null;
+    updateLibrary(renderedLibrary);
+    focus.focus();
+  }
+  view.rename.addEventListener('click', () => {
+    if (pending) return;
+    view.renameName.value = renderedLibrary.selected.name;
+    changeMode('rename', view.renameName);
+  });
+  view.remove.addEventListener('click', () =>
+    changeMode('remove', view.cancelRemoval),
+  );
+  view.cancelRename.addEventListener('click', () =>
+    changeMode(null, view.rename),
+  );
+  view.cancelRemoval.addEventListener('click', () =>
+    changeMode(null, view.remove),
+  );
+  element.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !view.mode || pending) return;
+    event.preventDefault();
+    changeMode(null, view.mode === 'rename' ? view.rename : view.remove);
+  });
+
+  libraryTemplate.before(element);
+  return view;
+}
+
+function libraryText(element, text) {
+  if (element.textContent !== text) element.textContent = text;
+}
+
+function syncPlaylistRows(list, entries, isTrack = false) {
+  const rows = new Map(
+    Array.from(list.children, (row) => [row.firstElementChild.dataset.id, row]),
+  );
+  const focused = list.contains(document.activeElement)
+    ? document.activeElement
+    : null;
+  for (const [index, entry] of entries.entries()) {
+    const id = String(entry.id);
+    let row = rows.get(id);
+    if (!row) {
+      row = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.id = id;
+      button.className = 'playlist-row-button';
+      const title = document.createElement('span');
+      title.className = 'queue-title';
+      title.dir = 'auto';
+      const info = document.createElement('span');
+      info.className = 'playlist-row-detail';
+      if (!isTrack) {
+        info.id = `saved-playlist-count-${id}`;
+        button.setAttribute('aria-describedby', info.id);
+      }
+      button.append(title, info);
+      row.append(button);
+    }
+    rows.delete(id);
+    if (row !== list.children[index])
+      list.insertBefore(row, list.children[index] ?? null);
+
+    const button = row.firstElementChild;
+    const [title, info] = button.children;
+    const label = isTrack ? `Select ${entry.name}` : entry.name;
+    if (button.getAttribute('aria-label') !== label)
+      button.setAttribute('aria-label', label);
+    if (button.title !== entry.name) button.title = entry.name;
+    if (entry.current) button.setAttribute('aria-current', 'true');
+    else button.removeAttribute('aria-current');
+    libraryText(title, entry.name);
+    libraryText(info, entry.detail);
+    info.hidden = !entry.detail;
+  }
+  for (const row of rows.values()) row.remove();
+  if (focused?.isConnected && focused !== document.activeElement)
+    focused.focus({ preventScroll: true });
+}
+
+function updateLibrary(library, successfulCommand) {
+  const oldLibrary = renderedLibrary;
+  renderedLibrary = library ?? null;
+  if (!library) {
+    libraryFeedback = null;
+    if (!libraryView) return false;
+    const wasFocused = libraryView.element.contains(document.activeElement);
+    libraryView.element.remove();
+    libraryView = null;
+    return wasFocused;
+  }
+
+  libraryView ??= mountLibrary();
+  const view = libraryView;
+  const { lists, selected, canSave, problem } = library;
+  const oldId = oldLibrary?.selected?.id ?? null;
+  const selectionChanged = (selected?.id ?? null) !== oldId;
+  const focused = document.activeElement;
+  const hadFocus =
+    !view.element.hidden &&
+    (view.element.contains(focused) || focused === document.body);
+  const finishedRename =
+    successfulCommand?.type === 'rename_playlist' &&
+    view.renameName.value.trim() === successfulCommand.name;
+  if (selectionChanged || finishedRename) view.mode = null;
+  if (selectionChanged && !view.list.hidden && !view.element.hidden)
+    view.listScroll = view.list.scrollTop;
+
+  view.browser.hidden = Boolean(selected);
+  view.detail.hidden = !selected;
+  view.actions.hidden = view.mode !== null;
+  view.renameForm.hidden = view.mode !== 'rename';
+  view.confirm.hidden = view.mode !== 'remove';
+  const queueHasTracks = Boolean(renderedState?.entries.length);
+  view.saveName.disabled = view.renameName.disabled = !canSave;
+  view.rename.disabled =
+    view.remove.disabled =
+    view.saveRename.disabled =
+    view.removePermanently.disabled =
+      !canSave;
+  view.save.disabled = !canSave || !queueHasTracks;
+  view.append.disabled = !selected?.entries.length;
+  if (
+    successfulCommand?.type === 'save_playlist' &&
+    view.saveName.value.trim() === successfulCommand.name
+  ) {
+    view.saveName.value = '';
+  }
+
+  if (selected) {
+    libraryText(view.title, selected.name);
+    view.title.title = selected.name;
+  }
+  syncPlaylistRows(
+    view.list,
+    lists.map(({ id, name, count }) => ({
+      id,
+      name,
+      detail: `${count} ${count === 1 ? 'video' : 'videos'}`,
+    })),
+  );
+  syncPlaylistRows(
+    view.tracks,
+    (selected?.entries ?? []).map((id) => {
+      const current = id === renderedState?.current;
+      return {
+        id,
+        name: videoTitle(selected.titles, id) || id,
+        current,
+        detail: current ? 'Selected' : '',
+      };
+    }),
+    true,
+  );
+  view.list.hidden = Boolean(selected) || !lists.length;
+  view.tracks.hidden = !selected?.entries.length;
+  const empty = selected ? !selected.entries.length : !lists.length && !problem;
+  view.empty.hidden = !empty;
+  libraryText(
+    view.empty,
+    selected ? 'No videos in this playlist.' : 'No saved playlists yet.',
+  );
+
+  for (const button of view.element.querySelectorAll('button')) {
+    if (pending && !button.disabled) {
+      if (!button.hasAttribute('aria-disabled'))
+        button.setAttribute('aria-disabled', 'true');
+    } else {
+      button.removeAttribute('aria-disabled');
+    }
+  }
+  libraryText(view.problem, problem ?? '');
+  view.feedback.classList.toggle('error', Boolean(libraryFeedback?.error));
+  libraryText(
+    view.feedback,
+    libraryFeedback?.message ||
+      (canSave && !selected && !queueHasTracks
+        ? 'Add a video to the queue before saving a playlist.'
+        : ''),
+  );
+
+  if (selectionChanged && selected) {
+    view.tracks.scrollTop = 0;
+    if (hadFocus) view.title.focus({ preventScroll: true });
+  } else if (selectionChanged) {
+    view.list.scrollTop = view.listScroll;
+    if (hadFocus) {
+      const oldIndex = oldLibrary.lists.findIndex(({ id }) => id === oldId);
+      const index = lists.findIndex(({ id }) => id === oldId);
+      const nearest = Math.min(oldIndex, lists.length - 1);
+      const row =
+        view.list.children[index >= 0 ? index : nearest]?.firstElementChild;
+      (row ?? primaryInput()).focus({
+        preventScroll: Boolean(row && index >= 0),
+      });
+    }
+  } else if (finishedRename && hadFocus) {
+    view.rename.focus();
+  }
+  return false;
+}
+
+function hasLyricsDuration(lyrics) {
+  return Number.isFinite(lyrics?.duration) && lyrics.duration > 0;
+}
+
+function mountLyrics() {
+  const [lyricsForm, lines] = lyricsTemplate.content.cloneNode(true).children;
+  const track = lyricsForm.querySelector('#lyrics-track');
+  const artist = lyricsForm.querySelector('#lyrics-artist');
+  const submit = lyricsForm.querySelector('button');
+  const feedback = lyricsForm.querySelector('#lyrics-feedback');
+  const gap = document.createElement('span');
+  gap.className = 'lyrics-gap';
+  gap.setAttribute('role', 'img');
+  gap.setAttribute('aria-label', 'Instrumental break');
+  gap.append(
+    ...Array.from({ length: 3 }, () => document.createElement('span')),
+  );
+  lyricsForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (pending || !hasLyricsDuration(renderedLyrics)) return;
+    const title = track.value.trim();
+    const artistName = artist.value.trim();
+    if (!title || !artistName) {
+      commandProblem('Enter a track and artist.', 'lyrics');
+      (title ? artist : track).focus();
+      return;
+    }
+    track.value = title;
+    artist.value = artistName;
+    send({ type: 'find_lyrics', title, artist: artistName }, 'lyrics');
+  });
+  lyricsTemplate.before(lyricsForm, lines);
+  return {
+    form: lyricsForm,
+    lines,
+    track,
+    artist,
+    submit,
+    feedback,
+    gap,
+    trackDefault: '',
+    artistDefault: '',
+    resultKey: '',
+    timedLines: [],
+    activeLine: null,
+    activeWord: null,
+  };
+}
+
+function lyricsLine(text) {
+  const line = document.createElement('li');
+  line.className = 'lyrics-line';
+  line.dir = 'auto';
+  line.textContent = text;
+  return line;
+}
+
+function timedLyricsLine({ timeMs, text, words }) {
+  const element = lyricsLine(text);
+  const timedWords = [];
+  if (
+    text &&
+    words.length &&
+    words.map((word) => word.text).join('') === text
+  ) {
+    for (const word of words) {
+      const span = document.createElement('span');
+      span.textContent = word.text;
+      timedWords.push({ timeMs: word.timeMs, element: span });
+    }
+    element.replaceChildren(...timedWords.map((word) => word.element));
+  }
+  return { timeMs, element, words: timedWords, gap: text === '' };
+}
+
+function updateLyrics(lyrics, selectionChanged = false) {
+  renderedLyrics = lyrics ?? null;
+  if (!lyrics) {
+    lyricsError = '';
+    if (!lyricsView) return false;
+    cancelLyricsClock();
+    const wasFocused = removeView(lyricsView.form, lyricsView.lines);
+    lyricsView = null;
+    return wasFocused;
+  }
+
+  lyricsView ??= mountLyrics();
+  const view = lyricsView;
+  if (selectionChanged) lyricsError = '';
+  if (selectionChanged || view.track.value === view.trackDefault)
+    view.track.value = lyrics.track;
+  if (selectionChanged || view.artist.value === view.artistDefault)
+    view.artist.value = lyrics.artist;
+  view.trackDefault = lyrics.track;
+  view.artistDefault = lyrics.artist;
+
+  const finding =
+    lyrics.pending ||
+    (pending?.context === 'lyrics' &&
+      pending.current === renderedState?.current);
+  const result = finding ? null : lyrics.result;
+  const resultKey = result ? JSON.stringify(result) : '';
+  if (selectionChanged || view.resultKey !== resultKey) {
+    view.gap.remove();
+    view.activeLine = view.activeWord = null;
+    view.timedLines =
+      result?.kind === 'synced' ? result.lines.map(timedLyricsLine) : [];
+    const rows =
+      result?.kind === 'plain'
+        ? result.lines.map(lyricsLine)
+        : view.timedLines.map((line) => line.element);
+    if (!rows.length && view.lines.contains(document.activeElement))
+      view.track.focus();
+    view.lines.replaceChildren(...rows);
+    view.lines.scrollTop = 0;
+    view.resultKey = resultKey;
+  }
+  view.lines.hidden = view.form.hidden || !view.lines.childElementCount;
+
+  const hasDuration = hasLyricsDuration(lyrics);
+  view.submit.setAttribute(
+    'aria-disabled',
+    String(Boolean(pending) || !hasDuration),
+  );
+  const problem = lyricsError || (!finding && lyrics.problem);
+  let message = '';
+  if (problem) message = problem;
+  else if (finding) message = 'Finding lyrics…';
+  else if (!hasDuration) message = 'Waiting for video duration…';
+  else if (result?.kind === 'instrumental') message = 'Instrumental track.';
+  view.feedback.classList.toggle('error', Boolean(problem));
+  if (view.feedback.textContent !== message)
+    view.feedback.textContent = message;
+  updateLyricsTiming();
+  return false;
+}
+
+function lyricBoundaryAfter(items, timeMs) {
+  let first = 0;
+  let end = items.length;
+  while (first < end) {
+    const middle = Math.floor((first + end) / 2);
+    if (items[middle].timeMs <= timeMs) first = middle + 1;
+    else end = middle;
+  }
+  return first;
+}
+
+function scheduleLyricCue(deadline) {
+  if (deadline === lyricCueDeadline) return;
+  if (lyricCueTimer !== null) window.clearTimeout(lyricCueTimer);
+  lyricCueTimer = null;
+  lyricCueDeadline = deadline;
+  if (deadline !== null) {
+    lyricCueTimer = window.setTimeout(
+      () => {
+        lyricCueTimer = lyricCueDeadline = null;
+        updateLyricsTiming();
+      },
+      Math.max(0, Math.ceil(deadline - performance.now())),
+    );
+  }
+}
+
+function cancelLyricsClock() {
+  lyricsClock = null;
+  scheduleLyricCue(null);
+}
+
+function receiveLyricsClock(transport) {
+  cancelLyricsClock();
+  if (
+    !transport?.clockRunning ||
+    transport.blocked ||
+    !lyricsPanelVisible() ||
+    playerProblemText.textContent ||
+    editingPosition ||
+    interruptsLyricsClock(pending?.command)
+  )
+    return;
+
+  const { positionMs, duration, playbackRate } = transport;
+  const endMs = duration * 1000;
+  if (
+    !Number.isFinite(positionMs) ||
+    positionMs < 0 ||
+    !Number.isFinite(endMs) ||
+    positionMs >= endMs
+  )
+    return;
+  const rate =
+    Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+  const receivedAt = performance.now();
+  const limitMs = Math.min(endMs, positionMs + LYRIC_SAMPLE_INTERVAL_MS * rate);
+  lyricsClock = {
+    positionMs,
+    receivedAt,
+    rate,
+    limitMs,
+    expiresAt:
+      receivedAt +
+      Math.min(LYRIC_SAMPLE_INTERVAL_MS, (limitMs - positionMs) / rate),
+  };
+}
+
+function keepLyricInView(list, line, moving) {
+  const viewport = list.getBoundingClientRect();
+  const row = line.getBoundingClientRect();
+  const offset =
+    row.top < viewport.top
+      ? row.top - viewport.top
+      : Math.max(
+          0,
+          Math.min(row.top - viewport.top, row.bottom - viewport.bottom),
+        );
+  if (offset) {
+    const smooth =
+      moving && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    list.scrollBy({ top: offset, behavior: smooth ? 'smooth' : 'auto' });
+  }
+}
+
+function updateLyricsTiming() {
+  const view = lyricsView;
+  if (
+    !view ||
+    view.lines.hidden ||
+    !view.timedLines.length ||
+    !lyricsPanelVisible()
+  ) {
+    scheduleLyricCue(null);
+    view?.gap.removeAttribute('data-running');
+    return;
+  }
+
+  const clock = lyricsClock;
+  const now = performance.now();
+  const moving = Boolean(clock && now < clock.expiresAt);
+  const timeMs = clock
+    ? moving
+      ? Math.min(
+          clock.limitMs,
+          clock.positionMs + (now - clock.receivedAt) * clock.rate,
+        )
+      : clock.limitMs
+    : renderedTransport?.positionMs;
+  const nextLineIndex = Number.isFinite(timeMs)
+    ? lyricBoundaryAfter(view.timedLines, timeMs)
+    : 0;
+  const line = view.timedLines[nextLineIndex - 1] ?? null;
+  const nextWordIndex = line ? lyricBoundaryAfter(line.words, timeMs) : 0;
+  const word = line?.words[nextWordIndex - 1] ?? null;
+  if (line !== view.activeLine) {
+    view.activeLine?.element.removeAttribute('aria-current');
+    view.activeLine = line;
+    view.gap.remove();
+    if (line) {
+      line.element.setAttribute('aria-current', 'true');
+      if (line.gap) line.element.append(view.gap);
+      keepLyricInView(view.lines, line.element, moving);
+    }
+  }
+  if (line?.gap) view.gap.toggleAttribute('data-running', moving);
+  if (word !== view.activeWord) {
+    view.activeWord?.element.removeAttribute('data-active-word');
+    word?.element.setAttribute('data-active-word', '');
+    view.activeWord = word;
+  }
+
+  let deadline = null;
+  if (moving) {
+    const nextCue = Math.min(
+      view.timedLines[nextLineIndex]?.timeMs ?? Infinity,
+      line?.words[nextWordIndex]?.timeMs ?? Infinity,
+    );
+    if (nextCue <= clock.limitMs) {
+      deadline = Math.min(
+        clock.expiresAt,
+        clock.receivedAt + (nextCue - clock.positionMs) / clock.rate,
+      );
+    } else if (line?.gap) {
+      deadline = clock.expiresAt;
+    }
+  }
+  scheduleLyricCue(deadline);
 }
 
 window.renderPearState = (
-  { entries, current, titles, metadata, metadataProblem, catalog },
+  {
+    entries,
+    current,
+    titles,
+    metadata,
+    metadataProblem,
+    catalog,
+    lyrics,
+    savedPlaylists,
+    preferencesProblem,
+    legal,
+  },
   error = null,
   notice = null,
   acknowledgedSequence = null,
@@ -516,10 +1347,16 @@ window.renderPearState = (
 
   const command = acknowledged?.command;
   const context = acknowledged?.context ?? 'queue';
+  if (context === 'legal') legalCommandProblem = error ?? '';
+  const restoreFocus = updateLegal(legal);
   if (command?.type === 'ready') {
     source.disabled = false;
     add.disabled = false;
-    if (focusAddOnReady) focusQueueAdd();
+  }
+  if (legal && !legal.accepted) {
+    updateSelectionArtwork(null, null);
+    renderedTransport = null;
+    return;
   }
 
   const index = entries.indexOf(current);
@@ -541,6 +1378,8 @@ window.renderPearState = (
   }
   selection.classList.toggle('video-id', hasSelection && !currentTitle);
   updateSelectionAttribution(selectedMetadata?.channel.trim());
+  if (!panel.hidden)
+    updateSelectionArtwork(current, selectedMetadata?.thumbnailUrl);
   selectionPanel.toggleAttribute('data-current', hasSelection);
   position.textContent = hasSelection
     ? `${index + 1} of ${entries.length}`
@@ -591,6 +1430,17 @@ window.renderPearState = (
       confirmation = `Moved to position ${movedIndex + 1} of ${entries.length}.`;
     }
   }
+  if (!error && context === 'library') {
+    if (command.type === 'save_playlist') confirmation = 'Playlist saved.';
+    if (command.type === 'rename_playlist') confirmation = 'Playlist renamed.';
+    if (command.type === 'remove_playlist') confirmation = 'Playlist removed.';
+    if (command.type === 'append_playlist') {
+      const added = entries.length - acknowledged.entryCount;
+      if (added > 1) confirmation = `Added ${added} videos to the queue.`;
+      else if (added === 1) confirmation = 'Added 1 video to the queue.';
+      else confirmation = 'All playlist videos are already in the queue.';
+    }
+  }
 
   if (context === 'search') {
     catalogSearchError = error ?? '';
@@ -599,13 +1449,29 @@ window.renderPearState = (
       message: error || confirmation,
       error: Boolean(error),
     };
-  } else if (acknowledged || error !== null) {
+  } else if (context === 'lyrics') {
+    lyricsError = acknowledged.current === current ? (error ?? '') : '';
+  } else if (context === 'library') {
+    libraryFeedback = { message: error || confirmation, error: Boolean(error) };
+  } else if (context !== 'legal' && (acknowledged || error !== null)) {
     errorText.textContent = error ?? '';
   }
-  statusText.textContent = [context === 'queue' ? confirmation : '', notice]
-    .filter(Boolean)
-    .join(' ');
-  updateCatalog(catalog);
+  if (context !== 'legal' || command.type === 'accept_legal' || notice) {
+    statusText.textContent = [context === 'queue' ? confirmation : '', notice]
+      .filter(Boolean)
+      .join(' ');
+  }
+  if (selectionChanged) renderedTransport = null;
+  if (selectionChanged || playerProblem) cancelLyricsClock();
+  const catalogWasFocused = updateCatalog(catalog);
+  const lyricsWasFocused = updateLyrics(lyrics, selectionChanged);
+  const libraryWasFocused = updateLibrary(
+    savedPlaylists,
+    context === 'library' && !error ? command : null,
+  );
+  updateViews();
+  if (catalogWasFocused || lyricsWasFocused || libraryWasFocused)
+    primaryInput().focus();
   const problem = playerProblem ?? '';
   const problemChanged = playerProblemText.textContent !== problem;
   if (problemChanged) playerProblemText.textContent = problem;
@@ -613,9 +1479,39 @@ window.renderPearState = (
   if (metadataProblemText.textContent !== providerProblem) {
     metadataProblemText.textContent = providerProblem;
   }
-  if (selectionChanged) renderedTransport = null;
+  if (preferencesProblemText.textContent !== (preferencesProblem ?? '')) {
+    preferencesProblemText.textContent = preferencesProblem ?? '';
+  }
   if (selectionChanged || problemChanged) updateTransport();
+  if (restoreFocus) {
+    const previousFocus = focusBeforeLegal;
+    focusBeforeLegal = null;
+    previousFocus?.focus({ preventScroll: true });
+    if (document.activeElement !== previousFocus) primaryInput().focus();
+  }
+  if (!panel.hidden && focusAddOnReady) focusQueueAdd();
 };
+
+acceptLegal.addEventListener('click', () => {
+  if (renderedLegal && !renderedLegal.accepted) {
+    send({ type: 'accept_legal', revision: renderedLegal.revision }, 'legal');
+  }
+});
+declineLegal.addEventListener('click', () => {
+  if (renderedLegal && !renderedLegal.accepted)
+    send({ type: 'decline_legal' }, 'legal');
+});
+closeLegal.addEventListener('click', () => {
+  if (renderedLegal?.accepted) send({ type: 'close_legal' }, 'legal');
+});
+document.getElementById('legal-youtube-terms').addEventListener('click', () => {
+  send({ type: 'open_legal_link', link: 'youtube_terms' }, 'legal');
+});
+document
+  .getElementById('legal-google-privacy')
+  .addEventListener('click', () => {
+    send({ type: 'open_legal_link', link: 'google_privacy' }, 'legal');
+  });
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -651,6 +1547,8 @@ openBrowser.addEventListener('click', () => send({ type: 'open_browser' }));
 
 seek.addEventListener('pointerdown', () => {
   editingPosition = true;
+  cancelLyricsClock();
+  updateLyricsTiming();
 });
 window.addEventListener('pointerup', () => {
   editingPosition = false;
@@ -665,6 +1563,8 @@ seek.addEventListener('blur', cancelSeekPreview);
 window.addEventListener('blur', cancelSeekPreview);
 seek.addEventListener('input', () => {
   editingPosition = true;
+  cancelLyricsClock();
+  updateLyricsTiming();
   updateElapsed();
 });
 seek.addEventListener('change', () => {

@@ -28,8 +28,11 @@ struct Controls {
     has_played: bool,
     playing: bool,
     position: Option<u32>,
+    position_ms: Option<u32>,
+    playback_rate: Option<f64>,
     duration: Option<u32>,
     blocked: bool,
+    clock_running: bool,
 }
 
 impl Transport {
@@ -91,6 +94,10 @@ impl Transport {
         self.snapshot.as_ref().is_some_and(|state| state.ready)
     }
 
+    pub(super) fn duration(&self) -> Option<u32> {
+        self.snapshot.as_ref()?.duration
+    }
+
     pub(super) fn problem(&self) -> Option<&'static str> {
         Some(match self.snapshot.as_ref()?.error? {
             100 => "This video is unavailable.",
@@ -145,8 +152,13 @@ impl Transport {
                             .is_some_and(|view| view.playing))
             }),
             position: snapshot.and_then(|state| state.position),
+            position_ms: snapshot.and_then(|state| state.position_ms),
+            playback_rate: snapshot.and_then(|state| state.playback_rate),
             duration: snapshot.and_then(|state| state.duration),
             blocked: snapshot.is_some_and(|state| state.blocked),
+            clock_running: snapshot.is_some_and(|state| {
+                state.state == Some(1) && !state.blocked && state.error.is_none()
+            }),
         });
         if self.rendered.as_ref() != Some(&controls) {
             let value = serde_json::to_string(&controls)?;
