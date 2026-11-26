@@ -9,10 +9,13 @@ license = "MIT"
 benchmark = []
 
 [dependencies]
+base64 = "0.23"
 cpal = "0.17.3"
 fastrand = "2"
+getrandom = "0.4"
 html-escape = "0.2"
 hound = "3.5.1"
+httparse = "1"
 # Keep HTTP wire logging disabled, including headers and query strings.
 log = { version = "0.4", features = ["max_level_info"] }
 muda = "0.22"
@@ -20,13 +23,15 @@ open = "5.4"
 pear-preview-dsp = { path = "../dsp" }
 rtrb = "0.3"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 serde-saphyr = { version = "2.2", default-features = false, features = ["deserialize"] }
+sha2 = "0.11"
 tao = "0.38"
 ureq = { version = "3.5", default-features = false, features = ["gzip", "native-tls-no-default"] }
 url = "2.5"
 wry = "0.58"
 symphonia = { version = "0.6.1", default-features = false, features = ["flac"] }
+zeroize = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

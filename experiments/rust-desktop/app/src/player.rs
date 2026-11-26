@@ -1,4 +1,7 @@
 //! The desktop queue separates its local controls from the remote video.
+// The account Library consumes this module in its integration commit.
+#[allow(dead_code)]
+mod account_oauth;
 mod advance;
 mod catalog;
 mod consent;
