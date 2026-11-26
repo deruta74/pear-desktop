@@ -901,6 +901,35 @@ fn prepares_mp3_text_tags_after_skipping_artwork_and_large_text() {
     assert!(prepared.0.read_frame().is_ok());
 }
 
+#[test]
+fn mp3_uses_id3v1_only_for_missing_text_fields() {
+    let audio = include_bytes!("fixtures/mono-untagged.mp3");
+    let mut footer = [0; 128];
+    footer[..3].copy_from_slice(b"TAG");
+    footer[3..9].copy_from_slice(b"Legacy");
+    footer[33..37].copy_from_slice(b"Jos\xe9");
+    footer[63..69].copy_from_slice(b"Album ");
+
+    for has_new_title in [false, true] {
+        let mut bytes = Vec::new();
+        if has_new_title {
+            bytes.extend_from_slice(b"ID3\x04\0\0\0\0\0\x0eTIT2\0\0\0\x04\0\0\x03New");
+        }
+        bytes.extend_from_slice(audio);
+        bytes.extend_from_slice(&footer);
+        let fixture = Fixture::with_extension(&bytes, "mp3");
+        let mut prepared = PreparedAudio::read(&fixture.0).unwrap();
+        assert_eq!(
+            prepared.metadata().title,
+            if has_new_title { "New" } else { "Legacy" }
+        );
+        assert_eq!(prepared.metadata().artist.as_deref(), Some("José"));
+        assert_eq!(prepared.metadata().album.as_deref(), Some("Album"));
+        assert_eq!(prepared.0.info().frames, 12 * 576);
+        assert!(prepared.0.read_frame().is_ok());
+    }
+}
+
 fn synchsafe(len: usize) -> [u8; 4] {
     [21, 14, 7, 0].map(|shift| ((len >> shift) & 0x7f) as u8)
 }

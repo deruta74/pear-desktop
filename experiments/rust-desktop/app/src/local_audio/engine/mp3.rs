@@ -46,7 +46,9 @@ impl Mp3Source {
         file_length: u64,
     ) -> Result<(Self, Metadata), EngineOpenError> {
         let unsupported = EngineOpenError::UnsupportedAudio;
-        let (origin, metadata) = read_header(&mut file, file_length).map_err(|_| unsupported)?;
+        let (origin, mut metadata) =
+            read_header(&mut file, file_length).map_err(|_| unsupported)?;
+        let _ = metadata.fill_id3v1(&mut file, origin, file_length);
         let mut input = MediaSourceStream::new(Box::new(UnknownLength(file)), Default::default());
         input
             .seek(SeekFrom::Start(origin))

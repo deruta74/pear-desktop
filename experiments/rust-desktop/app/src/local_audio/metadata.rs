@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Read, Seek},
+    io::{self, Read, Seek, SeekFrom},
     path::Path,
 };
 
@@ -158,6 +158,46 @@ impl Metadata {
             }
         }
         Ok(metadata)
+    }
+
+    pub(super) fn fill_id3v1(
+        &mut self,
+        mut reader: impl Read + Seek,
+        audio_start: u64,
+        file_size: u64,
+    ) -> io::Result<()> {
+        let mut footer = [0; 128];
+        let Some(start) = file_size
+            .checked_sub(footer.len() as u64)
+            .filter(|&start| start >= audio_start)
+        else {
+            return Ok(());
+        };
+        let fields = [
+            (Field::Title, 3..33),
+            (Field::Artist, 33..63),
+            (Field::Album, 63..93),
+        ];
+        if fields.iter().all(|&(field, _)| self.has(field)) {
+            return Ok(());
+        }
+        reader.seek(SeekFrom::Start(start))?;
+        reader.read_exact(&mut footer)?;
+        if &footer[..3] != b"TAG" {
+            return Ok(());
+        }
+        for (field, range) in fields {
+            if !self.has(field) {
+                let text: String = footer[range]
+                    .iter()
+                    .copied()
+                    .take_while(|&byte| byte != 0)
+                    .map(char::from)
+                    .collect();
+                self.insert(field, &text);
+            }
+        }
+        Ok(())
     }
 }
 
