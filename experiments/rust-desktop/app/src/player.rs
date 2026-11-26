@@ -1762,10 +1762,8 @@ mod tests {
             response.headers()[header::CONTENT_SECURITY_POLICY],
             CONTROLS_CSP
         );
-        let swipe_script = controls_response(request(
-            "pear-queue://app.local/history-swipes.js",
-            "GET",
-        ));
+        let swipe_script =
+            controls_response(request("pear-queue://app.local/history-swipes.js", "GET"));
         assert_eq!(swipe_script.status(), 200);
         assert_eq!(
             swipe_script.headers()[header::CONTENT_TYPE],

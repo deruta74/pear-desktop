@@ -338,6 +338,30 @@ test('experimental panel swipes reverse a changed destination and ignore same-di
   expect(page.url()).toBe(origin + '/');
 });
 
+for (const direction of [-1, 1]) {
+  test(`experimental ${direction < 0 ? 'Back' : 'Forward'} momentum cannot resume through a quick reversal candidate`, async (t) => {
+    const { page, show, screen, wheel, swipe, pointAtHeader } =
+      await swipeFixture(t);
+    for (const view of ['Search', 'Lyrics', 'Library']) await show(view).click();
+    if (direction > 0) {
+      const back = page.getByRole('button', { name: 'Back', exact: true });
+      await back.click();
+      await back.click();
+    }
+    await pointAtHeader();
+    await swipe(direction * 100);
+    await screen('Lyrics');
+
+    // Two opposite pulses do not outweigh the resumed original movement.
+    await wheel(-direction, 0, 55);
+    for (const delta of [100, -12, -12, 110]) await wheel(direction * delta);
+    await screen('Lyrics');
+
+    await swipe(direction * 100);
+    await screen(direction < 0 ? 'Search' : 'Library');
+  });
+}
+
 test('normal panel sessions ignore even trusted horizontal wheel input', async (t) => {
   const { show, screen, swipe, pointAtHeader } = await swipeFixture(t, false);
   await show('Search').click();

@@ -132,14 +132,15 @@ function attachPanelHistorySwipes(panel, panelVisible, traverse) {
     }
     if (
       samples >= 2 &&
-      (!reversal || reversalSamples >= 2) &&
       Math.abs(x) >= panelSwipeDistance &&
       Math.abs(x) > y * panelSwipeAxisRatio
     ) {
-      const direction = Math.sign(x);
+      const step = Math.sign(x);
+      if (reversal && (reversalSamples < 2 || step === reversal.direction))
+        return;
       lock();
-      const canReverse = traverse(direction);
-      if (canReverse) committed = { direction, canReverse };
+      const canReverse = traverse(step);
+      if (canReverse) committed = { direction: step, canReverse };
     }
   }
 
