@@ -1,0 +1,16 @@
+--- a/experiments/rust-desktop/app/src/player.rs
++++ b/experiments/rust-desktop/app/src/player.rs
+@@ -351,6 +351,13 @@
+             move |builder| {
+                 let builder =
+                     isolated_builder(builder).with_on_page_load_handler(move |event, url| {
++                        #[cfg(target_os = "windows")]
++                        if mode.smoke
++                            && matches!(event, PageLoadEvent::Finished)
++                            && iframe::Page::is_wrapper_url(&url)
++                        {
++                            println!("PEAR_WINDOWS_VISUAL_WRAPPER_FINISHED");
++                        }
+                         if matches!(event, PageLoadEvent::Started)
+                             && iframe::Page::is_wrapper_url(&url)
+                         {

@@ -1,0 +1,37 @@
+name: Rust preview Windows playback visual
+
+on:
+  push:
+    branches: [diagnostic/rust-windows-playback-visual]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    if: >-
+      github.repository == 'deruta74/pear-desktop' &&
+      contains(github.event.head_commit.message, '[windows-playback-visual]')
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: experiments/rust-desktop
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Capture the public demo in the owned Pear window
+        timeout-minutes: 16
+        run: ./tools/windows-playback-visual.ps1
+      - name: Upload the Pear client-area screenshot
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: pear-windows-playback-visual
+          path: ${{ runner.temp }}/pear-windows-playback-visual.png
+          if-no-files-found: error
+          retention-days: 1
