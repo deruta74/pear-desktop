@@ -1,0 +1,155 @@
+name: Windows Rust preview QA
+
+on:
+  push:
+    branches: [experiment/rust-windows-qa]
+
+permissions:
+  contents: read
+
+jobs:
+  native-preview:
+    if: github.repository == 'deruta74/pear-desktop'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: experiments/rust-desktop
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.22.0
+          package-manager-cache: false
+      - name: Build preview and run Rust tests on MSVC
+        id: build
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
+          New-Item $artifactDir -ItemType Directory -Force | Out-Null
+          $log = Join-Path $artifactDir 'qa.log'
+          $target = 'x86_64-pc-windows-msvc'
+          $toolchain = "stable-$target"
+          $env:CARGO_TARGET_DIR = Join-Path $env:RUNNER_TEMP 'pear-rust-target'
+          $env:CARGO_TERM_COLOR = 'never'
+
+          function Invoke-Rustup {
+            & rustup @args 2>&1 | Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "rustup $($args -join ' ') failed with exit code $LASTEXITCODE."
+            }
+          }
+
+          Invoke-Rustup toolchain install $toolchain --profile minimal
+          Invoke-Rustup run $toolchain rustc --version
+          Invoke-Rustup run $toolchain cargo build --locked --target $target --release -p pear-desktop-preview
+          Copy-Item (Join-Path $env:CARGO_TARGET_DIR "$target/release/pear-desktop-preview.exe") $artifactDir
+          'portable=true' >> $env:GITHUB_OUTPUT
+          Invoke-Rustup run $toolchain cargo test --locked --target $target --workspace --all-features
+          Invoke-Rustup run $toolchain cargo build --locked --target $target --features benchmark -p pear-desktop-preview
+      - name: Run the native WebView2 queue smoke
+        timeout-minutes: 3
+        run: |
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
+          $log = Join-Path $artifactDir 'qa.log'
+          $stdout = Join-Path $artifactDir 'queue.stdout.log'
+          $stderr = Join-Path $artifactDir 'queue.stderr.log'
+          $preview = $null
+          try {
+            $webView2Client = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+            $runtimePaths = @(
+              "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$webView2Client"
+              "HKCU:\Software\Microsoft\EdgeUpdate\Clients\$webView2Client"
+            )
+            $runtime = Get-ItemPropertyValue -LiteralPath $runtimePaths -Name pv -ErrorAction SilentlyContinue |
+              Where-Object { ($_ -as [version]) -gt [version]'0.0.0.0' } |
+              Select-Object -First 1
+            if (-not $runtime) {
+              throw 'Microsoft Edge WebView2 Evergreen Runtime is missing on the Windows runner.'
+            }
+            "WebView2 Evergreen Runtime $runtime" | Tee-Object -FilePath $log -Append
+
+            $queueDir = Join-Path $env:RUNNER_TEMP "pear-queue-$([guid]::NewGuid().ToString('N'))"
+            New-Item $queueDir -ItemType Directory | Out-Null
+            $env:PEAR_PREVIEW_QUEUE_DIR = $queueDir
+            '{"entries":["M7lc1UVf-VE"],"current":"M7lc1UVf-VE","titles":{}}' |
+              Set-Content -LiteralPath (Join-Path $queueDir 'queue.json') -Encoding utf8
+
+            $exe = Join-Path $env:RUNNER_TEMP 'pear-rust-target/x86_64-pc-windows-msvc/debug/pear-desktop-preview.exe'
+            $preview = Start-Process -FilePath $exe -ArgumentList '--queue-smoke' -WorkingDirectory $queueDir `
+              -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $ready = $false
+            $title = $false
+            $deadline = [TimeSpan]::FromSeconds(45)
+            while ($clock.Elapsed -lt $deadline) {
+              if ($preview.WaitForExit(0)) {
+                throw "Preview PID $($preview.Id) exited during the smoke check with code $($preview.ExitCode)."
+              }
+              $lines = Get-Content -LiteralPath $stdout
+              if (-not $ready -and $lines -ccontains 'PEAR_QUEUE_READY') {
+                $ready = $true
+                $deadline = $clock.Elapsed + [TimeSpan]::FromSeconds(20)
+                'Observed PEAR_QUEUE_READY from the local queue controls.' | Tee-Object -FilePath $log -Append
+              }
+              $title = $lines -ccontains 'PEAR_QUEUE_VIDEO_TITLE'
+              if ($ready -and $title) { break }
+              Start-Sleep -Milliseconds 250
+            }
+            if (-not $ready) {
+              throw 'The preview did not emit the exact PEAR_QUEUE_READY line within 45 seconds.'
+            }
+            if ($title) {
+              'Observed PEAR_QUEUE_VIDEO_TITLE for the seeded video.' | Tee-Object -FilePath $log -Append
+            } else {
+              'PEAR_QUEUE_VIDEO_TITLE was not observed during the smoke check.' | Tee-Object -FilePath $log -Append
+            }
+          } catch {
+            "Queue smoke failed: $($_.Exception.Message)" | Tee-Object -FilePath $log -Append
+            throw
+          } finally {
+            if ($null -ne $preview) {
+              try {
+                $forced = $false
+                if (-not $preview.HasExited) {
+                  if (-not $preview.CloseMainWindow() -or -not $preview.WaitForExit(3000)) {
+                    if (-not $preview.HasExited) {
+                      $preview.Kill()
+                      $forced = $true
+                    }
+                  }
+                }
+                if (-not $preview.WaitForExit(5000)) {
+                  throw "Preview PID $($preview.Id) did not exit after cleanup."
+                }
+                $exitCode = $preview.ExitCode
+                # Kill() on Windows requests exit code -1. Preserve any other exit failure.
+                if ($exitCode -ne 0 -and -not ($forced -and $exitCode -eq -1)) {
+                  throw "Preview PID $($preview.Id) exited with code $exitCode."
+                }
+                "Preview PID $($preview.Id) exited with code $exitCode (forced cleanup: $forced)." |
+                  Tee-Object -FilePath $log -Append
+              } finally {
+                $preview.Dispose()
+              }
+            }
+          }
+      - name: Upload Windows QA logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: pear-rust-windows-qa-logs
+          path: |
+            ${{ runner.temp }}/pear-windows-qa/qa.log
+            ${{ runner.temp }}/pear-windows-qa/queue.stdout.log
+            ${{ runner.temp }}/pear-windows-qa/queue.stderr.log
+      - name: Upload the regular Windows preview executable
+        if: ${{ !cancelled() && steps.build.outputs.portable == 'true' }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: pear-rust-preview-windows-x64
+          path: ${{ runner.temp }}/pear-windows-qa/pear-desktop-preview.exe
+          if-no-files-found: error
