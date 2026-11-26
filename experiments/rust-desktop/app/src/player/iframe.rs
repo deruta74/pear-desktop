@@ -1,7 +1,7 @@
 //! Local wrapper for the official YouTube IFrame API in the video pane.
 #[cfg(target_os = "macos")]
 use objc2_foundation::{NSBundle, NSString, NSURL};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 #[cfg(target_os = "linux")]
 use webkit2gtk::WebViewExt as _;
@@ -16,9 +16,47 @@ use crate::{Result, library::valid_id};
 
 const WRAPPER_PATH: &str = "/iframe-player.html";
 const HTML: &str = include_str!("../../ui/iframe-player.html");
-const MAX_SNAPSHOT_BYTES: usize = 512;
+const MAX_SNAPSHOT_BYTES: usize = 768;
+const MAX_VOLUME: u8 = 100;
+const MAX_PLAYBACK_RATES: usize = 16;
 // A generous bound for long-running live streams as well as ordinary videos.
 const MAX_SECONDS: u32 = 31 * 24 * 60 * 60;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct AudioOutput {
+    #[serde(
+        default,
+        deserialize_with = "deserialize_volume",
+        serialize_with = "serialize_volume"
+    )]
+    pub volume: Option<u8>,
+    pub muted: Option<bool>,
+}
+
+fn deserialize_volume<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<u8>, D::Error> {
+    let volume = Option::<u8>::deserialize(deserializer)?;
+    if volume.is_some_and(|value| value > MAX_VOLUME) {
+        return Err(serde::de::Error::custom(
+            "Volume must be between 0 and 100.",
+        ));
+    }
+    Ok(volume)
+}
+
+fn serialize_volume<S: serde::Serializer>(
+    volume: &Option<u8>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    if volume.is_some_and(|value| value > MAX_VOLUME) {
+        return Err(serde::ser::Error::custom(
+            "Volume must be between 0 and 100.",
+        ));
+    }
+    volume.serialize(serializer)
+}
 
 pub(super) struct Page {
     embed_url: Url,
@@ -48,7 +86,7 @@ impl Page {
         url == wrapper_url()
     }
 
-    pub(super) fn load(&self, view: &WebView) -> Result<()> {
+    pub(super) fn load(&self, view: &WebView, output: AudioOutput) -> Result<()> {
         #[cfg(target_os = "macos")]
         if !NSBundle::mainBundle()
             .bundleIdentifier()
@@ -58,13 +96,7 @@ impl Page {
         }
 
         let url = wrapper_url();
-        let html = HTML
-            .replace("{WRAPPER_URL}", &url)
-            .replace("{EMBED_PATH}", self.embed_url.path())
-            .replace(
-                "{PLAYER_URL}",
-                &self.embed_url.as_str().replace('&', "&amp;"),
-            );
+        let html = self.html(&url, output)?;
         #[cfg(target_os = "macos")]
         {
             let base = NSURL::URLWithString(&NSString::from_str(&url))
@@ -86,6 +118,28 @@ impl Page {
         Ok(())
     }
 
+    fn html(&self, url: &str, output: AudioOutput) -> Result<String> {
+        if output.volume.is_some_and(|value| value > MAX_VOLUME) {
+            return Err("The IFrame volume is out of range.".into());
+        }
+        let volume = output
+            .volume
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let muted = output
+            .muted
+            .map_or("", |value| if value { "true" } else { "false" });
+        Ok(HTML
+            .replace("{WRAPPER_URL}", url)
+            .replace("{INITIAL_VOLUME}", &volume)
+            .replace("{INITIAL_MUTED}", muted)
+            .replace("{EMBED_PATH}", self.embed_url.path())
+            .replace(
+                "{PLAYER_URL}",
+                &self.embed_url.as_str().replace('&', "&amp;"),
+            ))
+    }
+
     // Start polling only after Wry reports the navigation committed.
     pub(super) fn observe(
         view: &WebView,
@@ -104,14 +158,7 @@ impl Page {
         if !is_wrapper(view) {
             return Err("The local IFrame player is unavailable.".into());
         }
-        let command = match action {
-            Action::Play => "window.pearIframePlayer?.play()".into(),
-            Action::Pause => "window.pearIframePlayer?.pause()".into(),
-            Action::Seek(seconds) if seconds <= MAX_SECONDS => {
-                format!("window.pearIframePlayer?.seek({seconds})")
-            }
-            Action::Seek(_) => return Err("The IFrame seek position is out of range.".into()),
-        };
+        let command = action.command()?;
         view.evaluate_script(&wrapper_eval(&command))?;
         Ok(())
     }
@@ -141,6 +188,40 @@ pub(super) enum Action {
     Play,
     Pause,
     Seek(u32),
+    SetVolume(u8),
+    SetMuted(bool),
+    SetRate(f64),
+    Advance { from: String, to: String },
+}
+
+impl Action {
+    fn command(self) -> Result<String> {
+        Ok(match self {
+            Self::Play => "window.pearIframePlayer?.play()".into(),
+            Self::Pause => "window.pearIframePlayer?.pause()".into(),
+            Self::Seek(seconds) if seconds <= MAX_SECONDS => {
+                format!("window.pearIframePlayer?.seek({seconds})")
+            }
+            Self::Seek(_) => return Err("The IFrame seek position is out of range.".into()),
+            Self::SetVolume(volume) if volume <= MAX_VOLUME => {
+                format!("window.pearIframePlayer?.setVolume({volume})")
+            }
+            Self::SetVolume(_) => return Err("The IFrame volume is out of range.".into()),
+            Self::SetMuted(muted) => format!("window.pearIframePlayer?.setMuted({muted})"),
+            Self::SetRate(rate) if valid_rate(rate) => {
+                format!("window.pearIframePlayer?.setRate({rate})")
+            }
+            Self::SetRate(_) => return Err("The IFrame playback rate is out of range.".into()),
+            Self::Advance { from, to } if from != to && valid_id(&from) && valid_id(&to) => {
+                format!("window.pearIframePlayer?.advance({from:?},{to:?})")
+            }
+            Self::Advance { .. } => return Err("Invalid YouTube video IDs for advance.".into()),
+        })
+    }
+}
+
+fn valid_rate(rate: f64) -> bool {
+    (0.25..=4.0).contains(&rate)
 }
 
 #[derive(Deserialize)]
@@ -148,12 +229,19 @@ pub(super) enum Action {
 pub(super) struct Snapshot {
     pub(super) ready: bool,
     pub(super) has_played: bool,
+    pub(super) video_id: Option<String>,
+    #[serde(default)]
+    pub(super) source_replayed: bool,
+    #[serde(default, deserialize_with = "deserialize_volume")]
+    pub(super) volume: Option<u8>,
+    pub(super) muted: Option<bool>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
     pub(super) state: Option<i32>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
     pub(super) position: Option<u32>,
     pub(super) position_ms: Option<u32>,
     pub(super) playback_rate: Option<f64>,
+    pub(super) playback_rates: Option<Vec<f64>>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
     pub(super) duration: Option<u32>,
     pub(super) ended: bool,
@@ -169,9 +257,19 @@ impl Snapshot {
             return None;
         }
         let snapshot: Self = serde_json::from_str(json).ok()?;
+        let has_playback = snapshot.has_played
+            || snapshot.state.is_some()
+            || snapshot.position.is_some()
+            || snapshot.position_ms.is_some()
+            || snapshot.playback_rate.is_some()
+            || snapshot.duration.is_some();
         if snapshot
             .state
             .is_some_and(|state| !matches!(state, -1 | 0 | 1 | 2 | 3 | 5))
+            || snapshot
+                .video_id
+                .as_deref()
+                .is_some_and(|id| !valid_id(id) || !snapshot.ready)
             || snapshot
                 .error
                 .is_some_and(|error| !matches!(error, -1 | 2 | 5 | 100 | 101 | 150 | 153))
@@ -185,9 +283,17 @@ impl Snapshot {
                         .duration
                         .is_some_and(|duration| millis > duration.saturating_mul(1000))
             })
-            || snapshot
-                .playback_rate
-                .is_some_and(|rate| !(0.25..=4.0).contains(&rate))
+            || snapshot.playback_rate.is_some_and(|rate| !valid_rate(rate))
+            || snapshot.playback_rates.as_deref().is_some_and(|rates| {
+                !snapshot.ready
+                    || snapshot.blocked
+                    || snapshot.error.is_some()
+                    || snapshot.source_replayed
+                    || rates.is_empty()
+                    || rates.len() > MAX_PLAYBACK_RATES
+                    || rates.iter().any(|&rate| !valid_rate(rate))
+                    || rates.windows(2).any(|rates| rates[0] >= rates[1])
+            })
             || snapshot
                 .duration
                 .is_some_and(|duration| !(1..=MAX_SECONDS).contains(&duration))
@@ -195,13 +301,14 @@ impl Snapshot {
                 .position
                 .zip(snapshot.duration)
                 .is_some_and(|(position, duration)| position > duration)
-            || (!snapshot.ready
-                && (snapshot.has_played
-                    || snapshot.state.is_some()
-                    || snapshot.position.is_some()
-                    || snapshot.position_ms.is_some()
-                    || snapshot.playback_rate.is_some()
-                    || snapshot.duration.is_some()))
+            || (!snapshot.ready && has_playback)
+            || ((!snapshot.ready || snapshot.error.is_some() || snapshot.source_replayed)
+                && (snapshot.volume.is_some() || snapshot.muted.is_some()))
+            || (snapshot.source_replayed
+                && (!snapshot.ready
+                    || snapshot.video_id.is_none()
+                    || has_playback
+                    || snapshot.error.is_some()))
             || (snapshot.state == Some(1) && (!snapshot.has_played || snapshot.ended))
             || (snapshot.ended && !snapshot.has_played)
         {
@@ -283,6 +390,239 @@ mod tests {
             .replace("\"state\":1", "\"state\":0")
             .replace("\"ended\":false", "\"ended\":true");
         assert!(Snapshot::parse(&ended).unwrap().ended);
+    }
+
+    #[test]
+    fn validates_optional_video_identity_in_snapshots() {
+        let with_id = |json: &str, id: Option<&str>| {
+            let mut snapshot: serde_json::Value = serde_json::from_str(json).unwrap();
+            snapshot["videoId"] = serde_json::json!(id);
+            snapshot.to_string()
+        };
+        assert_eq!(Snapshot::parse(PLAYING).unwrap().video_id, None);
+        assert_eq!(
+            Snapshot::parse(&with_id(PLAYING, None)).unwrap().video_id,
+            None
+        );
+        assert_eq!(
+            Snapshot::parse(&with_id(PLAYING, Some(ID)))
+                .unwrap()
+                .video_id
+                .as_deref(),
+            Some(ID)
+        );
+        assert!(Snapshot::parse(&with_id(STARTING, Some(ID))).is_none());
+        assert!(Snapshot::parse(&with_id(PLAYING, Some("M7lc1UVf!VE"))).is_none());
+        assert!(Snapshot::parse(&with_id(PLAYING, Some("https://youtu.be/M7lc1UVf-VE"))).is_none());
+    }
+
+    #[test]
+    fn accepts_replay_signal_only_with_ready_identity_and_no_stale_state() {
+        assert!(!Snapshot::parse(PLAYING).unwrap().source_replayed);
+
+        let replay = serde_json::json!({
+            "ready": true,
+            "videoId": ID,
+            "sourceReplayed": true,
+            "hasPlayed": false,
+            "state": null,
+            "position": null,
+            "duration": null,
+            "ended": false,
+            "error": null,
+            "blocked": false,
+        });
+        assert!(
+            Snapshot::parse(&replay.to_string())
+                .unwrap()
+                .source_replayed
+        );
+        for (key, value) in [
+            ("videoId", serde_json::Value::Null),
+            ("ready", serde_json::json!(false)),
+            ("state", serde_json::json!(2)),
+            ("hasPlayed", serde_json::json!(true)),
+            ("position", serde_json::json!(1)),
+            ("duration", serde_json::json!(20)),
+            ("playbackRate", serde_json::json!(1.0)),
+            ("error", serde_json::json!(100)),
+        ] {
+            let mut invalid = replay.clone();
+            invalid[key] = value;
+            assert!(Snapshot::parse(&invalid.to_string()).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn validates_and_renders_local_audio_output() {
+        let configured = AudioOutput {
+            volume: Some(0),
+            muted: Some(false),
+        };
+        assert_eq!(
+            serde_json::from_str::<AudioOutput>(r#"{"volume":0,"muted":false}"#).unwrap(),
+            configured,
+        );
+        assert_eq!(
+            serde_json::to_string(&configured).unwrap(),
+            r#"{"volume":0,"muted":false}"#,
+        );
+        assert_eq!(
+            serde_json::from_str::<AudioOutput>("{}").unwrap(),
+            AudioOutput::default()
+        );
+        assert!(serde_json::from_str::<AudioOutput>(r#"{"volume":101}"#).is_err());
+        assert!(serde_json::from_str::<AudioOutput>(r#"{"muted":true,"extra":0}"#).is_err());
+        assert!(
+            serde_json::to_string(&AudioOutput {
+                volume: Some(101),
+                muted: None
+            })
+            .is_err()
+        );
+
+        let page = Page::new(ID).unwrap();
+        let html = page.html(WRAPPER, configured).unwrap();
+        assert!(html.contains(r#"data-initial-volume="0" data-initial-muted="false""#));
+        let html = page.html(WRAPPER, AudioOutput::default()).unwrap();
+        assert!(html.contains(r#"data-initial-volume="" data-initial-muted="""#));
+        assert!(
+            page.html(
+                WRAPPER,
+                AudioOutput {
+                    volume: Some(101),
+                    muted: None
+                }
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn builds_bounded_audio_output_commands() {
+        assert_eq!(
+            Action::SetVolume(0).command().unwrap(),
+            "window.pearIframePlayer?.setVolume(0)"
+        );
+        assert_eq!(
+            Action::SetVolume(100).command().unwrap(),
+            "window.pearIframePlayer?.setVolume(100)"
+        );
+        assert!(Action::SetVolume(101).command().is_err());
+        assert_eq!(
+            Action::SetMuted(false).command().unwrap(),
+            "window.pearIframePlayer?.setMuted(false)"
+        );
+    }
+
+    #[test]
+    fn builds_only_finite_bounded_playback_rate_commands() {
+        assert_eq!(
+            Action::SetRate(0.25).command().unwrap(),
+            "window.pearIframePlayer?.setRate(0.25)"
+        );
+        assert_eq!(
+            Action::SetRate(4.0).command().unwrap(),
+            "window.pearIframePlayer?.setRate(4)"
+        );
+        for rate in [0.249, 4.001, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(Action::SetRate(rate).command().is_err());
+        }
+    }
+
+    #[test]
+    fn parses_only_bounded_distinct_playback_rates_when_available() {
+        let mut snapshot: serde_json::Value = serde_json::from_str(STARTING).unwrap();
+        assert!(
+            Snapshot::parse(&snapshot.to_string())
+                .unwrap()
+                .playback_rates
+                .is_none()
+        );
+        snapshot["playbackRates"] = serde_json::json!([0.25, 1, 4]);
+        assert!(Snapshot::parse(&snapshot.to_string()).is_none());
+        snapshot["ready"] = serde_json::json!(true);
+        let rates = Snapshot::parse(&snapshot.to_string()).unwrap();
+        assert!(!rates.has_played);
+        assert_eq!(rates.playback_rates.as_deref(), Some(&[0.25, 1.0, 4.0][..]));
+        assert!(rates.playback_rate.is_none());
+        for (key, value) in [
+            ("blocked", serde_json::json!(true)),
+            ("error", serde_json::json!(100)),
+            ("playbackRates", serde_json::json!([])),
+            ("playbackRates", serde_json::json!([0.249, 1])),
+            ("playbackRates", serde_json::json!([1, 4.001])),
+            ("playbackRates", serde_json::json!([1, 0.5])),
+            ("playbackRates", serde_json::json!([1, 1])),
+            (
+                "playbackRates",
+                serde_json::json!(
+                    (0..17)
+                        .map(|step| 0.25 + f64::from(step) / 8.0)
+                        .collect::<Vec<_>>()
+                ),
+            ),
+        ] {
+            let mut invalid = snapshot.clone();
+            invalid[key] = value;
+            assert!(Snapshot::parse(&invalid.to_string()).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn accepts_full_playback_rate_lists_alongside_existing_telemetry() {
+        let mut snapshot: serde_json::Value = serde_json::from_str(PLAYING).unwrap();
+        let rates: Vec<_> = (1..=16)
+            .map(|offset| 0.25 + f64::from(offset) * f64::EPSILON)
+            .collect();
+        snapshot["playbackRates"] = serde_json::json!(rates);
+        snapshot["videoId"] = serde_json::json!(ID);
+        snapshot["sourceReplayed"] = serde_json::json!(false);
+        snapshot["positionMs"] = serde_json::json!(172_345);
+        snapshot["playbackRate"] = serde_json::json!(0.25);
+        snapshot["volume"] = serde_json::json!(37);
+        snapshot["muted"] = serde_json::json!(false);
+        let sampled = Snapshot::parse(&snapshot.to_string()).unwrap();
+        assert_eq!(sampled.playback_rates.unwrap().len(), 16);
+        assert_eq!(sampled.playback_rate, Some(0.25));
+        assert_eq!(sampled.position_ms, Some(172_345));
+    }
+
+    #[test]
+    fn parses_audio_output_without_first_play_and_rejects_stale_output() {
+        let mut snapshot: serde_json::Value = serde_json::from_str(STARTING).unwrap();
+        let old = Snapshot::parse(&snapshot.to_string()).unwrap();
+        assert_eq!((old.volume, old.muted), (None, None));
+        snapshot["volume"] = serde_json::json!(37);
+        snapshot["muted"] = serde_json::json!(false);
+        assert!(Snapshot::parse(&snapshot.to_string()).is_none());
+        snapshot["ready"] = serde_json::json!(true);
+        let audio = Snapshot::parse(&snapshot.to_string()).unwrap();
+        assert!(!audio.has_played);
+        assert_eq!((audio.volume, audio.muted), (Some(37), Some(false)));
+        snapshot["error"] = serde_json::json!(100);
+        assert!(Snapshot::parse(&snapshot.to_string()).is_none());
+        snapshot["error"] = serde_json::Value::Null;
+        snapshot["volume"] = serde_json::json!(101);
+        assert!(Snapshot::parse(&snapshot.to_string()).is_none());
+    }
+
+    #[test]
+    fn builds_advance_commands_only_for_distinct_valid_ids() {
+        let command = |from: &str, to: &str| {
+            Action::Advance {
+                from: from.into(),
+                to: to.into(),
+            }
+            .command()
+        };
+        assert_eq!(
+            command(ID, "jNQXAC9IVRw").unwrap(),
+            r#"window.pearIframePlayer?.advance("M7lc1UVf-VE","jNQXAC9IVRw")"#,
+        );
+        assert!(command("not a video", ID).is_err());
+        assert!(command(ID, "jNQXAC9IVR\"").is_err());
+        assert!(command(ID, ID).is_err());
     }
 
     #[test]

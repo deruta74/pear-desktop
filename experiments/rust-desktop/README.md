@@ -39,7 +39,13 @@ cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-d
 
 Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. Both players share the local queue and playlists. The experimental player shows saved titles and looks up details for the selected video.
 
-On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. On Ubuntu ARM64, the same video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
+With the experimental player active, **View → Play Next Automatically** can advance the queue when the current video ends and the window is in the foreground. The option starts off. If YouTube blocks the transition, Pear opens the next video for you to start with its Play button.
+
+**Volume controls** can adjust the embedded player before playback when YouTube exposes volume and mute. Pear remembers changes confirmed by the player and reapplies them when it opens another video.
+
+**View → Playback Speed** lists the speeds supported for the current video.
+
+On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. Automatic advance started the next video in the same player and saved it as the current item. On Ubuntu ARM64, the example video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
 
 ### Synced lyrics
 
@@ -49,7 +55,9 @@ In `--iframe-player` on macOS or Linux, start the video and open **Lyrics**. Che
 
 Pear shows the title, channel and artwork for the selected video when YouTube supplies them. The public oEmbed lookup works without an API key.
 
-To enable **Search**, store a developer key restricted to YouTube Data API v3 in a private text file and set `PEAR_YOUTUBE_API_KEY_FILE` to that file's path. Pear then uses the Data API for video details and music search. Search requests use the configured project's API quota and run when you submit a query. Lookup results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
+To enable in-app search, store a developer key restricted to YouTube Data API v3 in a private text file and set `PEAR_YOUTUBE_API_KEY_FILE` to that file's path. Pear then uses the Data API for video details and music search. Search requests use the configured project's API quota and run when you submit a query. Lookup results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
+
+Without a key, **Search** opens the submitted query in YouTube Music in the system browser. **File → Open in YouTube Music** opens the currently selected video there.
 
 ## Run the queue on Linux or Windows
 

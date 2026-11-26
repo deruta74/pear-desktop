@@ -51,6 +51,9 @@ pub enum Command {
     Search {
         query: String,
     },
+    OpenMusicSearch {
+        query: String,
+    },
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     FindLyrics {
         title: String,
@@ -63,6 +66,14 @@ pub enum Command {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     Seek {
         position: u32,
+    },
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    SetVolume {
+        volume: u8,
+    },
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    SetMuted {
+        muted: bool,
     },
     #[serde(untagged)]
     Playlist(playlists::Command),
@@ -202,11 +213,16 @@ impl Library {
             | Command::OpenLegalLink { .. }
             | Command::OpenBrowser {}
             | Command::Search { .. }
+            | Command::OpenMusicSearch { .. }
             | Command::Playlist(_) => {
                 return Ok(false);
             }
             #[cfg(any(target_os = "macos", target_os = "linux"))]
-            Command::SetPlayback { .. } | Command::Seek { .. } | Command::FindLyrics { .. } => {
+            Command::SetPlayback { .. }
+            | Command::Seek { .. }
+            | Command::SetVolume { .. }
+            | Command::SetMuted { .. }
+            | Command::FindLyrics { .. } => {
                 return Ok(false);
             }
         }
@@ -440,15 +456,20 @@ fn save_state(path: &Path, state: &QueueState) -> io::Result<()> {
 }
 
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    write_atomic_with(path, |file| file.write_all(bytes))
+}
+
+fn write_atomic_with(
+    path: &Path,
+    write: impl FnOnce(&mut File) -> io::Result<()>,
+) -> io::Result<()> {
     let directory = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     fs::create_dir_all(directory)?;
     let (temp_path, mut temp_file) = create_temp_file(directory)?;
-    let written = temp_file
-        .write_all(bytes)
-        .and_then(|()| temp_file.sync_all());
+    let written = write(&mut temp_file).and_then(|()| temp_file.sync_all());
     drop(temp_file);
 
     let result = written.and_then(|()| fs::rename(&temp_path, path));

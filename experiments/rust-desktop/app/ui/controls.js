@@ -16,6 +16,13 @@ const previous = document.getElementById('previous');
 const playToggle = document.getElementById('play-toggle');
 const next = document.getElementById('next');
 const openBrowser = document.getElementById('open-browser');
+const audioToggle = document.getElementById('show-audio-controls');
+const audioControls = document.getElementById('audio-controls');
+const audioProblem = document.getElementById('audio-problem');
+const volumeControl = document.getElementById('volume-control');
+const volume = document.getElementById('playback-volume');
+const volumeValue = document.getElementById('volume-value');
+const mute = document.getElementById('playback-mute');
 const transportHint = document.getElementById('transport-hint');
 const timeline = document.getElementById('transport-timeline');
 const seek = document.getElementById('playback-position');
@@ -49,10 +56,13 @@ let renderedTransport = null;
 let activeView = 'queue';
 let viewSwitcher = null;
 let renderedCatalog = null;
+let renderedBrowserSearch = false;
 let catalogView = null;
 let catalogSearchError = '';
+let browserSearchError = '';
 let catalogAddFeedback = null;
 let renderedLyrics = null;
+let lyricsSwitchingActive = false;
 let lyricsView = null;
 let lyricsError = '';
 let renderedLibrary = null;
@@ -64,6 +74,8 @@ let lyricCueDeadline = null;
 let pearPanelVisible = true;
 let focusAddOnReady = false;
 let editingPosition = false;
+let audioExpanded = false;
+let editingVolume = false;
 let renderedLegal = null;
 let legalCommandProblem = '';
 let focusBeforeLegal = null;
@@ -84,12 +96,18 @@ function commandProblem(message, context) {
     updateLyrics(renderedLyrics);
     return;
   }
+  if (context === 'audio') {
+    audioProblem.textContent = message;
+    updateAudioOutput();
+    return;
+  }
   if (context === 'library') {
     libraryFeedback = { message, error: true };
     updateLibrary(renderedLibrary);
     return;
   }
-  if (context === 'search') catalogSearchError = message;
+  if (context === 'browser-search') browserSearchError = message;
+  else if (context === 'search') catalogSearchError = message;
   else catalogAddFeedback = { message, error: true };
   updateCatalog(renderedCatalog);
 }
@@ -134,16 +152,18 @@ function send(command, context = 'queue') {
     return;
 
   if (context === 'legal') legalCommandProblem = '';
+  if (context === 'browser-search') browserSearchError = '';
   if (context === 'search') catalogSearchError = '';
   if (context === 'search' || context === 'result-add')
     catalogAddFeedback = null;
   if (context === 'lyrics') lyricsError = '';
   if (context === 'library') libraryFeedback = null;
+  if (context === 'audio') audioProblem.textContent = '';
   const sequence = nextSequence;
   const message = JSON.stringify({ sequence, command });
   if (message.length > 4096 || encoder.encode(message).length > 4096) {
     commandProblem(
-      context === 'search'
+      context === 'search' || context === 'browser-search'
         ? 'Enter a search of up to 160 characters.'
         : context === 'lyrics'
           ? 'Enter a track and artist of up to 160 characters each.'
@@ -191,6 +211,7 @@ function send(command, context = 'queue') {
   if (catalogView) updateCatalog(renderedCatalog);
   if (lyricsView) updateLyrics(renderedLyrics);
   if (libraryView) updateLibrary(renderedLibrary);
+  updateAudioOutput();
 }
 
 function updateLegalControls() {
@@ -216,6 +237,7 @@ function updateLegal(legal) {
     const active = document.activeElement;
     focusBeforeLegal = panel.contains(active) ? active : null;
     editingPosition = false;
+    editingVolume = false;
     cancelLyricsClock();
   }
   if (!visible) legalCommandProblem = '';
@@ -247,6 +269,62 @@ function updateElapsed() {
   const accessibleTime = `${time} of ${duration.textContent}`;
   if (seek.getAttribute('aria-valuetext') !== accessibleTime) {
     seek.setAttribute('aria-valuetext', accessibleTime);
+  }
+}
+
+function updateVolumeValue() {
+  const percent = `${volume.valueAsNumber}%`;
+  if (volumeValue.textContent === percent) return;
+  volumeValue.textContent = percent;
+  volume.setAttribute('aria-valuetext', percent);
+}
+
+function updateAudioOutput() {
+  const transport = renderedTransport;
+  const level = transport?.volume;
+  const hasVolume = Number.isInteger(level) && level >= 0 && level <= 100;
+  const hasMute = typeof transport?.muted === 'boolean';
+  const canAdjust = Boolean(
+    transport?.ready && !transport.blocked && !playerProblemText.textContent,
+  );
+  const active = document.activeElement;
+
+  audioToggle.hidden = !hasVolume && !hasMute;
+  audioControls.hidden = audioToggle.hidden || !audioExpanded;
+  audioToggle.parentElement.toggleAttribute('data-audio', !audioToggle.hidden);
+  audioControls.parentElement.toggleAttribute(
+    'data-paired',
+    !audioControls.hidden && !timeline.hidden,
+  );
+  audioToggle.setAttribute('aria-expanded', String(!audioControls.hidden));
+  volumeControl.hidden = !hasVolume;
+  mute.hidden = !hasMute;
+  volume.disabled = !canAdjust || !hasVolume;
+  mute.disabled = !canAdjust || !hasMute;
+  const busy = Boolean(pending);
+  volume.setAttribute('aria-disabled', String(volume.disabled || busy));
+  mute.setAttribute('aria-disabled', String(mute.disabled || busy));
+  if (hasMute) mute.setAttribute('aria-pressed', String(transport.muted));
+
+  if (volume.disabled || pending) editingVolume = false;
+  if (hasVolume && !editingVolume) {
+    const preview =
+      volume.disabled || pending?.command.type !== 'set_volume'
+        ? level
+        : pending.command.volume;
+    if (volume.valueAsNumber !== preview) volume.valueAsNumber = preview;
+    updateVolumeValue();
+  }
+
+  const lostFocus =
+    (active === volume && (volume.disabled || audioControls.hidden)) ||
+    (active === mute && (mute.disabled || audioControls.hidden)) ||
+    (active === audioToggle && audioToggle.hidden);
+  if (lostFocus && !panel.hidden) {
+    const fallback = openBrowser.disabled ? primaryInput() : openBrowser;
+    (audioToggle.hidden ? fallback : audioToggle).focus({
+      preventScroll: true,
+    });
   }
 }
 
@@ -305,6 +383,7 @@ function updateTransport() {
     const fallback = openBrowser.disabled ? primaryInput() : openBrowser;
     (canPlay ? playToggle : fallback).focus({ preventScroll: true });
   }
+  updateAudioOutput();
 }
 
 window.renderPearTransport = (transport) => {
@@ -607,6 +686,7 @@ function mountCatalog(query) {
   const [searchForm, results] =
     catalogTemplate.content.cloneNode(true).children;
   const input = searchForm.querySelector('#catalog-query');
+  const label = searchForm.querySelector('#catalog-query-label');
   const submit = searchForm.querySelector('button');
   const feedback = searchForm.querySelector('#catalog-feedback');
   const addFeedback = searchForm.querySelector('#catalog-add-feedback');
@@ -615,10 +695,20 @@ function mountCatalog(query) {
     event.preventDefault();
     if (pending) return;
     const query = input.value.trim();
+    const context = renderedBrowserSearch ? 'browser-search' : 'search';
     if (!query) {
       catalogAddFeedback = null;
-      commandProblem('Enter a search term.', 'search');
+      commandProblem('Enter a search term.', context);
       input.focus();
+      return;
+    }
+    if (renderedBrowserSearch) {
+      if ([...query].length > 160) {
+        commandProblem('Enter a search of up to 160 characters.', context);
+        input.focus();
+        return;
+      }
+      send({ type: 'open_music_search', query }, context);
       return;
     }
     input.value = query;
@@ -628,6 +718,7 @@ function mountCatalog(query) {
   return {
     form: searchForm,
     query: input,
+    label,
     submit,
     feedback,
     addFeedback,
@@ -669,11 +760,15 @@ function createCatalogResult({ id, title, channel }) {
   return row;
 }
 
-function updateCatalog(catalog) {
+function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   renderedCatalog = catalog ?? null;
+  renderedBrowserSearch = !catalog && browserSearch === true;
+  if (!renderedBrowserSearch) browserSearchError = '';
   if (!catalog) {
     catalogSearchError = '';
     catalogAddFeedback = null;
+  }
+  if (!catalog && !renderedBrowserSearch) {
     if (catalogView) {
       const wasFocused = removeView(catalogView.form, catalogView.results);
       catalogView = null;
@@ -682,10 +777,19 @@ function updateCatalog(catalog) {
     return false;
   }
 
-  catalogView ??= mountCatalog(catalog.query);
+  catalogView ??= mountCatalog(catalog?.query ?? '');
   const view = catalogView;
-  const searching = catalog.pending || pending?.command.type === 'search';
-  const results = searching ? [] : catalog.results;
+  const label = renderedBrowserSearch
+    ? 'Search YouTube Music'
+    : 'Search YouTube';
+  const action = renderedBrowserSearch ? 'Open in browser' : 'Search';
+  view.form.toggleAttribute('data-browser-search', renderedBrowserSearch);
+  if (view.label.textContent !== label) view.label.textContent = label;
+  if (view.submit.textContent !== action) view.submit.textContent = action;
+
+  const searching =
+    catalog && (catalog.pending || pending?.context === 'search');
+  const results = searching ? [] : (catalog?.results ?? []);
   if (
     results.length !== view.renderedResults.length ||
     results.some((result, index) => {
@@ -710,15 +814,20 @@ function updateCatalog(catalog) {
 
   let message = '';
   let error = false;
-  if (catalogSearchError) {
-    message = catalogSearchError;
+  const searchError = renderedBrowserSearch
+    ? browserSearchError
+    : catalogSearchError;
+  if (searchError) {
+    message = searchError;
     error = true;
+  } else if (renderedBrowserSearch && pending?.context === 'browser-search') {
+    message = 'Opening YouTube Music…';
   } else if (searching) {
     message = 'Searching YouTube…';
-  } else if (catalog.problem) {
+  } else if (catalog?.problem) {
     message = catalog.problem;
     error = true;
-  } else if (catalog.query) {
+  } else if (catalog?.query) {
     message = results.length
       ? `${results.length} ${results.length === 1 ? 'video' : 'videos'} found.`
       : 'No videos found. Try a different search.';
@@ -1034,7 +1143,11 @@ function updateLibrary(library, successfulCommand) {
 }
 
 function hasLyricsDuration(lyrics) {
-  return Number.isFinite(lyrics?.duration) && lyrics.duration > 0;
+  return (
+    !lyricsSwitchingActive &&
+    Number.isFinite(lyrics?.duration) &&
+    lyrics.duration > 0
+  );
 }
 
 function mountLyrics() {
@@ -1133,7 +1246,7 @@ function updateLyrics(lyrics, selectionChanged = false) {
     lyrics.pending ||
     (pending?.context === 'lyrics' &&
       pending.current === renderedState?.current);
-  const result = finding ? null : lyrics.result;
+  const result = finding || lyricsSwitchingActive ? null : lyrics.result;
   const resultKey = result ? JSON.stringify(result) : '';
   if (selectionChanged || view.resultKey !== resultKey) {
     view.gap.remove();
@@ -1159,7 +1272,8 @@ function updateLyrics(lyrics, selectionChanged = false) {
   );
   const problem = lyricsError || (!finding && lyrics.problem);
   let message = '';
-  if (problem) message = problem;
+  if (lyricsSwitchingActive) message = 'Opening the next video…';
+  else if (problem) message = problem;
   else if (finding) message = 'Finding lyrics…';
   else if (!hasDuration) message = 'Waiting for video duration…';
   else if (result?.kind === 'instrumental') message = 'Instrumental track.';
@@ -1328,7 +1442,9 @@ window.renderPearState = (
     metadata,
     metadataProblem,
     catalog,
+    browserSearch,
     lyrics,
+    lyricsSwitching,
     savedPlaylists,
     preferencesProblem,
     legal,
@@ -1444,6 +1560,8 @@ window.renderPearState = (
 
   if (context === 'search') {
     catalogSearchError = error ?? '';
+  } else if (context === 'browser-search') {
+    browserSearchError = error ?? '';
   } else if (context === 'result-add') {
     catalogAddFeedback = {
       message: error || confirmation,
@@ -1453,17 +1571,27 @@ window.renderPearState = (
     lyricsError = acknowledged.current === current ? (error ?? '') : '';
   } else if (context === 'library') {
     libraryFeedback = { message: error || confirmation, error: Boolean(error) };
+  } else if (context === 'audio') {
+    audioProblem.textContent = error ?? '';
   } else if (context !== 'legal' && (acknowledged || error !== null)) {
     errorText.textContent = error ?? '';
   }
-  if (context !== 'legal' || command.type === 'accept_legal' || notice) {
+  if (
+    (context !== 'legal' &&
+      context !== 'audio' &&
+      context !== 'browser-search') ||
+    command?.type === 'accept_legal' ||
+    notice
+  ) {
     statusText.textContent = [context === 'queue' ? confirmation : '', notice]
       .filter(Boolean)
       .join(' ');
   }
   if (selectionChanged) renderedTransport = null;
-  if (selectionChanged || playerProblem) cancelLyricsClock();
-  const catalogWasFocused = updateCatalog(catalog);
+  lyricsSwitchingActive = Boolean(lyricsSwitching);
+  if (selectionChanged || playerProblem || lyricsSwitchingActive)
+    cancelLyricsClock();
+  const catalogWasFocused = updateCatalog(catalog, browserSearch === true);
   const lyricsWasFocused = updateLyrics(lyrics, selectionChanged);
   const libraryWasFocused = updateLibrary(
     savedPlaylists,
@@ -1483,6 +1611,7 @@ window.renderPearState = (
     preferencesProblemText.textContent = preferencesProblem ?? '';
   }
   if (selectionChanged || problemChanged) updateTransport();
+  else if (acknowledged) updateAudioOutput();
   if (restoreFocus) {
     const previousFocus = focusBeforeLegal;
     focusBeforeLegal = null;
@@ -1544,6 +1673,50 @@ playToggle.addEventListener('click', () => {
 });
 next.addEventListener('click', () => send({ type: 'next' }));
 openBrowser.addEventListener('click', () => send({ type: 'open_browser' }));
+
+audioToggle.addEventListener('click', () => {
+  audioExpanded = !audioExpanded;
+  if (!audioExpanded) editingVolume = false;
+  updateAudioOutput();
+});
+audioControls.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || event.isComposing) return;
+  event.preventDefault();
+  audioExpanded = false;
+  editingVolume = false;
+  updateAudioOutput();
+  audioToggle.focus();
+});
+mute.addEventListener('click', () => {
+  if (!mute.disabled)
+    send({ type: 'set_muted', muted: !renderedTransport.muted }, 'audio');
+});
+volume.addEventListener('input', () => {
+  if (volume.disabled || pending) {
+    updateAudioOutput();
+    return;
+  }
+  editingVolume = true;
+  updateVolumeValue();
+});
+volume.addEventListener('change', () => {
+  editingVolume = false;
+  if (volume.disabled || pending) {
+    updateAudioOutput();
+    return;
+  }
+  if (volume.valueAsNumber !== renderedTransport.volume) {
+    send({ type: 'set_volume', volume: volume.valueAsNumber }, 'audio');
+  }
+});
+function cancelVolumePreview() {
+  if (!editingVolume) return;
+  editingVolume = false;
+  updateAudioOutput();
+}
+volume.addEventListener('pointercancel', cancelVolumePreview);
+volume.addEventListener('blur', cancelVolumePreview);
+window.addEventListener('blur', cancelVolumePreview);
 
 seek.addEventListener('pointerdown', () => {
   editingPosition = true;

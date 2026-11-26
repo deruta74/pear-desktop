@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en" data-wrapper-url="{WRAPPER_URL}">
+<html lang="en" data-wrapper-url="{WRAPPER_URL}" data-initial-volume="{INITIAL_VOLUME}" data-initial-muted="{INITIAL_MUTED}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-KyCnlAcjuii3zygZ4DBOURs31MWteJxjgLmGarnF2Tg=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-8XD95nd53djct/0SlX/RATT+7qB6Yy1oV7m/F39bdjs=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
   <title>YouTube player</title>
   <style>
     html, body { width: 100%; height: 100%; margin: 0; background: #000; }
@@ -24,6 +24,7 @@
       if (!isWrapper()) return;
 
       const frame = document.getElementById('player');
+      const initialSrc = frame.src;
       const maxSeconds = 31 * 24 * 60 * 60;
       const states = [-1, 0, 1, 2, 3, 5];
       const errorCodes = [2, 5, 100, 101, 150, 153];
@@ -34,6 +35,11 @@
       let ended = false;
       let error = null;
       let blocked = false;
+      let playedVideoId = null;
+      let pendingAdvance = null;
+      let volumeSetterFailed = false;
+      let muteSetterFailed = false;
+      let rateSetterFailed = false;
 
       const fail = () => { error ??= -1; };
 
@@ -48,17 +54,19 @@
         if (!isWrapper() || player) return;
         try {
           player = new YT.Player(frame, { events: {
-            onReady: () => { ready = true; },
-            onStateChange: ({ data }) => {
-              if (!states.includes(data)) return;
-              state = data;
-              if (data === 1) {
-                hasPlayed = true;
-                ended = false;
-                blocked = false;
+            onReady: (event) => {
+              if (!isWrapper() || ready) return;
+              const target = event?.target ?? player;
+              const { initialVolume, initialMuted } = document.documentElement.dataset;
+              if (/^(?:100|[1-9]?[0-9])$/.test(initialVolume)) {
+                optionalValue(() => target.setVolume(Number(initialVolume)));
               }
-              if (data === 0 && hasPlayed) ended = true;
+              if (initialMuted === 'true' || initialMuted === 'false') {
+                optionalValue(() => applyMuted(target, initialMuted === 'true'));
+              }
+              ready = true;
             },
+            onStateChange: ({ data }) => observeState(data),
             onError: ({ data }) => { error ??= errorCodes.includes(data) ? data : -1; },
             onAutoplayBlocked: () => { blocked = true; },
           }});
@@ -67,34 +75,160 @@
         }
       };
 
+      function validVideoId(id) {
+        return typeof id === 'string' && id.length === 11 && !/[^A-Za-z0-9_-]/.test(id);
+      }
+
+      function reportedVideoId() {
+        try {
+          const url = new URL(player.getVideoUrl());
+          if (url.origin !== 'https://www.youtube.com' || url.pathname !== '/watch'
+              || url.username || url.password) return null;
+          const ids = url.searchParams.getAll('v');
+          return ids.length === 1 && validVideoId(ids[0]) ? ids[0] : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function observeState(data, videoId = data === 1 ? reportedVideoId() : null) {
+        if (!states.includes(data)) return;
+        if (pendingAdvance !== null) {
+          if (data !== 1 || videoId !== pendingAdvance.from) pendingAdvance.sourcePlayback = null;
+          // Events identify the player, so only the requested video can end the handoff.
+          if (data !== 1 || videoId !== pendingAdvance.to) return;
+          pendingAdvance = null;
+        }
+        state = data;
+        if (data === 1) {
+          hasPlayed = true;
+          playedVideoId = videoId;
+          ended = false;
+          blocked = false;
+        }
+        if (data === 0 && hasPlayed) ended = true;
+      }
+
+      function frameVisible() {
+        if (!frame.isConnected || document.visibilityState !== 'visible') return false;
+        const box = frame.getBoundingClientRect();
+        const width = Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+        const height = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0));
+        return box.width >= 200 && box.height >= 200 && width * height > box.width * box.height / 2;
+      }
+
       function boundedSeconds(value) {
         return Number.isFinite(value) && value >= 0 && value <= maxSeconds ? value : null;
       }
 
+      function validVolume(value) {
+        return Number.isInteger(value) && value >= 0 && value <= 100;
+      }
+
+      function validRate(value) {
+        return Number.isFinite(value) && value >= 0.25 && value <= 4;
+      }
+
+      function optionalValue(readOrSet) {
+        try {
+          return readOrSet();
+        } catch {
+          // Optional player methods can fail independently of playback.
+          return null;
+        }
+      }
+
+      function applyMuted(target, muted) {
+        if (muted) target.mute();
+        else target.unMute();
+      }
+
+      function canSetVolume() {
+        return !volumeSetterFailed && optionalValue(() => typeof player.setVolume === 'function') === true;
+      }
+
+      function canSetMuted() {
+        return !muteSetterFailed && optionalValue(() =>
+          typeof player.mute === 'function' && typeof player.unMute === 'function') === true;
+      }
+
+      function availableRates() {
+        return optionalValue(() => {
+          if (rateSetterFailed || typeof player.setPlaybackRate !== 'function') return null;
+          const values = player.getAvailablePlaybackRates();
+          if (!Array.isArray(values) || values.length === 0 || values.length > 16) return null;
+          const rates = new Set();
+          for (let index = 0, length = values.length; index < length; index += 1) {
+            const rate = values[index];
+            if (!validRate(rate)) return null;
+            rates.add(rate);
+          }
+          return [...rates].sort((first, second) => first - second);
+        });
+      }
+
+      function observeAdvance(videoId) {
+        const pending = pendingAdvance;
+        const playing = (videoId === pending.from || videoId === pending.to)
+          && player.getPlayerState() === 1;
+        if (playing && videoId === pending.to) {
+          // The identity may arrive after the state-change event.
+          observeState(1, videoId);
+          return false;
+        }
+
+        const position = playing ? boundedSeconds(player.getCurrentTime()) : null;
+        if (position === null) {
+          pending.sourcePlayback = null;
+          return false;
+        }
+        const previous = pending.sourcePlayback;
+        // An isolated PLAYING observation can belong to a stale event.
+        const replayed = previous !== null && position >= previous.position
+          && (previous.replayed || position - previous.position >= 0.1);
+        pending.sourcePlayback = { position, replayed };
+        return replayed;
+      }
+
       function snapshot() {
         if (!isWrapper()) return null;
+        const videoId = ready ? reportedVideoId() : null;
         let position = null;
         let positionMs = null;
         let playbackRate = null;
+        let playbackRates = null;
         let duration = null;
+        let volume = null;
+        let muted = null;
+        let sourceReplayed = false;
         if (ready && error === null) {
           try {
-            const length = boundedSeconds(player.getDuration());
-            const time = boundedSeconds(player.getCurrentTime());
-            const rate = player.getPlaybackRate();
-            if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) playbackRate = rate;
-            if (length > 0) duration = Math.ceil(length);
-            if (time !== null) {
-              positionMs = Math.floor(Math.min(time, duration ?? maxSeconds) * 1000);
-              position = Math.floor(positionMs / 1000);
+            if (pendingAdvance !== null) sourceReplayed = observeAdvance(videoId);
+            if (pendingAdvance === null) {
+              if (state === 1 && videoId !== null) playedVideoId = videoId;
+              const length = boundedSeconds(player.getDuration());
+              const time = boundedSeconds(player.getCurrentTime());
+              const rate = optionalValue(() => player.getPlaybackRate());
+              if (validRate(rate)) playbackRate = rate;
+              if (!blocked) playbackRates = availableRates();
+              if (length > 0) duration = Math.ceil(length);
+              if (time !== null) {
+                positionMs = Math.floor(Math.min(time, duration ?? maxSeconds) * 1000);
+                position = Math.floor(positionMs / 1000);
+              }
+              const audioVolume = canSetVolume() ? optionalValue(() => player.getVolume()) : null;
+              const audioMuted = canSetMuted() ? optionalValue(() => player.isMuted()) : null;
+              if (validVolume(audioVolume)) volume = audioVolume;
+              if (typeof audioMuted === 'boolean') muted = audioMuted;
             }
           } catch {
             fail();
           }
         }
         return {
-          ready, hasPlayed: ready && hasPlayed, state: ready ? state : null,
-          position, positionMs, playbackRate, duration, ended: ready && ended, error, blocked,
+          ready, videoId, sourceReplayed, hasPlayed: ready && hasPlayed, state: ready ? state : null,
+          volume, muted,
+          position, positionMs, playbackRate, playbackRates, duration, ended: ready && ended, error, blocked,
         };
       }
 
@@ -108,10 +242,53 @@
         }
       }
 
+      function optionalCommand(canApply, apply, onFailure) {
+        if (!isWrapper() || !ready || blocked || error !== null || pendingAdvance !== null || !canApply()) return;
+        try {
+          apply();
+        } catch {
+          onFailure();
+        }
+      }
+
+      function advance(from, to) {
+        if (!validVideoId(from) || !validVideoId(to) || from === to) return;
+        command(() => {
+          if (pendingAdvance !== null || !ended || state !== 0 || playedVideoId !== from
+              || reportedVideoId() !== from || player.getPlayerState() !== 0 || !frameVisible()
+              || player.getIframe() !== frame || frame.src !== initialSrc) return;
+          pendingAdvance = { from, to, sourcePlayback: null };
+          hasPlayed = false;
+          playedVideoId = null;
+          state = null;
+          ended = false;
+          player.loadVideoById({ videoId: to });
+        });
+      }
+
       Object.defineProperty(window, 'pearIframePlayer', { value: Object.freeze({
         snapshot,
+        advance,
         play: () => command(() => player.playVideo()),
         pause: () => command(() => player.pauseVideo()),
+        setVolume: (volume) => {
+          if (validVolume(volume)) optionalCommand(canSetVolume, () => player.setVolume(volume), () => {
+            volumeSetterFailed = true;
+          });
+        },
+        setMuted: (muted) => {
+          if (typeof muted === 'boolean') optionalCommand(canSetMuted, () => applyMuted(player, muted), () => {
+            muteSetterFailed = true;
+          });
+        },
+        setRate: (rate) => {
+          if (!validRate(rate)) return;
+          optionalCommand(
+            () => availableRates()?.includes(rate),
+            () => player.setPlaybackRate(rate),
+            () => { rateSetterFailed = true; },
+          );
+        },
         seek: (seconds) => {
           if (!Number.isInteger(seconds) || seconds < 0 || seconds > maxSeconds) return;
           command(() => {
