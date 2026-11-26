@@ -1,13 +1,17 @@
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(test)]
 mod tests;
 
 #[cfg(target_os = "linux")]
 pub(super) use linux::Backend;
+#[cfg(target_os = "macos")]
+pub(super) use macos::Backend;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub(super) enum Command {
     Play,
     Pause,
@@ -58,10 +62,10 @@ impl State {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub(super) struct Backend;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 impl Backend {
     pub(super) fn new(_dispatch: impl Fn(Request) + 'static) -> Option<Self> {
         None

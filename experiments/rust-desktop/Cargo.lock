@@ -1789,6 +1789,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-media-player"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85f2a98483f6e76313cb85a5a185eaa3cda86a177b13a8852d56cbd0085bf635"
+dependencies = [
+ "bitflags",
+ "block2",
+ "objc2",
+ "objc2-foundation",
+]
+
+[[package]]
 name = "objc2-quartz-core"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1986,6 +1998,7 @@ name = "pear-desktop-preview"
 version = "0.3.0"
 dependencies = [
  "base64",
+ "block2",
  "cpal",
  "fastrand",
  "getrandom",
@@ -1996,7 +2009,9 @@ dependencies = [
  "libc",
  "log",
  "muda",
+ "objc2",
  "objc2-foundation",
+ "objc2-media-player",
  "ogg",
  "open",
  "pear-preview-dsp",
