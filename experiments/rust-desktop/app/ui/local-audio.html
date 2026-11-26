@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pear Local Audio</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/local-audio.css" />
+    <script src="/local-eq.js" defer></script>
+    <script src="/local-audio.js" defer></script>
+  </head>
+  <body>
+    <main class="local-player">
+      <header class="local-header">
+        <h1>Local audio</h1>
+        <div class="local-import">
+          <button id="open" class="add-button" type="button">
+            Open audio files
+          </button>
+          <button id="open-folder" type="button">Open folder</button>
+        </div>
+      </header>
+      <p id="empty">
+        Open WAV, FLAC, MP3, Ogg Opus, or AAC-LC M4A files, or drop them into
+        this window.
+      </p>
+      <p id="opening" role="status" hidden></p>
+      <p id="problem" class="feedback error" role="alert"></p>
+      <section id="player" class="local-track" aria-label="Playback" hidden>
+        <h2 id="track" class="queue-title" dir="auto"></h2>
+        <p id="track-details" dir="auto" hidden></p>
+        <div class="transport-timeline">
+          <span id="elapsed" aria-hidden="true"></span>
+          <input
+            id="seek"
+            type="range"
+            min="0"
+            max="0"
+            step="1"
+            aria-label="Playback position"
+          />
+          <span id="duration" aria-hidden="true"></span>
+        </div>
+        <div class="local-actions">
+          <div class="local-transport">
+            <button
+              id="previous"
+              type="button"
+              aria-label="Previous track"
+              aria-disabled="true"
+            >
+              Previous
+            </button>
+            <button
+              id="play"
+              class="add-button"
+              type="button"
+              aria-keyshortcuts="Space"
+            >
+              Play
+            </button>
+            <button
+              id="next"
+              type="button"
+              aria-label="Next track"
+              aria-disabled="true"
+            >
+              Next
+            </button>
+          </div>
+          <div class="local-slider">
+            <label for="volume">Volume</label>
+            <input
+              id="volume"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value="100"
+            />
+            <output id="volume-value" for="volume" aria-hidden="true"
+              >100%</output
+            >
+          </div>
+        </div>
+        <div class="local-lyrics">
+          <button id="open-lyrics" type="button" aria-disabled="true">
+            Open lyrics file
+          </button>
+          <details id="local-lyrics" hidden>
+            <summary>Lyrics</summary>
+            <p id="lyrics-line" dir="auto"></p>
+          </details>
+        </div>
+      </section>
+      <section id="local-queue" class="local-queue" hidden>
+        <div class="local-header">
+          <h2 id="queue-heading">Queue</h2>
+          <div class="local-queue-tools">
+            <button id="shuffle-upcoming" type="button" aria-disabled="true">
+              Shuffle upcoming
+            </button>
+            <button id="clear-upcoming" type="button" disabled>
+              Clear upcoming
+            </button>
+            <label class="local-queue-repeat">
+              Repeat
+              <select id="queue-repeat" disabled>
+                <option value="off">Off</option>
+                <option value="queue">Queue</option>
+                <option value="track">Track</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <ol id="queue-tracks" role="list" aria-labelledby="queue-heading"></ol>
+      </section>
+      <details id="local-eq" class="local-effects local-eq" hidden>
+        <summary>Equalizer</summary>
+        <div class="local-eq-options">
+          <label
+            ><input id="eq-enabled" type="checkbox" /> Enable equalizer</label
+          >
+          <label>
+            Bands
+            <select id="eq-layout">
+              <option value="bands8">8 bands</option>
+              <option value="bands14">14 bands</option>
+              <option value="bands20">20 bands</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label
+            ><input id="eq-auto" type="checkbox" checked /> Auto preamp</label
+          >
+          <label>
+            Preamp (dB)
+            <input
+              id="eq-preamp"
+              type="number"
+              min="-24"
+              max="12"
+              step="0.1"
+              value="0"
+              disabled
+            />
+          </label>
+        </div>
+        <div id="eq-editor" hidden>
+          <canvas id="eq-graph" aria-label="Custom band positions"></canvas>
+          <button id="eq-add-band" type="button">Add band</button>
+        </div>
+        <div id="eq-bands"></div>
+        <form id="eq-save-preset" class="eq-preset-form">
+          <label for="eq-preset-name">Preset name</label>
+          <input
+            id="eq-preset-name"
+            type="text"
+            autocomplete="off"
+            maxlength="48"
+            required
+          />
+          <button type="submit">Save preset</button>
+        </form>
+        <div class="eq-preset-form">
+          <label for="eq-preset-list">Saved presets</label>
+          <select id="eq-preset-list"></select>
+          <button id="eq-load-preset" type="button">Load</button>
+          <button id="eq-delete-preset" type="button">Remove</button>
+        </div>
+        <div id="eq-confirm-preset" class="eq-preset-form" hidden>
+          <span id="eq-preset-question"></span>
+          <button id="eq-yes-preset" type="button">Remove preset</button>
+          <button id="eq-no-preset" type="button">Cancel</button>
+        </div>
+      </details>
+      <section
+        id="effects"
+        class="local-effects"
+        aria-labelledby="effects-heading"
+        hidden
+      >
+        <header class="local-header">
+          <h2 id="effects-heading">Slowed + Reverb</h2>
+          <button id="reset" type="button">Reset effects</button>
+        </header>
+        <div class="local-slider">
+          <label for="speed">Speed</label>
+          <input
+            id="speed"
+            type="range"
+            min="70"
+            max="130"
+            step="1"
+            value="100"
+          />
+          <output id="speed-value" for="speed" aria-hidden="true">1.00×</output>
+        </div>
+        <div class="local-slider">
+          <label for="intensity">Reverb</label>
+          <input
+            id="intensity"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="0"
+          />
+          <output id="intensity-value" for="intensity" aria-hidden="true"
+            >0%</output
+          >
+        </div>
+        <div class="local-filters">
+          <div>
+            <label for="high-pass">High-pass (Hz)</label>
+            <input
+              id="high-pass"
+              type="number"
+              min="20"
+              max="20000"
+              step="1"
+              value="180"
+            />
+          </div>
+          <div>
+            <label for="low-pass">Low-pass (Hz)</label>
+            <input
+              id="low-pass"
+              type="number"
+              min="20"
+              max="20000"
+              step="1"
+              value="6500"
+            />
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

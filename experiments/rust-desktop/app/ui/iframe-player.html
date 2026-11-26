@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en" data-wrapper-url="{WRAPPER_URL}" data-initial-volume="{INITIAL_VOLUME}" data-initial-muted="{INITIAL_MUTED}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-Ce9YyiPyS0mYZ9mVEQwoyC6ee2BQaKdNlCaNW6SfNG4=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
+  <title>YouTube player</title>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; background: #000; }
+    iframe { display: block; width: 100%; height: 100%; min-width: 200px; min-height: 200px; border: 0; }
+  </style>
+</head>
+<body>
+  <iframe id="player" title="YouTube video player" src="{PLAYER_URL}"
+          referrerpolicy="strict-origin-when-cross-origin"
+          sandbox="allow-scripts allow-same-origin allow-presentation"
+          allow="encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>
+  <script>
+    (() => {
+      const wrapperUrl = document.documentElement.dataset.wrapperUrl;
+      const wrapperOrigin = new URL(wrapperUrl).origin;
+      const isWrapper = () =>
+        self === top && self.origin === wrapperOrigin && document.URL === wrapperUrl && document.baseURI === wrapperUrl;
+      if (!isWrapper()) return;
+
+      const frame = document.getElementById('player');
+      const initialSrc = frame.src;
+      const trackEmbed = /^\/embed\/[A-Za-z0-9_-]{11}$/.test(new URL(initialSrc).pathname);
+      const maxSeconds = 31 * 24 * 60 * 60;
+      const states = [-1, 0, 1, 2, 3, 5];
+      const controllableStates = [0, 1, 2, 3];
+      const errorCodes = [2, 5, 100, 101, 150, 153];
+      let player;
+      let ready = false;
+      let hasPlayed = false;
+      let state = null;
+      let ended = false;
+      let error = null;
+      let blocked = false;
+      let playedVideoId = null;
+      let pendingAdvance = null;
+      let repeatPlayback = null;
+      let lastRepeatCycle = 0;
+      let volumeSetterFailed = false;
+      let muteSetterFailed = false;
+      let rateSetterFailed = false;
+
+      const fail = () => { error ??= -1; };
+
+      document.addEventListener('securitypolicyviolation', (event) => {
+        if (event.effectiveDirective === 'script-src-elem' || event.effectiveDirective === 'frame-src') fail();
+      });
+      document.addEventListener('error', (event) => {
+        if (event.target instanceof HTMLScriptElement) fail();
+      }, true);
+
+      window.onYouTubeIframeAPIReady = () => {
+        if (!isWrapper() || player) return;
+        try {
+          player = new YT.Player(frame, { events: {
+            onReady: (event) => {
+              if (!isWrapper() || ready) return;
+              const target = event?.target ?? player;
+              const { initialVolume, initialMuted } = document.documentElement.dataset;
+              if (/^(?:100|[1-9]?[0-9])$/.test(initialVolume)) {
+                optionalValue(() => target.setVolume(Number(initialVolume)));
+              }
+              if (initialMuted === 'true' || initialMuted === 'false') {
+                optionalValue(() => applyMuted(target, initialMuted === 'true'));
+              }
+              ready = true;
+            },
+            onStateChange: ({ data }) => observeState(data),
+            onError: ({ data }) => { error ??= errorCodes.includes(data) ? data : -1; },
+            onAutoplayBlocked: () => { blocked = true; },
+          }});
+        } catch {
+          fail();
+        }
+      };
+
+      function validVideoId(id) {
+        return typeof id === 'string' && id.length === 11 && !/[^A-Za-z0-9_-]/.test(id);
+      }
+
+      function reportedVideoId() {
+        try {
+          const url = new URL(player.getVideoUrl());
+          if (url.origin !== 'https://www.youtube.com' || url.pathname !== '/watch'
+              || url.username || url.password) return null;
+          const ids = url.searchParams.getAll('v');
+          return ids.length === 1 && validVideoId(ids[0]) ? ids[0] : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function observeState(data, videoId = data === 1 ? reportedVideoId() : null) {
+        if (!states.includes(data)) return;
+        if (pendingAdvance !== null) {
+          if (data !== 1 || videoId !== pendingAdvance.from) pendingAdvance.sourcePlayback = null;
+          // Events identify the player, so only the requested video can end the handoff.
+          if (data !== 1 || videoId !== pendingAdvance.to) return;
+          pendingAdvance = null;
+        }
+        state = data;
+        if (data === 1) {
+          hasPlayed = true;
+          playedVideoId = videoId;
+          ended = false;
+          blocked = false;
+          // A new run can start and end before the official state getter catches up.
+          if (repeatPlayback?.terminal) repeatPlayback = null;
+        }
+        if (data === 0 && hasPlayed) {
+          ended = true;
+          if (repeatPlayback !== null) repeatPlayback.terminal = true;
+        }
+      }
+
+      function frameVisible() {
+        if (!frame.isConnected || document.visibilityState !== 'visible') return false;
+        const box = frame.getBoundingClientRect();
+        const width = Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+        const height = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0));
+        return box.width >= 200 && box.height >= 200 && width * height > box.width * box.height / 2;
+      }
+
+      function boundedSeconds(value) {
+        return Number.isFinite(value) && value >= 0 && value <= maxSeconds ? value : null;
+      }
+
+      function validVolume(value) {
+        return Number.isInteger(value) && value >= 0 && value <= 100;
+      }
+
+      function validRate(value) {
+        return Number.isFinite(value) && value >= 0.25 && value <= 4;
+      }
+
+      function optionalValue(readOrSet) {
+        try {
+          return readOrSet();
+        } catch {
+          // Optional player methods can fail independently of playback.
+          return null;
+        }
+      }
+
+      function applyMuted(target, muted) {
+        if (muted) target.mute();
+        else target.unMute();
+      }
+
+      function canSetVolume() {
+        return !volumeSetterFailed && optionalValue(() => typeof player.setVolume === 'function') === true;
+      }
+
+      function canSetMuted() {
+        return !muteSetterFailed && optionalValue(() =>
+          typeof player.mute === 'function' && typeof player.unMute === 'function') === true;
+      }
+
+      function availableRates() {
+        return optionalValue(() => {
+          if (rateSetterFailed || typeof player.setPlaybackRate !== 'function') return null;
+          const values = player.getAvailablePlaybackRates();
+          if (!Array.isArray(values) || values.length === 0 || values.length > 16) return null;
+          const rates = new Set();
+          for (let index = 0, length = values.length; index < length; index += 1) {
+            const rate = values[index];
+            if (!validRate(rate)) return null;
+            rates.add(rate);
+          }
+          return [...rates].sort((first, second) => first - second);
+        });
+      }
+
+      function observeAdvance(videoId) {
+        const pending = pendingAdvance;
+        const playing = (videoId === pending.from || videoId === pending.to)
+          && player.getPlayerState() === 1;
+        if (playing && videoId === pending.to) {
+          // The identity may arrive after the state-change event.
+          observeState(1, videoId);
+          return false;
+        }
+
+        const position = playing ? boundedSeconds(player.getCurrentTime()) : null;
+        if (position === null) {
+          pending.sourcePlayback = null;
+          return false;
+        }
+        const previous = pending.sourcePlayback;
+        // An isolated PLAYING observation can belong to a stale event.
+        const replayed = previous !== null && position >= previous.position
+          && (previous.replayed || position - previous.position >= 0.1);
+        pending.sourcePlayback = { position, replayed };
+        return replayed;
+      }
+
+      function observeRepeatCycle(videoId, confirmedState) {
+        if (!trackEmbed) return null;
+        if (!controllableStates.includes(confirmedState)
+            || repeatPlayback?.videoId !== videoId) repeatPlayback = null;
+        if (state === 1 && confirmedState === 1) {
+          if (repeatPlayback === null || repeatPlayback.terminal) {
+            repeatPlayback = { videoId, cycle: ++lastRepeatCycle, terminal: false, ended: false };
+          }
+          return repeatPlayback.cycle;
+        }
+        if (state === 0 && confirmedState === 0 && ended && repeatPlayback !== null) {
+          repeatPlayback.ended = true;
+          return repeatPlayback.cycle;
+        }
+        return null;
+      }
+
+      function snapshot() {
+        if (!isWrapper()) return null;
+        const videoId = ready ? reportedVideoId() : null;
+        let position = null;
+        let positionMs = null;
+        let playbackRate = null;
+        let playbackRates = null;
+        let duration = null;
+        let volume = null;
+        let muted = null;
+        let sourceReplayed = false;
+        if (ready && error === null) {
+          try {
+            if (pendingAdvance !== null) sourceReplayed = observeAdvance(videoId);
+            if (pendingAdvance === null) {
+              // Recover a missing identity only while the official player still confirms PLAYING.
+              if (playedVideoId === null && state === 1 && videoId !== null
+                  && optionalValue(() => player.getPlayerState()) === 1) playedVideoId = videoId;
+              const length = boundedSeconds(player.getDuration());
+              const time = boundedSeconds(player.getCurrentTime());
+              const rate = optionalValue(() => player.getPlaybackRate());
+              if (validRate(rate)) playbackRate = rate;
+              if (!blocked) playbackRates = availableRates();
+              if (length > 0) duration = Math.ceil(length);
+              if (time !== null) {
+                positionMs = Math.floor(Math.min(time, duration ?? maxSeconds) * 1000);
+                position = Math.floor(positionMs / 1000);
+              }
+              const audioVolume = canSetVolume() ? optionalValue(() => player.getVolume()) : null;
+              const audioMuted = canSetMuted() ? optionalValue(() => player.isMuted()) : null;
+              if (validVolume(audioVolume)) volume = audioVolume;
+              if (typeof audioMuted === 'boolean') muted = audioMuted;
+            }
+          } catch {
+            fail();
+          }
+        }
+        const confirmedState = playbackStateFor(videoId);
+        return {
+          ready, videoId, sourceReplayed, nativePlaybackConfirmed: controllableStates.includes(confirmedState),
+          repeatCycle: observeRepeatCycle(videoId, confirmedState),
+          hasPlayed: ready && hasPlayed, state: ready ? state : null,
+          volume, muted,
+          position, positionMs, playbackRate, playbackRates, duration, ended: ready && ended, error, blocked,
+        };
+      }
+
+      function command(apply) {
+        // The viewer starts playback using the official player's visible controls.
+        if (!isWrapper() || !ready || !hasPlayed || blocked || error !== null) return;
+        try {
+          apply();
+        } catch {
+          fail();
+        }
+      }
+
+      function optionalCommand(canApply, apply, onFailure) {
+        if (!isWrapper() || !ready || blocked || error !== null || pendingAdvance !== null || !canApply()) return;
+        try {
+          apply();
+        } catch {
+          onFailure();
+        }
+      }
+
+      function playbackStateFor(videoId) {
+        if (!ready || !hasPlayed || blocked || error !== null || pendingAdvance !== null
+            || !validVideoId(videoId) || playedVideoId !== videoId) return null;
+        return optionalValue(() => player.getPlayerState());
+      }
+
+      function setPlayback(playing, expectedId) {
+        command(() => {
+          if (expectedId !== undefined
+              && (reportedVideoId() !== expectedId || !controllableStates.includes(playbackStateFor(expectedId)))) return;
+          if (playing) player.playVideo();
+          else player.pauseVideo();
+        });
+      }
+
+      function advance(from, to) {
+        if (!validVideoId(from) || !validVideoId(to) || from === to) return;
+        command(() => {
+          if (pendingAdvance !== null || !ended || state !== 0 || playedVideoId !== from
+              || reportedVideoId() !== from || player.getPlayerState() !== 0 || !frameVisible()
+              || player.getIframe() !== frame || frame.src !== initialSrc) return;
+          pendingAdvance = { from, to, sourcePlayback: null };
+          hasPlayed = false;
+          playedVideoId = null;
+          state = null;
+          ended = false;
+          player.loadVideoById({ videoId: to });
+        });
+      }
+
+      function repeatTrack(expectedId, cycle) {
+        if (!trackEmbed || !validVideoId(expectedId)) return;
+        command(() => {
+          const playback = repeatPlayback;
+          if (playback?.videoId !== expectedId || playback.cycle !== cycle || !playback.ended
+              || !ended || state !== 0 || reportedVideoId() !== expectedId || playbackStateFor(expectedId) !== 0
+              || !frameVisible() || player.getIframe() !== frame || frame.src !== initialSrc) return;
+          // Consume this end before asking YouTube to replay the loaded video.
+          repeatPlayback = null;
+          player.playVideo();
+        });
+      }
+
+      Object.defineProperty(window, 'pearIframePlayer', { value: Object.freeze({
+        snapshot,
+        advance,
+        repeatTrack,
+        play: (expectedId) => setPlayback(true, expectedId),
+        pause: (expectedId) => setPlayback(false, expectedId),
+        setVolume: (volume) => {
+          if (validVolume(volume)) optionalCommand(canSetVolume, () => player.setVolume(volume), () => {
+            volumeSetterFailed = true;
+          });
+        },
+        setMuted: (muted) => {
+          if (typeof muted === 'boolean') optionalCommand(canSetMuted, () => applyMuted(player, muted), () => {
+            muteSetterFailed = true;
+          });
+        },
+        setRate: (rate) => {
+          if (!validRate(rate)) return;
+          optionalCommand(
+            () => availableRates()?.includes(rate),
+            () => player.setPlaybackRate(rate),
+            () => { rateSetterFailed = true; },
+          );
+        },
+        seek: (seconds) => {
+          if (!Number.isInteger(seconds) || seconds < 0 || seconds > maxSeconds) return;
+          command(() => {
+            const duration = boundedSeconds(player.getDuration());
+            if (duration > 0) {
+              if (repeatPlayback !== null
+                  && (repeatPlayback.terminal || optionalValue(() => player.getPlayerState()) === 0)) {
+                repeatPlayback = null;
+              }
+              const position = seconds < duration ? seconds : Math.max(0, duration - 1);
+              player.seekTo(position, true);
+            }
+          });
+        },
+      }) });
+    })();
+  </script>
+  <script async src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>

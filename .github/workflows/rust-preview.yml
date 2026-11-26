@@ -1,0 +1,196 @@
+name: Rust preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/rust-preview.yml'
+      - 'experiments/rust-desktop/**'
+      # The DSP parity test runs the checked-in Electron worklet through Node.
+      - 'src/plugins/player-actions/slowed-reverb/engine.ts'
+      - 'src/plugins/player-actions/slowed-reverb/worklet.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'assets/generated/icons/png/**'
+      - 'license'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust tests and Clippy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest]
+    defaults:
+      run:
+        working-directory: experiments/rust-desktop
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.22.0
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          # The runner's regional HTTP mirror intermittently stalls on package downloads.
+          if [[ "$RUNNER_ARCH" == X64 ]]; then
+            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+              if [[ -f "$source" ]]; then
+                sudo sed -i -E 's#http://[[:alnum:].-]+\.ec2\.archive\.ubuntu\.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' "$source"
+              fi
+            done
+          fi
+          apt_network=(-o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_network[@]}" update
+          sudo apt-get "${apt_network[@]}" install -y --no-install-recommends build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev libasound2-dev xvfb xauth x11-utils
+      - name: Install stable Rust and Clippy
+        run: rustup toolchain install stable --profile minimal --component clippy
+      - name: Run workspace tests
+        run: cargo +stable test --locked --workspace --all-features
+      - name: Lint all targets
+        run: cargo +stable clippy --locked --workspace --all-targets --all-features
+      - name: Check the Windows system media transport API
+        if: runner.os == 'Windows'
+        run: >-
+          cargo +stable test --locked -p pear-desktop-preview --bin pear-desktop-preview
+          media::windows::tests::windows_smtc_native_smoke
+          -- --exact --ignored --nocapture --test-threads=1
+
+      - name: Package the macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: |
+          set -euo pipefail
+          app="$(tools/bundle-macos.sh preview)"
+          codesign --verify --strict "$app"
+          archive="$RUNNER_TEMP/pear-rust-preview.zip"
+          ditto -c -k --keepParent "$app" "$archive"
+          unzip -tq "$archive"
+      - name: Package the Linux preview
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +stable build --locked --release -p pear-desktop-preview
+          package="$RUNNER_TEMP/pear-rust-preview"
+          mkdir -p "$package"
+          install -m 0755 target/release/pear-desktop-preview "$package/"
+          install -m 0644 README.md "$package/"
+          install -m 0644 ../../license "$package/LICENSE"
+          tar -czf "$package.tar.gz" -C "$RUNNER_TEMP" pear-rust-preview
+          tar -tzf "$package.tar.gz"
+      - name: Package the Windows preview
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo +stable build --locked --release -p pear-desktop-preview
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $package = Join-Path $env:RUNNER_TEMP 'pear-rust-preview'
+          New-Item -ItemType Directory -Path $package | Out-Null
+          Copy-Item target/release/pear-desktop-preview.exe $package
+          Copy-Item README.md $package
+          Copy-Item ../../license (Join-Path $package 'LICENSE')
+          Compress-Archive -Path "$package/*" -DestinationPath "$package.zip"
+      - name: Verify the packaged Linux preview opens
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          profile="$(mktemp -d "$RUNNER_TEMP/pear-linux-profile.XXXXXX")"
+          timeout 45s dbus-run-session -- xvfb-run -a bash -s -- \
+            "$RUNNER_TEMP/pear-rust-preview/pear-desktop-preview" "$profile" <<'SMOKE'
+          set -euo pipefail
+          export PEAR_PREVIEW_QUEUE_DIR="$2" XDG_CACHE_HOME="$2/cache" GDK_BACKEND=x11
+          "$1" &
+          preview=$!
+          trap 'kill "$preview" 2>/dev/null || true; wait "$preview" 2>/dev/null || true' EXIT
+          for _ in {1..120}; do
+            kill -0 "$preview"
+            xwininfo -root -tree > "$2/windows.txt"
+            if test -f "$2/queue.lock" && grep -Fq '"Pear Desktop Rust Preview"' "$2/windows.txt"; then
+              test ! -e "$2/consent.json"
+              exit 0
+            fi
+            sleep 0.25
+          done
+          echo 'The Linux package did not open its window and queue.' >&2
+          exit 1
+          SMOKE
+      - name: Verify the packaged Windows preview opens
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $profile = Join-Path $env:RUNNER_TEMP "pear-win-profile-$([guid]::NewGuid())"
+          $env:PEAR_PREVIEW_QUEUE_DIR = $profile
+          $exe = Join-Path $env:RUNNER_TEMP 'pear-rust-preview/pear-desktop-preview.exe'
+          $preview = Start-Process -FilePath $exe -PassThru
+          try {
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $ready = $false
+            while ($clock.Elapsed.TotalSeconds -lt 30) {
+              $preview.Refresh()
+              if ($preview.HasExited) { throw "Pear exited with code $($preview.ExitCode)." }
+              if ($preview.MainWindowHandle -ne [IntPtr]::Zero -and
+                  $preview.MainWindowTitle -ceq 'Pear Desktop Rust Preview' -and
+                  $preview.Responding -and (Test-Path (Join-Path $profile 'queue.lock'))) {
+                $ready = $true
+                break
+              }
+              Start-Sleep -Milliseconds 250
+            }
+            if (!$ready) { throw 'The Windows package did not open its window and queue.' }
+            if (Test-Path (Join-Path $profile 'consent.json')) { throw 'Unexpected consent file.' }
+          } finally {
+            if (!$preview.HasExited -and (!$preview.CloseMainWindow() -or !$preview.WaitForExit(3000))) {
+              Stop-Process -Id $preview.Id -ErrorAction SilentlyContinue
+            }
+            $preview.Dispose()
+          }
+      - name: Upload preview package
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: pear-rust-preview-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.temp }}/pear-rust-preview.*
+          if-no-files-found: error
+          retention-days: 7
+
+  chromium:
+    name: Chromium preview controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        with:
+          version: 11
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.22.0
+          cache: pnpm
+      # The browser tests only need Playwright and its Chromium download.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Test queue, IFrame player, and local audio controls
+        run: >-
+          node --test
+          experiments/rust-desktop/app/ui/controls.test.mjs
+          experiments/rust-desktop/app/ui/iframe-player.test.mjs
+          experiments/rust-desktop/app/ui/local-audio.test.mjs

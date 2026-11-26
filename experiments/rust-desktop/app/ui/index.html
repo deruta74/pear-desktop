@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pear Queue</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/history-swipes.js" defer></script>
+    <script src="/controls.js" defer></script>
+  </head>
+  <body>
+    <main id="pear-panel" class="panel" hidden inert>
+      <header class="panel-header">
+        <div class="panel-title">
+          <h1>Pear</h1>
+          <div
+            id="view-history"
+            class="view-history"
+            role="group"
+            aria-label="Panel history"
+            hidden
+          >
+            <button id="history-back" type="button" aria-label="Back" disabled>
+              ‹
+            </button>
+            <button
+              id="history-forward"
+              type="button"
+              aria-label="Forward"
+              disabled
+            >
+              ›
+            </button>
+          </div>
+        </div>
+        <p id="preferences-problem" class="feedback" aria-live="polite"></p>
+      </header>
+
+      <section id="queue-panel" class="queue" aria-labelledby="queue-heading">
+        <div class="queue-controls">
+          <div class="queue-toolbar">
+            <div class="queue-heading">
+              <h2 id="queue-heading">Queue</h2>
+              <span
+                id="queue-count"
+                class="queue-count"
+                aria-live="polite"
+              ></span>
+            </div>
+            <div class="queue-tools">
+              <button
+                id="shuffle-upcoming"
+                class="queue-shuffle"
+                type="button"
+                aria-label="Shuffle upcoming"
+                aria-controls="queue-items"
+                title="Shuffle upcoming"
+                hidden
+              >
+                Shuffle
+              </button>
+              <input
+                id="queue-filter"
+                class="queue-filter"
+                type="search"
+                aria-label="Filter queue"
+                aria-controls="queue-items"
+                placeholder="Filter"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="180"
+                hidden
+              />
+              <button
+                id="show-queue-inputs"
+                type="button"
+                aria-controls="queue-inputs"
+                aria-expanded="false"
+                hidden
+              >
+                Add links
+              </button>
+            </div>
+          </div>
+          <div id="queue-inputs">
+            <form id="add-video">
+              <label for="video-source">YouTube link or video ID</label>
+              <div class="add-controls">
+                <textarea
+                  id="video-source"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="Paste links or IDs, one per line"
+                  aria-describedby="queue-error"
+                  rows="2"
+                  required
+                  disabled
+                ></textarea>
+                <button
+                  id="add-button"
+                  class="add-button"
+                  type="submit"
+                  disabled
+                >
+                  Add
+                </button>
+              </div>
+            </form>
+
+            <details id="public-playlist">
+              <summary>Play a YouTube playlist</summary>
+              <form id="public-playlist-form">
+                <label for="public-playlist-link">Public playlist link</label>
+                <div class="add-controls">
+                  <input
+                    id="public-playlist-link"
+                    placeholder="Paste a public playlist link"
+                    autocomplete="off"
+                    spellcheck="false"
+                    aria-describedby="public-playlist-feedback"
+                    required
+                  />
+                  <button class="add-button" type="submit">
+                    Play playlist in Pear
+                  </button>
+                </div>
+              </form>
+            </details>
+          </div>
+          <p id="queue-error" class="feedback error" role="alert"></p>
+          <p
+            id="public-playlist-feedback"
+            class="feedback error"
+            role="alert"
+          ></p>
+          <p id="queue-status" class="feedback" role="status">Loading queue…</p>
+        </div>
+        <p id="queue-empty" class="queue-empty" hidden>
+          Add a YouTube video to start your queue.
+        </p>
+        <ol
+          id="queue-items"
+          class="queue-items"
+          role="list"
+          aria-labelledby="queue-heading"
+          hidden
+        ></ol>
+      </section>
+
+      <template id="view-switcher-template">
+        <nav class="view-switcher">
+          <button
+            id="show-queue"
+            type="button"
+            aria-controls="queue-panel"
+            aria-pressed="true"
+          >
+            Queue
+          </button>
+          <button
+            id="show-search"
+            type="button"
+            aria-controls="catalog-form catalog-results"
+            aria-pressed="false"
+          >
+            Search
+          </button>
+          <button
+            id="show-lyrics"
+            type="button"
+            aria-controls="lyrics-form lyrics-lines"
+            aria-pressed="false"
+          >
+            Lyrics
+          </button>
+          <button
+            id="show-library"
+            type="button"
+            aria-controls="library-panel"
+            aria-pressed="false"
+          >
+            Library
+          </button>
+        </nav>
+      </template>
+
+      <template id="catalog-template">
+        <form id="catalog-form" aria-labelledby="catalog-query-label" hidden>
+          <label id="catalog-query-label" for="catalog-query"
+            >Search YouTube</label
+          >
+          <div class="add-controls">
+            <input
+              id="catalog-query"
+              type="search"
+              autocomplete="off"
+              aria-describedby="catalog-feedback"
+              required
+            />
+            <button class="add-button" type="submit">Search</button>
+          </div>
+          <div class="catalog-summary">
+            <p id="catalog-feedback" class="feedback" aria-live="polite"></p>
+            <div class="catalog-actions">
+              <button
+                id="catalog-add-playlist"
+                type="button"
+                aria-label="Add loaded videos to queue"
+                aria-describedby="catalog-result-feedback"
+                hidden
+              >
+                Add to queue
+              </button>
+              <button
+                id="catalog-load-more"
+                type="button"
+                aria-controls="catalog-results"
+                aria-describedby="catalog-page-feedback"
+                hidden
+              >
+                Load more
+              </button>
+            </div>
+          </div>
+          <p id="catalog-page-feedback" class="feedback" aria-live="polite"></p>
+          <p
+            id="catalog-result-feedback"
+            class="feedback"
+            aria-live="polite"
+          ></p>
+        </form>
+        <ul
+          id="catalog-results"
+          class="queue-items catalog-results"
+          role="list"
+          aria-label="YouTube results"
+          tabindex="-1"
+          hidden
+        ></ul>
+      </template>
+
+      <template id="lyrics-template">
+        <form id="lyrics-form" hidden>
+          <div class="lyrics-fields">
+            <div>
+              <label for="lyrics-track">Track</label>
+              <input
+                id="lyrics-track"
+                type="text"
+                dir="auto"
+                autocomplete="off"
+                aria-describedby="lyrics-feedback"
+                required
+              />
+            </div>
+            <div>
+              <label for="lyrics-artist">Artist</label>
+              <input
+                id="lyrics-artist"
+                type="text"
+                dir="auto"
+                autocomplete="off"
+                aria-describedby="lyrics-feedback"
+                required
+              />
+            </div>
+            <button class="add-button" type="submit">Find lyrics</button>
+          </div>
+          <p class="lyrics-attribution">Lyrics from LRCLIB</p>
+          <p id="lyrics-feedback" class="feedback" aria-live="polite"></p>
+        </form>
+        <ol
+          id="lyrics-lines"
+          class="queue-items lyrics-lines"
+          role="list"
+          aria-label="Lyrics"
+          tabindex="0"
+          hidden
+        ></ol>
+      </template>
+
+      <template id="library-template">
+        <section id="library-panel" class="library" aria-label="Library" hidden>
+          <div class="library-toolbar">
+            <button
+              id="show-youtube-account"
+              class="account-switch"
+              type="button"
+              hidden
+            >
+              YouTube account
+            </button>
+            <section
+              id="youtube-account"
+              aria-labelledby="youtube-account-heading"
+              hidden
+            >
+              <button id="show-saved-playlists" type="button">
+                Saved playlists
+              </button>
+              <h2 id="youtube-account-heading" tabindex="-1">
+                YouTube account
+              </h2>
+              <p
+                id="youtube-account-status"
+                class="feedback"
+                role="status"
+                tabindex="-1"
+              ></p>
+              <p id="youtube-account-disclosure" class="account-disclosure">
+                Connect in your browser to browse playlists you own and videos
+                you liked. Pear keeps read-only access and results in memory
+                during this session.
+              </p>
+              <div class="playlist-actions">
+                <button
+                  id="connect-account"
+                  class="add-button"
+                  type="button"
+                  hidden
+                >
+                  Connect
+                </button>
+                <button id="cancel-account" type="button" hidden>
+                  Cancel sign-in
+                </button>
+                <button id="disconnect-account" type="button" hidden>
+                  Disconnect
+                </button>
+              </div>
+              <div
+                id="account-collections"
+                class="playlist-actions"
+                aria-label="YouTube collections"
+                role="group"
+                hidden
+              >
+                <button
+                  id="account-playlists"
+                  type="button"
+                  aria-pressed="false"
+                >
+                  Your playlists
+                </button>
+                <button id="account-liked" type="button" aria-pressed="false">
+                  Liked videos
+                </button>
+              </div>
+              <h3
+                id="account-playlist-title"
+                class="queue-title"
+                dir="auto"
+                hidden
+              ></h3>
+              <div class="playlist-actions">
+                <button id="retry-account-page" type="button" hidden>
+                  Retry
+                </button>
+                <button id="next-account-page" type="button" hidden>
+                  Next page
+                </button>
+              </div>
+            </section>
+            <div id="playlist-browser">
+              <h2 id="playlist-heading" tabindex="-1">Saved playlists</h2>
+              <form id="save-playlist" class="playlist-form" novalidate>
+                <label for="save-playlist-name">Playlist name</label>
+                <div class="add-controls">
+                  <input
+                    id="save-playlist-name"
+                    type="text"
+                    dir="auto"
+                    autocomplete="off"
+                    aria-describedby="library-problem library-feedback"
+                    required
+                  />
+                  <button
+                    id="save-playlist-button"
+                    class="add-button"
+                    type="submit"
+                  >
+                    Save queue
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div id="playlist-detail" hidden>
+              <div class="playlist-heading">
+                <button id="close-playlist" type="button">
+                  Back to playlists
+                </button>
+                <h2
+                  id="playlist-title"
+                  class="queue-title"
+                  tabindex="-1"
+                  dir="auto"
+                ></h2>
+              </div>
+              <div id="playlist-actions" class="playlist-actions">
+                <button id="append-playlist" class="add-button" type="button">
+                  Add to queue
+                </button>
+                <button id="edit-playlist" type="button">Rename</button>
+                <button id="delete-playlist" type="button">Remove</button>
+              </div>
+              <form
+                id="rename-playlist"
+                class="playlist-form"
+                novalidate
+                hidden
+              >
+                <label for="rename-playlist-name">Playlist name</label>
+                <div class="add-controls">
+                  <input
+                    id="rename-playlist-name"
+                    type="text"
+                    dir="auto"
+                    autocomplete="off"
+                    aria-describedby="library-problem library-feedback"
+                    required
+                  />
+                  <button
+                    id="rename-playlist-button"
+                    class="add-button"
+                    type="submit"
+                  >
+                    Save name
+                  </button>
+                  <button id="cancel-rename" type="button">Cancel</button>
+                </div>
+              </form>
+              <div
+                id="confirm-playlist-removal"
+                class="playlist-form"
+                role="group"
+                aria-labelledby="remove-playlist-question"
+                hidden
+              >
+                <p id="remove-playlist-question">Remove this playlist?</p>
+                <div class="playlist-actions">
+                  <button id="cancel-removal" type="button">Cancel</button>
+                  <button
+                    id="remove-playlist-button"
+                    class="playlist-remove"
+                    type="button"
+                  >
+                    Remove playlist
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p id="library-problem" class="feedback error" role="alert"></p>
+            <p id="library-feedback" class="feedback" aria-live="polite"></p>
+          </div>
+          <p id="library-empty" class="queue-empty" hidden>
+            No saved playlists yet.
+          </p>
+          <ul
+            id="saved-playlists"
+            class="queue-items playlist-list"
+            role="list"
+            aria-labelledby="playlist-heading"
+            hidden
+          ></ul>
+          <ol
+            id="playlist-tracks"
+            class="queue-items playlist-list"
+            role="list"
+            aria-label="Playlist tracks"
+            hidden
+          ></ol>
+          <ul
+            id="youtube-account-rows"
+            class="queue-items playlist-list"
+            role="list"
+            aria-label="YouTube account results"
+            hidden
+          ></ul>
+        </section>
+      </template>
+
+      <section class="selection" aria-labelledby="selection-heading" hidden>
+        <div class="selection-heading">
+          <h2 id="selection-heading">Now playing</h2>
+          <span id="position" class="position"></span>
+        </div>
+        <button
+          id="show-current-in-queue"
+          class="selection-media"
+          type="button"
+          aria-labelledby="selection-queue-label selection-id"
+          aria-controls="queue-panel"
+          title="Show in Queue"
+        >
+          <span id="selection-queue-label" hidden>Show in Queue</span>
+          <img
+            id="selection-artwork"
+            class="selection-artwork"
+            width="64"
+            height="48"
+            alt=""
+            decoding="async"
+            referrerpolicy="no-referrer"
+            hidden
+          />
+          <span class="selection-description">
+            <span
+              id="selection-id"
+              class="selection-title"
+              dir="auto"
+              aria-live="polite"
+            ></span>
+          </span>
+        </button>
+        <div id="transport-timeline" class="transport-timeline" hidden>
+          <span id="elapsed" aria-hidden="true"></span>
+          <input
+            id="playback-position"
+            type="range"
+            min="0"
+            step="1"
+            aria-label="Playback position"
+            disabled
+          />
+          <span id="duration" aria-hidden="true"></span>
+        </div>
+        <div
+          class="playback-actions"
+          role="group"
+          aria-label="Playback controls"
+        >
+          <button
+            id="previous"
+            class="icon-button"
+            type="button"
+            aria-label="Previous video"
+            title="Previous video"
+            disabled
+          >
+            <span class="skip-icon" aria-hidden="true"></span>
+          </button>
+          <button
+            id="play-toggle"
+            class="icon-button play-toggle"
+            type="button"
+            aria-label="Play video"
+            aria-describedby="transport-hint"
+            title="Play video"
+            hidden
+            disabled
+          >
+            <span class="play-icon" aria-hidden="true"></span>
+          </button>
+          <button
+            id="next"
+            class="icon-button"
+            type="button"
+            aria-label="Next video"
+            title="Next video"
+            disabled
+          >
+            <span class="skip-icon skip-icon-next" aria-hidden="true"></span>
+          </button>
+          <button
+            id="open-browser"
+            class="browser-button"
+            type="button"
+            aria-label="Open in browser"
+            title="Open in browser"
+            disabled
+          >
+            <span class="browser-label">Open in browser</span>
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+          <button
+            id="return-to-queue"
+            class="browser-button"
+            type="button"
+            hidden
+          >
+            Return to queue
+          </button>
+          <button
+            id="show-audio-controls"
+            class="icon-button"
+            type="button"
+            aria-label="Volume controls"
+            title="Volume controls"
+            aria-expanded="false"
+            aria-controls="audio-controls"
+            hidden
+          >
+            <span class="volume-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div
+          id="audio-controls"
+          class="audio-controls"
+          role="group"
+          aria-label="Audio output"
+          hidden
+        >
+          <div id="volume-control" class="volume-control" hidden>
+            <label for="playback-volume">Volume</label>
+            <input
+              id="playback-volume"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              disabled
+            />
+            <span id="volume-value" aria-hidden="true"></span>
+          </div>
+          <button
+            id="playback-mute"
+            class="mute-toggle"
+            type="button"
+            aria-pressed="false"
+            hidden
+            disabled
+          >
+            Mute
+          </button>
+        </div>
+        <p id="transport-hint" class="feedback" aria-live="polite"></p>
+        <p id="audio-problem" class="feedback error" aria-live="polite"></p>
+        <p id="player-problem" class="feedback error" role="alert"></p>
+        <p id="metadata-problem" class="feedback" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <main
+      id="legal-panel"
+      class="legal-panel"
+      aria-labelledby="legal-heading"
+      hidden
+    >
+      <article class="legal-content">
+        <header>
+          <h1 id="legal-heading" tabindex="-1">Terms &amp; Privacy</h1>
+          <p>
+            Pear Desktop Rust Preview uses YouTube API Services. By using this
+            preview, you agree to be bound by the YouTube Terms of Service.
+          </p>
+          <p id="legal-local-audio-note" hidden>
+            Play WAV, FLAC, MP3, Ogg Opus, and AAC-LC M4A files offline without
+            agreeing to the YouTube terms.
+          </p>
+        </header>
+
+        <section aria-labelledby="legal-local">
+          <h2 id="legal-local">On this device</h2>
+          <p>
+            Pear stores your queue, selected video, known titles, playlists,
+            playback preference, and agreement in its local profile. You can
+            remove queue entries and playlists in Pear. To erase the profile,
+            close Pear and delete its profile directory.
+          </p>
+        </section>
+
+        <section aria-labelledby="legal-youtube">
+          <h2 id="legal-youtube">YouTube and Google</h2>
+          <p>
+            When you select or restore a video, Pear shares its ID with YouTube
+            to load the embedded player and fetch details and artwork. Details
+            use YouTube oEmbed or the YouTube Data API with a key you configure.
+            For public playlists, Pear sends the playlist ID to the embedded
+            player when you request playback or to the YouTube Data API when you
+            request browsing. Playlist playback and browsing results are
+            temporary. The in-app Data API search sends your search text to
+            YouTube. Data API search and browsing use the configured key’s
+            project quota. When you choose Open in browser for a YouTube Music
+            search, Pear passes your search text to your browser to submit to
+            YouTube Music.
+          </p>
+          <p>
+            The optional YouTube account view opens Google sign-in in your
+            browser when you choose Connect. With your permission, Pear uses the
+            YouTube Data API to read the playlists you own and videos you liked.
+            Pear keeps its access and the results in memory for the session.
+            Disconnect clears the results and asks Google to revoke access. You
+            can also remove access in your Google Account permissions.
+          </p>
+          <p>
+            Pear uses separate private WebViews for the controls and player.
+            YouTube and Google may receive your IP address and playback
+            activity, use cookies or similar technologies, and serve videos,
+            artwork, or ads. Links you open in your browser use that browser’s
+            session.
+          </p>
+        </section>
+
+        <section aria-labelledby="legal-lyrics">
+          <h2 id="legal-lyrics">Lyrics</h2>
+          <p>
+            When you choose Find lyrics, Pear sends the track title, artist, and
+            duration when available to LRCLIB, which also receives your IP
+            address. Pear keeps lyrics in memory and clears them when you change
+            videos or quit.
+          </p>
+        </section>
+
+        <div class="legal-links">
+          <button id="legal-youtube-terms" type="button">
+            YouTube Terms of Service
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+          <button id="legal-google-privacy" type="button">
+            Google Privacy Policy
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p id="legal-problem" class="feedback error" role="alert"></p>
+        <footer class="legal-actions">
+          <button id="decline-legal" type="button">Quit</button>
+          <button id="open-local-audio" type="button" hidden>
+            Open local audio
+          </button>
+          <button id="accept-legal" class="add-button" type="button">
+            Agree and continue
+          </button>
+          <button id="close-legal" type="button" hidden>Close</button>
+        </footer>
+      </article>
+    </main>
+  </body>
+</html>

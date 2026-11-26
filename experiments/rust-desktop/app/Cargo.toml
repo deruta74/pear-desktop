@@ -1,0 +1,58 @@
+[package]
+name = "pear-desktop-preview"
+version = "0.3.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[features]
+benchmark = []
+
+[dependencies]
+base64 = "0.23"
+cpal = "0.17.3"
+fastrand = "2"
+getrandom = "0.4"
+html-escape = "0.2"
+hound = "3.5.1"
+httparse = "1"
+# Keep HTTP wire logging disabled, including headers and query strings.
+log = { version = "0.4", features = ["max_level_info"] }
+muda = "0.22"
+ogg = "0.9.2"
+open = "5.4"
+pear-preview-dsp = { path = "../dsp" }
+rtrb = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+serde-saphyr = { version = "2.2", default-features = false, features = ["deserialize"] }
+sha2 = "0.11"
+tao = "0.38"
+ureq = { version = "3.5", default-features = false, features = ["gzip", "native-tls-no-default"] }
+url = "2.5"
+wry = "0.58"
+symphonia = { version = "0.6.1", default-features = false, features = ["aac", "flac", "isomp4", "mp3"] }
+symphonia-opus = "0.1.3"
+zeroize = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+rfd = { version = "0.18", default-features = false }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.39"
+windows = { version = "0.62", features = ["Foundation", "Media", "Win32_Foundation", "Win32_System_WinRT"] }
+windows-core = "0.62"
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.19"
+webkit2gtk = { version = "3", features = ["v2_20"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSBundle", "NSString"] }
+objc2-media-player = { version = "0.3.2", default-features = false, features = ["MPMediaItem", "MPNowPlayingInfoCenter", "MPRemoteCommand", "MPRemoteCommandCenter", "MPRemoteCommandEvent", "block2"] }
