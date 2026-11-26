@@ -1772,6 +1772,7 @@ dependencies = [
 name = "pear-desktop-preview"
 version = "0.3.0"
 dependencies = [
+ "fastrand",
  "gtk",
  "html-escape",
  "log",

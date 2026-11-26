@@ -1087,6 +1087,16 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             error = Some("Playback controls are unavailable for this video.".into());
                         }
                     }
+                    command @ Command::ShuffleUpcoming {} => {
+                        if auto_advance.pending() {
+                            error = Some("Waiting for the next video to start.".into());
+                        } else {
+                            match library.apply(command) {
+                                Ok(_) => auto_advance.retarget_after_shuffle(library.state()),
+                                Err(reason) => error = Some(reason.to_string()),
+                            }
+                        }
+                    }
                     command => {
                         let cancel_switch = auto_advance.pending()
                             && matches!(&command, Command::Select { id }

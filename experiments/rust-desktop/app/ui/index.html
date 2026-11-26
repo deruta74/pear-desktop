@@ -178,18 +178,31 @@
               aria-live="polite"
             ></span>
           </div>
-          <input
-            id="queue-filter"
-            class="queue-filter"
-            type="search"
-            aria-label="Filter queue"
-            aria-controls="queue-items"
-            placeholder="Filter queue"
-            autocomplete="off"
-            spellcheck="false"
-            maxlength="180"
-            hidden
-          />
+          <div class="queue-tools">
+            <button
+              id="shuffle-upcoming"
+              class="queue-shuffle"
+              type="button"
+              aria-label="Shuffle upcoming"
+              aria-controls="queue-items"
+              title="Shuffle upcoming"
+              hidden
+            >
+              Shuffle
+            </button>
+            <input
+              id="queue-filter"
+              class="queue-filter"
+              type="search"
+              aria-label="Filter queue"
+              aria-controls="queue-items"
+              placeholder="Filter queue"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="180"
+              hidden
+            />
+          </div>
         </div>
         <p id="queue-empty" class="queue-empty" hidden>
           Add a YouTube video to start your queue.

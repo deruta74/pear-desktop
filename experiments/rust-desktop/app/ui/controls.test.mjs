@@ -630,6 +630,67 @@ test('filters by title and ID without changing the active video or controls', as
   await expect(page.locator('#position')).toHaveText('1 of 3');
 });
 
+test('shuffles upcoming via acknowledged IPC without resetting the timeline or keyboard focus', async (t) => {
+  const page = await panel(t);
+  const shuffle = page.getByRole('button', { name: 'Shuffle upcoming' });
+  const timeline = page.getByRole('slider', { name: 'Playback position' });
+  const filter = page.getByRole('searchbox', { name: 'Filter queue' });
+  const entries = [first, second, third];
+  const shuffled = [first, third, second];
+  await state(page, entries, second);
+  await expect(shuffle).toBeHidden();
+
+  await state(page, entries, first, null, null, null, {
+    lyricsSwitching: true,
+  });
+  await expect(shuffle).toBeDisabled();
+  await shuffle.focus();
+  await page.keyboard.press('Enter');
+  expect(await messages(page)).toHaveLength(1);
+
+  await state(page, entries, first, null, null, null);
+  await transport(page, readyTransport);
+  await expect(shuffle).toBeEnabled();
+  await page.keyboard.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'shuffle_upcoming' },
+  });
+  await expect(shuffle).toBeDisabled();
+  await expect(shuffle).toBeFocused();
+  await state(page, entries, first, null, null, null);
+  await page.keyboard.press('Enter');
+  expect(await messages(page)).toHaveLength(2);
+  await expect(page.locator('#queue-items > li').nth(1)).toHaveAttribute(
+    'data-id',
+    second,
+  );
+
+  await state(page, shuffled, first);
+  await expect(page.locator('#queue-items > li').nth(1)).toHaveAttribute(
+    'data-id',
+    third,
+  );
+  await expect(page.getByRole('status')).toHaveText(
+    'Shuffled upcoming videos.',
+  );
+  await expect(timeline).toBeVisible();
+  await expect(timeline).toHaveValue('15');
+  await expect(shuffle).toBeEnabled();
+  await expect(shuffle).toBeFocused();
+
+  await page.keyboard.press('Enter');
+  await state(page, shuffled, first, 'Could not save the queue.');
+  await expect(page.locator('#queue-error')).toHaveText(
+    'Could not save the queue.',
+  );
+  await expect(shuffle).toBeFocused();
+
+  await state(page, shuffled, third, null, null, null);
+  await expect(shuffle).toBeHidden();
+  await expect(filter).toBeFocused();
+});
+
 test('has room for a queue row at the minimum panel size with a long title and a player error', async (t) => {
   const page = await panel(t);
   await page.setViewportSize({ width: 384, height: 520 });
@@ -651,6 +712,24 @@ test('has room for a queue row at the minimum panel size with a long title and a
   const list = await page.locator('#queue-items').boundingBox();
   const row = await page.locator('#queue-items > li').first().boundingBox();
   assertVisibleQueueRow(list, row);
+  const layout = await page.locator('.queue-toolbar').evaluate((toolbar) => {
+    const rect = (selector) =>
+      toolbar.querySelector(selector).getBoundingClientRect().toJSON();
+    return {
+      heading: rect('.queue-heading'),
+      shuffle: rect('#shuffle-upcoming'),
+      filter: rect('#queue-filter'),
+      width: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+  await expect(
+    page.getByRole('button', { name: 'Shuffle upcoming' }),
+  ).toBeVisible();
+  expect(layout.shuffle.left).toBeGreaterThanOrEqual(layout.heading.right);
+  expect(layout.filter.left).toBeGreaterThanOrEqual(layout.shuffle.right);
+  expect(layout.shuffle.top).toBeLessThan(layout.filter.bottom);
+  expect(layout.scrollWidth).toBe(layout.width);
 });
 
 function assertVisibleQueueRow(list, row) {

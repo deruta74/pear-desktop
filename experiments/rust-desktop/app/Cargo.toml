@@ -9,6 +9,7 @@ license = "MIT"
 benchmark = []
 
 [dependencies]
+fastrand = "2"
 html-escape = "0.2"
 # Keep HTTP wire logging disabled, including headers and query strings.
 log = { version = "0.4", features = ["max_level_info"] }
