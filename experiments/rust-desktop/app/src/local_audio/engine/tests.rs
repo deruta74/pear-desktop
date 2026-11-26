@@ -53,6 +53,87 @@ const MONO_I16: hound::WavSpec = hound::WavSpec {
 };
 
 #[test]
+fn mp3_uses_gapless_duration_and_seeks_to_the_same_samples() {
+    let fixture = Fixture::from_bytes(include_bytes!("fixtures/stereo-gapless.mp3"));
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().sample_rate, 48_000);
+    assert_eq!(source.info().frames, 28_800);
+    let frames: Vec<_> = (0..source.info().frames)
+        .map(|_| source.read_frame().unwrap())
+        .collect();
+    assert!(source.read_frame().is_err());
+    assert!(
+        frames
+            .iter()
+            .any(|[left, right]| (left - right).abs() > 0.05)
+    );
+    for index in [26_971, 0, 17_301, 28_799, 259] {
+        source.seek_to(index).unwrap();
+        let actual = source.read_frame().unwrap();
+        for (actual, expected) in actual.into_iter().zip(frames[index as usize]) {
+            assert!((actual - expected).abs() < 0.0001, "frame {index}");
+        }
+    }
+    source.seek_to(source.info().frames).unwrap();
+    assert!(source.read_frame().is_err());
+}
+
+#[test]
+fn mp3_without_duration_counts_complete_frames_and_duplicates_mono() {
+    let media = include_bytes!("fixtures/mono-untagged.mp3");
+    for (media, packets) in [(&media[..], 12), (&media[..media.len() - 1], 11)] {
+        let fixture = Fixture::from_bytes(media);
+        let mut source = AudioSource::open(&fixture.0).unwrap();
+        assert_eq!(source.info().sample_rate, 22_050);
+        assert_eq!(source.info().frames, packets * 576);
+        for _ in 0..packets * 576 {
+            let [left, right] = source.read_frame().unwrap();
+            assert_eq!(left, right);
+        }
+        assert!(source.read_frame().is_err());
+        source.seek_to(packets * 576 - 1).unwrap();
+        assert!(source.read_frame().is_ok());
+    }
+}
+
+#[test]
+fn mp3_without_xing_frame_count_still_trims_encoder_padding() {
+    let mut media = include_bytes!("fixtures/stereo-gapless.mp3").to_vec();
+    let xing = media.windows(4).position(|field| field == b"Xing").unwrap();
+    // Keep the byte count, seek table, quality and encoder extension.
+    assert_eq!(&media[xing + 4..xing + 8], &[0, 0, 0, 15]);
+    media[xing + 7] &= !1;
+    let end = xing + 156;
+    media.copy_within(xing + 12..end, xing + 8);
+    media[end - 4..end].fill(0);
+
+    let fixture = Fixture::from_bytes(&media);
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().frames, 28_800);
+    source.seek_to(28_799).unwrap();
+    assert!(source.read_frame().is_ok());
+    assert!(source.read_frame().is_err());
+}
+
+#[test]
+fn mp3_seek_rebuilds_the_reservoir_for_low_bitrate_stereo() {
+    let fixture = Fixture::from_bytes(include_bytes!("fixtures/stereo-low-bitrate.mp3"));
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().sample_rate, 24_000);
+    let frames: Vec<_> = (0..source.info().frames)
+        .map(|_| source.read_frame().unwrap())
+        .collect();
+    let start = 31_827;
+    source.seek_to(start as u32).unwrap();
+    for &expected in &frames[start..start + 2_048] {
+        let actual = source.read_frame().unwrap();
+        for (actual, expected) in actual.into_iter().zip(expected) {
+            assert!((actual - expected).abs() < 0.0001);
+        }
+    }
+}
+
+#[test]
 fn decodes_flac_packets_and_seeks_to_an_exact_frame() {
     // Four 192-frame blocks with different constant values in each channel.
     let fixture = Fixture::from_bytes(include_bytes!("fixtures/stereo.flac"));

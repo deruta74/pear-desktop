@@ -14,7 +14,7 @@ The script builds an ad hoc signed local app. The queue accepts YouTube and YouT
 
 To build for an Intel Mac, install the `x86_64-apple-darwin` Rust target and run `experiments/rust-desktop/tools/bundle-macos.sh preview x86_64-apple-darwin`. For Apple silicon, use `aarch64-apple-darwin`.
 
-On first launch, choose **Open local audio** to play WAV and FLAC files offline. Read the terms and privacy policy and choose **Agree and continue** to enable YouTube playback and lookups. **Help → Terms and Privacy** reopens the policy at any time. The local profile records the accepted policy revision.
+On first launch, choose **Open local audio** to play WAV, FLAC, and MP3 files offline. Read the terms and privacy policy and choose **Agree and continue** to enable YouTube playback and lookups. **Help → Terms and Privacy** reopens the policy at any time. The local profile records the accepted policy revision.
 
 Choose **Add links** and paste one link or ID per line to add several videos together. Enter submits, and Shift+Enter inserts a line. The queue skips duplicates and identifies invalid lines before saving the batch. Use **Filter queue** to find an entry by title or ID. Press Escape in the filter field to show the full queue again. **Play next** moves a queued video or adds a search result immediately after the current video while playback continues.
 
@@ -59,13 +59,13 @@ In `--iframe-player`, start the video and open **Lyrics**. Check the track name 
 
 ### Local audio and Slowed + Reverb
 
-Choose **File → Open Local Audio Window**, then **Open audio file**, or drag a file into the Local Audio window. Pear streams mono or stereo integer PCM and IEEE float WAV, as well as native FLAC files with a known duration, through the system’s default output. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. The effect settings apply to the current local audio session.
+Choose **File → Open Local Audio Window**, then **Open audio file**, or drag a file into the Local Audio window. Pear streams mono or stereo integer PCM and IEEE float WAV, native FLAC with a known duration, and MP3 through the system’s default output. It uses MP3 encoder delay and padding information when available. It counts complete frames on open when the file lacks duration metadata. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. The effect settings apply to the current local audio session.
 
 You can also pass `--local-audio` to the executable. Local playback runs offline in a separate window and uses its own session. Press **Space** outside an input or button to pause or resume. The embedded YouTube player has its own playback controls.
 
 Expand **Equalizer** to choose the 8-, 14- or 20-band layout, or add up to 64 custom peaking bands. In **Custom**, click the graph to add a point and drag it to set frequency and gain. The fields below the graph accept exact frequency, gain and Q values. **Auto preamp** adjusts attenuation for the active EQ curve and the local volume. Named presets are saved in the local audio profile so they can be loaded after restarting Pear.
 
-FLAC decoding uses Symphonia 0.6.1, licensed under MPL 2.0. [Symphonia source](https://github.com/pdeljanov/Symphonia/tree/v0.6.1)
+FLAC and MP3 decoding use Symphonia 0.6.1, licensed under MPL 2.0. [Symphonia source](https://github.com/pdeljanov/Symphonia/tree/v0.6.1)
 
 ### Video details and optional search
 

@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use super::{EngineOpenError, flac::FlacSource, wav::WavSource};
+use super::{EngineOpenError, flac::FlacSource, mp3::Mp3Source, wav::WavSource};
 
 pub(super) const MAX_INPUT_RATE: u32 = 384_000;
 
@@ -17,6 +17,7 @@ pub(super) struct AudioInfo {
 pub(super) enum AudioSource {
     Wav(WavSource),
     Flac(FlacSource),
+    Mp3(Box<Mp3Source>),
 }
 
 impl AudioSource {
@@ -45,6 +46,9 @@ impl AudioSource {
         match &signature {
             b"RIFF" => WavSource::open(file, metadata.len()).map(Self::Wav),
             b"fLaC" => FlacSource::open(file, metadata.len()).map(Self::Flac),
+            header if Mp3Source::recognizes(header) => {
+                Mp3Source::open(file, metadata.len()).map(|source| Self::Mp3(Box::new(source)))
+            }
             _ => Err(EngineOpenError::UnsupportedAudio),
         }
     }
@@ -53,6 +57,7 @@ impl AudioSource {
         match self {
             Self::Wav(source) => source.info(),
             Self::Flac(source) => source.info(),
+            Self::Mp3(source) => source.info(),
         }
     }
 
@@ -60,6 +65,7 @@ impl AudioSource {
         match self {
             Self::Wav(source) => source.seek_to(frame),
             Self::Flac(source) => source.seek_to(frame),
+            Self::Mp3(source) => source.seek_to(frame),
         }
     }
 
@@ -67,6 +73,7 @@ impl AudioSource {
         match self {
             Self::Wav(source) => source.read_frame().map_err(io::Error::other),
             Self::Flac(source) => source.read_frame(),
+            Self::Mp3(source) => source.read_frame(),
         }
     }
 }

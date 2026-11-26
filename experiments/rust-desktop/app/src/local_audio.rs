@@ -190,7 +190,7 @@ fn pick_file(window: &Window) -> Option<PathBuf> {
         rfd::FileDialog::new()
             .set_parent(window)
             .set_title("Open audio file")
-            .add_filter("WAV and FLAC audio", &["wav", "wave", "flac"])
+            .add_filter("Audio files", &["wav", "wave", "flac", "mp3"])
             .pick_file()
     }
     #[cfg(target_os = "linux")]
@@ -206,8 +206,13 @@ fn pick_file(window: &Window) -> Option<PathBuf> {
             Some("Cancel"),
         );
         let filter = gtk::FileFilter::new();
-        filter.set_name(Some("WAV and FLAC audio"));
-        for pattern in ["*.[wW][aA][vV]", "*.[wW][aA][vV][eE]", "*.[fF][lL][aA][cC]"] {
+        filter.set_name(Some("Audio files"));
+        for pattern in [
+            "*.[wW][aA][vV]",
+            "*.[wW][aA][vV][eE]",
+            "*.[fF][lL][aA][cC]",
+            "*.[mM][pP]3",
+        ] {
             filter.add_pattern(pattern);
         }
         dialog.add_filter(filter);

@@ -1,5 +1,6 @@
 mod eq;
 mod flac;
+mod mp3;
 mod render;
 mod source;
 mod wav;
@@ -48,9 +49,7 @@ impl fmt::Display for EngineOpenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::UnavailableAudio => "Could not open the selected audio file.",
-            Self::UnsupportedAudio => {
-                "Choose a non-empty mono or stereo WAV or FLAC file with a known duration."
-            }
+            Self::UnsupportedAudio => "Choose a non-empty mono or stereo WAV, FLAC, or MP3 file.",
             Self::AudioOutputUnavailable => "Could not start the default audio output.",
         })
     }
