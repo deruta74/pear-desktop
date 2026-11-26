@@ -22,6 +22,8 @@ The local controls and the official player use separate private WebViews. Only t
 
 ### Experimental playback controls on macOS and Linux
 
+Choose **View → Experimental Playback Controls** to switch players. The selection reloads the current video and is remembered across launches. The command-line flag opens the experimental player for the current launch.
+
 ```sh
 app="$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
 "$app/Contents/MacOS/pear-desktop-preview" --iframe-player
@@ -33,7 +35,7 @@ On Linux, use the same `--iframe-player` flag through Cargo.
 cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --iframe-player
 ```
 
-Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. The mode uses the same local queue. It shows saved titles and looks up details for the selected video.
+Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. Both players share the local queue and playlists. The experimental player shows saved titles and looks up details for the selected video.
 
 On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. On Ubuntu ARM64, the same video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
 

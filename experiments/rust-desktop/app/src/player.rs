@@ -11,6 +11,8 @@ mod metadata_lookup;
 mod platform;
 mod playlists;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod preferences;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod transport;
 use std::{
     borrow::Cow,
@@ -20,6 +22,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use muda::CheckMenuItem;
 use muda::{
     Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
     accelerator::{Accelerator, CMD_OR_CTRL, Code, Modifiers},
@@ -63,6 +67,8 @@ const CONTROLS_CSP: &str = "default-src 'none'; script-src pear-queue:; style-sr
 const CONTROLS_CSP: &str = "default-src 'none'; script-src https://pear-queue.app.local; style-src https://pear-queue.app.local; img-src https://i.ytimg.com/vi/; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const MAX_IPC_BYTES: usize = 4096;
 const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+const IFRAME_MENU_LABEL: &str = "Experimental Playback Controls";
 
 const EMPTY_PLAYER: &str = r#"<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
@@ -107,6 +113,9 @@ struct QueueView<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     catalog: Option<&'a catalog::View>,
     saved_playlists: playlists::View<'a>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preferences_problem: Option<&'static str>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     lyrics: Option<&'a lyrics_lookup::View>,
@@ -418,6 +427,22 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         .parent()
         .ok_or("Queue directory is unavailable")?
         .to_owned();
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut mode = mode;
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut preferences =
+        (!mode.smoke).then(|| preferences::Preferences::load(data_dir.join("preferences.json")));
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut preferences_problem = preferences
+        .as_ref()
+        .and_then(preferences::Preferences::problem);
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    if let Some(preferences) = &preferences {
+        mode.iframe_player |= preferences.iframe_player();
+        if let Some(problem) = preferences_problem {
+            eprintln!("{problem}");
+        }
+    }
     let mut library = Library::load(queue_path)?;
     let mut playlists = playlists::Panel::load(data_dir.join("playlists.json"));
     let mut event_loop_builder = EventLoopBuilder::<PlayerEvent>::with_user_event();
@@ -446,6 +471,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let app_menu = Submenu::with_items("Pear Desktop", true, &[&quit])?;
     let file_menu = Submenu::with_items("File", true, &[&add_video])?;
     let view_menu = Submenu::with_items("View", true, &[&toggle_queue, &reload])?;
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let toggle_iframe = CheckMenuItem::new(
+        IFRAME_MENU_LABEL,
+        preferences.is_some(),
+        mode.iframe_player,
+        None,
+    );
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    view_menu.append(&toggle_iframe)?;
     let edit_menu = Submenu::with_items(
         "Edit",
         true,
@@ -482,22 +516,26 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     )?;
     controls.load_url(CONTROLS_URL)?;
     let loader = event_loop.create_proxy();
-    let load =
-        move |layout: &Layout, window: &Window, library: &Library, generation, queue_visible| {
-            show_video(
-                layout,
-                window,
-                queue_visible,
-                library.state().current.as_deref(),
-                generation,
-                loader.clone(),
-                mode,
-            )
-        };
+    let load = move |layout: &Layout,
+                     window: &Window,
+                     library: &Library,
+                     generation,
+                     queue_visible,
+                     mode| {
+        show_video(
+            layout,
+            window,
+            queue_visible,
+            library.state().current.as_deref(),
+            generation,
+            loader.clone(),
+            mode,
+        )
+    };
     let mut queue_visible = true;
     let mut generation = 0;
     let (mut current_player, mut player_error) =
-        match load(&layout, &window, &library, generation, queue_visible) {
+        match load(&layout, &window, &library, generation, queue_visible, mode) {
             Ok(video) => (Some(video), None),
             Err(error) => (None, Some(format!("Could not open the player: {error}"))),
         };
@@ -533,15 +571,22 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let mut lyrics = (mode.iframe_player && !mode.smoke)
-        .then(|| lyrics_lookup::Lookup::new(event_loop.create_proxy()))
-        .and_then(|result| match result {
+    let lyrics_worker = {
+        let events = event_loop.create_proxy();
+        move || match lyrics_lookup::Lookup::new(events.clone()) {
             Ok(lyrics) => Some(lyrics),
             Err(_) => {
                 eprintln!("Could not start LRCLIB lyrics lookup.");
                 None
             }
-        });
+        }
+    };
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut lyrics = if mode.iframe_player && !mode.smoke {
+        lyrics_worker()
+    } else {
+        None
+    };
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let results = event_loop.create_proxy();
     #[cfg(target_os = "linux")]
@@ -592,6 +637,38 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 reload_player = true;
                 true
             }
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *toggle_iframe.id() => {
+                let Some(preferences) = &mut preferences else { return };
+                let enabled = toggle_iframe.is_checked();
+                if enabled == mode.iframe_player {
+                    return;
+                }
+                if let Err(reason) = preferences.set_iframe_player(enabled) {
+                    eprintln!("Could not save playback mode: {reason}");
+                    preferences_problem = Some("Playback mode changed for this session. The preference could not be saved.");
+                    toggle_iframe.set_text(format!("{IFRAME_MENU_LABEL} (This Session)"));
+                } else {
+                    preferences_problem = None;
+                    toggle_iframe.set_text(IFRAME_MENU_LABEL);
+                }
+                mode.iframe_player = enabled;
+                transport = enabled.then(transport::Transport::default);
+                if enabled {
+                    if lyrics.is_none() {
+                        lyrics = lyrics_worker();
+                    }
+                } else {
+                    if let Some(lyrics) = &mut lyrics {
+                        lyrics.select(None, None, None);
+                    }
+                    if let Err(reason) = controls.evaluate_script("window.renderPearTransport?.(null);") {
+                        eprintln!("Could not reset the playback controls: {reason}");
+                    }
+                }
+                reload_player = true;
+                true
+            }
             Event::UserEvent(PlayerEvent::Menu(event))
                 if event.id == *toggle_queue.id() || event.id == *add_video.id() =>
             {
@@ -603,8 +680,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             queue_visible = show;
                             toggle_queue.set_text(if show { "Hide Queue" } else { "Show Queue" });
                             #[cfg(any(target_os = "macos", target_os = "linux"))]
-                            if mode.iframe_player
-                                && let Err(reason) = controls.evaluate_script(&format!(
+                            if let Err(reason) = controls.evaluate_script(&format!(
                                     "window.setPearPanelVisible?.({show});"
                                 ))
                             {
@@ -755,7 +831,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     },
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     Command::FindLyrics { title, artist } => {
-                        if let Some(lyrics) = &mut lyrics {
+                        if mode.iframe_player && let Some(lyrics) = &mut lyrics {
                             lyrics.submit(&title, &artist, Instant::now());
                         }
                     }
@@ -808,7 +884,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             // Remove the old WebView before creating the next one so its audio stops
             // even if the new WebView fails to initialize.
             drop(current_player.take());
-            match load(&layout, &window, &library, generation, queue_visible) {
+            match load(&layout, &window, &library, generation, queue_visible, mode) {
                 Ok(video) => {
                     current_player = Some(video);
                     player_error = None;
@@ -822,7 +898,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         let update_queue = {
-            let duration_changed = lyrics.as_mut().is_some_and(|lyrics| {
+            let duration_changed = mode.iframe_player && lyrics.as_mut().is_some_and(|lyrics| {
                 if update_queue || reload_player {
                     let queue = library.state();
                     let current = queue.current.as_deref();
@@ -872,6 +948,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
                     catalog: catalog.as_ref().map(catalog::Catalog::view),
                     saved_playlists: playlists.view(),
+                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    preferences_problem,
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     lyrics: lyrics.as_ref().and_then(lyrics_lookup::Lookup::view),
                 },

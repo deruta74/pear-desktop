@@ -7,6 +7,7 @@ const errorText = document.getElementById('queue-error');
 const statusText = document.getElementById('queue-status');
 const playerProblemText = document.getElementById('player-problem');
 const metadataProblemText = document.getElementById('metadata-problem');
+const preferencesProblemText = document.getElementById('preferences-problem');
 const selection = document.getElementById('selection-id');
 const selectionArtwork = document.getElementById('selection-artwork');
 const selectionPanel = selection.closest('.selection');
@@ -1258,6 +1259,7 @@ window.renderPearState = (
     catalog,
     lyrics,
     savedPlaylists,
+    preferencesProblem,
   },
   error = null,
   notice = null,
@@ -1395,6 +1397,9 @@ window.renderPearState = (
   const providerProblem = metadataProblem ?? '';
   if (metadataProblemText.textContent !== providerProblem) {
     metadataProblemText.textContent = providerProblem;
+  }
+  if (preferencesProblemText.textContent !== (preferencesProblem ?? '')) {
+    preferencesProblemText.textContent = preferencesProblem ?? '';
   }
   if (selectionChanged || problemChanged) updateTransport();
 };

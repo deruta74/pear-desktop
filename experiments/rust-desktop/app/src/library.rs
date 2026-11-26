@@ -411,7 +411,7 @@ fn save_state(path: &Path, state: &QueueState) -> io::Result<()> {
     write_atomic(path, &bytes)
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let directory = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())

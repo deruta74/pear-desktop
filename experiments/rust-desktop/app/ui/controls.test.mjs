@@ -82,6 +82,7 @@ async function state(
     catalog,
     lyrics,
     savedPlaylists,
+    preferencesProblem,
   } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
@@ -105,6 +106,7 @@ async function state(
         catalog,
         lyrics,
         savedPlaylists,
+        preferencesProblem,
       },
       error,
       notice,
@@ -587,6 +589,24 @@ test('shows a supplied metadata problem independently of playback and queue feed
     metadataProblem: null,
   });
   await expect(problemText).toHaveCount(0);
+});
+
+test('keeps failed playback preference feedback visible outside the Queue view', async (t) => {
+  const page = await panel(t);
+  const saved = savedPlaylists();
+  await state(page, [first], first, null, null, 1, { savedPlaylists: saved });
+  await page.getByRole('button', { name: 'Library' }).click();
+  const warning =
+    'Playback mode changed for this session. The preference could not be saved.';
+  await state(page, [first], first, null, null, undefined, {
+    savedPlaylists: saved,
+    preferencesProblem: warning,
+  });
+  await expect(page.getByText(warning)).toBeVisible();
+  await state(page, [first], first, null, null, undefined, {
+    savedPlaylists: saved,
+  });
+  await expect(page.getByText(warning)).toHaveCount(0);
 });
 
 test('loads only artwork matching the current video and clears it on selection change', async (t) => {
