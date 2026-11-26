@@ -33,6 +33,10 @@ pub enum Command {
     SelectSearchResult {
         id: String,
     },
+    SelectPublicPlaylistVideo {
+        revision: u64,
+        id: String,
+    },
     Remove {
         id: String,
     },
@@ -203,7 +207,7 @@ impl Library {
                 entry_index(&state.entries, &id)?;
                 state.current = Some(id);
             }
-            Command::SelectSearchResult { id } => {
+            Command::SelectSearchResult { id } | Command::SelectPublicPlaylistVideo { id, .. } => {
                 if !valid_id(&id) {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -834,17 +838,21 @@ mod tests {
     }
 
     #[test]
-    fn selecting_a_search_result_persists_the_existing_queue_order() {
+    fn selecting_catalog_videos_persists_the_existing_queue_order() {
         let directory = TestDirectory::new();
         let path = directory.queue_path();
         let mut library = Library::load(path.clone()).unwrap();
         library.apply(add(FIRST)).unwrap();
         library.apply(add(SECOND)).unwrap();
 
-        assert!(library.apply(select_search_result(THIRD)).unwrap());
+        let select_playlist_video = |id: &str| Command::SelectPublicPlaylistVideo {
+            revision: 1,
+            id: id.into(),
+        };
+        assert!(library.apply(select_playlist_video(THIRD)).unwrap());
         assert_eq!(library.state().entries, [FIRST, SECOND, THIRD]);
         assert_eq!(library.state().current.as_deref(), Some(THIRD));
-        assert!(library.apply(select_search_result(SECOND)).unwrap());
+        assert!(library.apply(select_playlist_video(SECOND)).unwrap());
         assert!(!library.apply(select_search_result(SECOND)).unwrap());
         assert_eq!(library.state().entries, [FIRST, SECOND, THIRD]);
         assert_eq!(library.state().current.as_deref(), Some(SECOND));

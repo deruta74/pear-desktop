@@ -184,6 +184,7 @@ function interruptsLyricsClock(command) {
       return true;
     case 'select':
     case 'select_search_result':
+    case 'select_public_playlist_video':
       return command.id !== renderedState?.current;
     case 'select_playlist_track':
       return command.video !== renderedState?.current;
@@ -996,18 +997,20 @@ function removeView(form, results) {
   return focused;
 }
 
-function createCatalogResult({ id, title, channel }, playlist) {
+function createCatalogResult({ id, title, channel }, playlistRevision) {
+  const playlist = playlistRevision !== undefined;
   const row = document.createElement('li');
   row.className = 'catalog-result';
-  const description = document.createElement(playlist ? 'div' : 'button');
-  if (!playlist) {
-    description.type = 'button';
-    description.className = 'catalog-open';
-    description.setAttribute('aria-label', `Open ${title} in Pear`);
-    description.addEventListener('click', () =>
-      send({ type: 'select_search_result', id }, 'result-action'),
-    );
-  }
+  const description = document.createElement('button');
+  description.type = 'button';
+  description.className = 'catalog-open';
+  description.setAttribute('aria-label', `Open ${title} in Pear`);
+  description.addEventListener('click', () => {
+    const command = playlist
+      ? { type: 'select_public_playlist_video', revision: playlistRevision, id }
+      : { type: 'select_search_result', id };
+    send(command, 'result-action');
+  });
   const name = document.createElement('span');
   name.className = 'queue-title catalog-title';
   name.dir = 'auto';
@@ -1110,12 +1113,14 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
       view.results.append(
         ...results
           .slice(previousResults.length)
-          .map((result) => createCatalogResult(result, true)),
+          .map((result) => createCatalogResult(result, playlist.revision)),
       );
     } else {
       if (view.results.contains(document.activeElement)) view.query.focus();
       view.results.replaceChildren(
-        ...results.map((result) => createCatalogResult(result, asPlaylist)),
+        ...results.map((result) =>
+          createCatalogResult(result, playlist?.revision),
+        ),
       );
     }
     view.results.setAttribute(
@@ -2115,7 +2120,8 @@ window.renderPearState = (
   }
   if (
     !error &&
-    command?.type === 'select_search_result' &&
+    (command?.type === 'select_search_result' ||
+      command?.type === 'select_public_playlist_video') &&
     current === command.id
   )
     confirmation = 'Selected in the player.';

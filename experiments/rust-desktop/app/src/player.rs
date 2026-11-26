@@ -1481,9 +1481,18 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     {
                         error = Some("That video is no longer available in Search.".into());
                     }
+                    Command::SelectPublicPlaylistVideo { revision, ref id }
+                        if !catalog.as_ref().is_some_and(|catalog|
+                            catalog.can_select_playlist_video(revision, id, Instant::now())
+                        ) =>
+                    {
+                        error = Some("That playlist video is no longer available here.".into());
+                    }
                     command => {
                         let selected = match &command {
-                            Command::Select { id } | Command::SelectSearchResult { id } => Some(id),
+                            Command::Select { id }
+                            | Command::SelectSearchResult { id }
+                            | Command::SelectPublicPlaylistVideo { id, .. } => Some(id),
                             _ => None,
                         };
                         let select = selected.is_some();
@@ -1889,6 +1898,35 @@ mod tests {
             r#"{"type":"select_search_result","id":1}"#,
             r#"{"type":"select_search_result","id":"M7lc1UVf-VE","title":"Injected"}"#,
             r#"{"type":"select_search_result","url":"https://youtu.be/M7lc1UVf-VE"}"#,
+        ] {
+            assert!(command(CONTROLS_URL, invalid).is_none(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn accepts_only_the_playlist_revision_and_video_id_from_local_controls() {
+        let command = |origin, payload: &str| {
+            let request = Request::builder()
+                .uri(origin)
+                .body(format!(r#"{{"sequence":1,"command":{payload}}}"#))
+                .unwrap();
+            controls_command(&request)
+        };
+        let selection =
+            r#"{"type":"select_public_playlist_video","revision":7,"id":"M7lc1UVf-VE"}"#;
+        assert!(matches!(
+            command(CONTROLS_URL, selection),
+            Some(ControlMessage {
+                command: Command::SelectPublicPlaylistVideo { revision: 7, id },
+                ..
+            }) if id == "M7lc1UVf-VE"
+        ));
+        assert!(command("https://www.youtube.com/embed/M7lc1UVf-VE", selection).is_none());
+        for invalid in [
+            r#"{"type":"select_public_playlist_video","id":"M7lc1UVf-VE"}"#,
+            r#"{"type":"select_public_playlist_video","revision":-1,"id":"M7lc1UVf-VE"}"#,
+            r#"{"type":"select_public_playlist_video","revision":7,"url":"https://youtu.be/M7lc1UVf-VE"}"#,
+            r#"{"type":"select_public_playlist_video","revision":7,"id":"M7lc1UVf-VE","title":"Injected"}"#,
         ] {
             assert!(command(CONTROLS_URL, invalid).is_none(), "{invalid}");
         }

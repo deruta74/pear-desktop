@@ -363,6 +363,14 @@ impl Catalog {
         self.view.playlist.is_some() && self.has_current_video(id, time)
     }
 
+    pub(super) fn can_select_playlist_video(&self, revision: u64, id: &str, time: Instant) -> bool {
+        self.view
+            .playlist
+            .as_ref()
+            .is_some_and(|playlist| playlist.revision == revision)
+            && self.has_current_video(id, time)
+    }
+
     pub(super) fn can_queue_video(&self, id: &str, time: Instant) -> bool {
         self.view.playlist.is_none() && self.has_current_video(id, time)
     }
@@ -596,6 +604,38 @@ mod tests {
         let (request, _) = receiver.try_recv().unwrap();
         assert!(catalog.receive(request, Ok(Results::Search(vec![result("Other")])), now));
         assert!(catalog.playlist_queue_ids(revision, 1, now).is_none());
+    }
+
+    #[test]
+    fn playlist_selection_requires_a_loaded_id_from_the_current_revision() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let first = "M7lc1UVf-VE";
+        let second = "dQw4w9WgXcQ";
+        let revision = open_playlist(&mut catalog, &receiver, now, "later");
+        assert!(catalog.can_select_playlist_video(revision, first, now));
+        assert!(!catalog.can_select_playlist_video(revision, second, now));
+
+        catalog.load_more(revision, now);
+        let (request, _) = receiver.try_recv().unwrap();
+        assert!(catalog.can_select_playlist_video(revision, first, now));
+        let mut later = result("Later");
+        later.id = second.into();
+        assert!(catalog.receive(request, playlist_page(vec![later], None, 0), now));
+        assert!(catalog.can_select_playlist_video(revision, second, now));
+        let expiry = now + Duration::from_secs(24 * 60 * 60);
+        assert!(!catalog.can_select_playlist_video(revision, second, expiry));
+
+        catalog.submit("https://www.youtube.com/playlist?list=PL_9876543210", now);
+        let (replacement, _) = receiver.try_recv().unwrap();
+        assert!(catalog.receive(
+            replacement,
+            playlist_page(vec![result("Also on the new playlist")], None, 0),
+            now
+        ));
+        assert!(catalog.can_select_playlist_video(replacement, first, now));
+        assert!(!catalog.can_select_playlist_video(revision, first, now));
     }
 
     #[test]

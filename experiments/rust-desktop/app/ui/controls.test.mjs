@@ -1907,6 +1907,76 @@ test('shows public playlist limitations and hands off a selected row without add
   await expect(page.getByRole('button', { name: 'Load more' })).toBeHidden();
 });
 
+test('selects a loaded playlist video in Pear and rejects a stale revision', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 360, height: 520 });
+  const title =
+    'A long title that still leaves room for the browser action '.repeat(3);
+  const result = { ...pianoResult, title };
+  const render = (revision, sequence, error = null, entries = [first]) =>
+    state(page, entries, entries.at(-1), error, null, sequence, {
+      catalog: searchState({
+        query: 'PL_1234567890',
+        results: [result],
+        playlist: publicPlaylistState({ revision }),
+      }),
+    });
+  await render(7, 1);
+  await transport(page, readyTransport);
+  const nav = page.getByRole('navigation');
+  await nav.getByRole('button', { name: 'Search' }).press('Enter');
+  const query = page.getByRole('searchbox', { name: 'Search YouTube' });
+  await query.fill('unsubmitted draft');
+  const list = page.getByRole('list', { name: 'YouTube playlist videos' });
+  const open = list.getByRole('button', {
+    name: /^Open A long title.* in Pear$/,
+  });
+  const browser = list.getByRole('button', { name: / in YouTube Music$/ });
+  await expect(open).toBeInViewport();
+  await expect(browser).toBeInViewport();
+  expect(
+    await list.evaluate((node) => node.scrollWidth === node.clientWidth),
+  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    360,
+  );
+
+  await open.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'select_public_playlist_video', revision: 7, id: second },
+  });
+  await expect(open).toBeDisabled();
+  const stale = 'That playlist video is no longer available here.';
+  await render(8, 2, stale);
+  await expect(page.getByText(stale)).toBeVisible();
+  await expect(page.getByText('1 of 1')).toBeVisible();
+
+  await open.press('Space');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 3,
+    command: { type: 'select_public_playlist_video', revision: 8, id: second },
+  });
+  await render(8, 3, null, [first, second]);
+  await expect(page.getByText(stale)).toHaveCount(0);
+  await expect(page.getByText('Selected in the player.')).toBeVisible();
+  await expect(open).toBeFocused();
+  await expect(query).toHaveValue('unsubmitted draft');
+  await expect(nav.getByRole('button', { name: 'Search' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('region', { name: 'Now playing' })).toContainText(
+    second,
+  );
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(nav.getByRole('button', { name: 'Queue' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  expect(await messages(page)).toHaveLength(3);
+});
+
 test('queues loaded public playlist videos without changing the current selection', async (t) => {
   const page = await panel(t);
   await page.setViewportSize({ width: 384, height: 520 });
@@ -2059,7 +2129,21 @@ test('loads more playlist rows explicitly and preserves repeated rows, scroll, a
   await page.keyboard.press('Space');
   expect(await messages(page)).toHaveLength(5);
 
-  await render(publicPlaylistState({ revision: 8 }), [initial[0]]);
+  await items
+    .last()
+    .getByRole('button', { name: / in Pear$/ })
+    .press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 6,
+    command: { type: 'select_public_playlist_video', revision: 7, id: third },
+  });
+
+  await render(
+    publicPlaylistState({ revision: 8 }),
+    [initial[0]],
+    6,
+    'That playlist video is no longer available here.',
+  );
   await expect(items).toHaveCount(1);
   expect(
     await items
