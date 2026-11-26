@@ -1,5 +1,10 @@
 mod page;
 
+#[cfg(target_os = "macos")]
+mod library;
+#[cfg(target_os = "macos")]
+mod player;
+
 use std::{error::Error, sync::Arc};
 
 use muda::{
@@ -182,7 +187,16 @@ fn run() -> Result<()> {
 }
 
 fn main() {
-    if let Err(error) = run() {
+    #[cfg(target_os = "macos")]
+    let result = if player::is_bundle_launch() {
+        player::run()
+    } else {
+        run()
+    };
+    #[cfg(not(target_os = "macos"))]
+    let result = run();
+
+    if let Err(error) = result {
         eprintln!("{TITLE}: {error}");
         std::process::exit(1);
     }

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pear Video Queue</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/controls.js" defer></script>
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel-header">
+        <h1>Pear</h1>
+      </header>
+
+      <form id="add-video">
+        <label for="video-source">YouTube link or video ID</label>
+        <div class="add-controls">
+          <input
+            id="video-source"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="Paste a link or ID"
+            aria-describedby="queue-error"
+            maxlength="2048"
+            required
+            disabled
+          />
+          <button id="add-button" class="add-button" type="submit" disabled>
+            Add
+          </button>
+        </div>
+        <p id="queue-error" class="feedback error" role="alert"></p>
+        <p id="queue-status" class="feedback" role="status">Loading queue…</p>
+      </form>
+
+      <section class="selection" aria-labelledby="selection-heading">
+        <div class="selection-heading">
+          <h2 id="selection-heading">Selected video</h2>
+          <span id="position" class="position"></span>
+        </div>
+        <p id="selection-id" class="selection-id">No video selected</p>
+        <div class="playback-actions">
+          <button
+            id="previous"
+            class="icon-button"
+            type="button"
+            aria-label="Previous video"
+            title="Previous video"
+            disabled
+          >
+            <span class="skip-icon" aria-hidden="true"></span>
+          </button>
+          <button
+            id="next"
+            class="icon-button"
+            type="button"
+            aria-label="Next video"
+            title="Next video"
+            disabled
+          >
+            <span class="skip-icon skip-icon-next" aria-hidden="true"></span>
+          </button>
+          <button
+            id="open-browser"
+            class="browser-button"
+            type="button"
+            disabled
+          >
+            Open in browser
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p class="playback-hint">
+          You may need to press Play in the player after selecting a video.
+        </p>
+      </section>
+
+      <section class="queue" aria-labelledby="queue-heading">
+        <div class="queue-heading">
+          <h2 id="queue-heading">Video queue</h2>
+          <span id="queue-count" class="queue-count"></span>
+        </div>
+        <p id="queue-empty" class="queue-empty" hidden>Your queue is empty.</p>
+        <ol
+          id="queue-items"
+          class="queue-items"
+          role="list"
+          aria-labelledby="queue-heading"
+          hidden
+        ></ol>
+      </section>
+    </main>
+  </body>
+</html>

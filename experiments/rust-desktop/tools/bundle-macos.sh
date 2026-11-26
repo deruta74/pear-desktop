@@ -13,12 +13,16 @@ case "${1:-preview}" in
     name='Pear Desktop Rust Preview'
     identifier='com.pear-desktop.rust-preview'
     executable='pear-desktop-preview'
+    version='0.2.0'
+    build_number='2'
     source="$root/target/release/$executable"
     ;;
   embed)
     name='Pear Official Embed Probe'
     identifier='com.pear-desktop.rust-preview.embed-probe'
     executable='official_embed'
+    version='0.1.0'
+    build_number='1'
     build+=(--example "$executable")
     source="$root/target/release/examples/$executable"
     ;;
@@ -46,9 +50,9 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>$version</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$build_number</string>
 </dict>
 </plist>
 PLIST
