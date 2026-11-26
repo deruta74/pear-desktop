@@ -176,13 +176,7 @@ impl Backend {
     pub(in crate::local_audio) fn update(&mut self, next: Option<State>) {
         let previous = self.state.replace(next);
         let next = self.state.borrow();
-        let changed: HashMap<_, _> = CHANGING_PROPERTIES
-            .iter()
-            .filter_map(|&property| {
-                let value = player_property(next.as_ref(), property);
-                (value != player_property(previous.as_ref(), property)).then_some((property, value))
-            })
-            .collect();
+        let changed = changed_properties(previous.as_ref(), next.as_ref());
         if !changed.is_empty() {
             let _ = self.connection.emit_signal(
                 None,
@@ -193,6 +187,28 @@ impl Backend {
             );
         }
     }
+}
+
+fn changed_properties(
+    previous: Option<&State>,
+    next: Option<&State>,
+) -> HashMap<&'static str, Variant> {
+    CHANGING_PROPERTIES
+        .iter()
+        .filter_map(|&property| {
+            let changed = if property == "Metadata" {
+                // GLib compares dictionary entries in order and Rust maps can iterate differently.
+                metadata_identity(previous) != metadata_identity(next)
+            } else {
+                player_property(previous, property) != player_property(next, property)
+            };
+            changed.then(|| (property, player_property(next, property)))
+        })
+        .collect()
+}
+
+fn metadata_identity(state: Option<&State>) -> Option<(u64, u64, &str)> {
+    state.map(|state| (state.generation, state.duration_ms, state.title.as_str()))
 }
 
 impl Drop for Backend {
@@ -327,5 +343,30 @@ mod tests {
             Some(false)
         );
         assert_eq!(player_property(None, "CanPlay").get::<bool>(), Some(false));
+    }
+
+    #[test]
+    fn position_ticks_do_not_republish_metadata() {
+        let original = State {
+            generation: 1,
+            title: "Track.wav".into(),
+            duration_ms: 5_500,
+            position_ms: 1_234,
+            speed: 1.0,
+            volume: 0.5,
+            status: Status::Playing,
+            can_previous: false,
+            can_next: true,
+            can_control: true,
+        };
+        let mut tick = original.clone();
+        for step in 1..=20 {
+            tick.position_ms = original.position_ms + step;
+            assert!(changed_properties(Some(&original), Some(&tick)).is_empty());
+        }
+        tick.generation += 1;
+        let changed = changed_properties(Some(&original), Some(&tick));
+        assert_eq!(changed.len(), 1);
+        assert!(changed.contains_key("Metadata"));
     }
 }
