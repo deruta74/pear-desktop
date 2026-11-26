@@ -42,6 +42,11 @@ pub enum Command {
         query: String,
     },
     #[cfg(any(target_os = "macos", target_os = "linux"))]
+    FindLyrics {
+        title: String,
+        artist: String,
+    },
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     SetPlayback {
         playing: bool,
     },
@@ -159,7 +164,9 @@ impl Library {
                 return Ok(false);
             }
             #[cfg(any(target_os = "macos", target_os = "linux"))]
-            Command::SetPlayback { .. } | Command::Seek { .. } => return Ok(false),
+            Command::SetPlayback { .. } | Command::Seek { .. } | Command::FindLyrics { .. } => {
+                return Ok(false);
+            }
         }
 
         if state == self.state {

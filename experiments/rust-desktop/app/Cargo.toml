@@ -21,6 +21,9 @@ ureq = { version = "3.5", default-features = false, features = ["gzip", "native-
 url = "2.5"
 wry = "0.58"
 
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+serde-saphyr = { version = "2.2", default-features = false, features = ["deserialize"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = "0.39"
 windows-core = "0.62"

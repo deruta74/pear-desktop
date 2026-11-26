@@ -24,18 +24,31 @@ const queuePanel = document.getElementById('queue-panel');
 const count = document.getElementById('queue-count');
 const empty = document.getElementById('queue-empty');
 const filter = document.getElementById('queue-filter');
+const viewSwitcherTemplate = document.getElementById('view-switcher-template');
 const catalogTemplate = document.getElementById('catalog-template');
+const lyricsTemplate = document.getElementById('lyrics-template');
 const panel = catalogTemplate.parentElement;
 const encoder = new TextEncoder();
+// The native transport polls once per second.
+const LYRIC_SAMPLE_INTERVAL_MS = 1000;
 
 let nextSequence = 1;
 let pending = null;
 let renderedState = null;
 let renderedTransport = null;
+let activeView = 'queue';
+let viewSwitcher = null;
 let renderedCatalog = null;
 let catalogView = null;
 let catalogSearchError = '';
 let catalogAddFeedback = null;
+let renderedLyrics = null;
+let lyricsView = null;
+let lyricsError = '';
+let lyricsClock = null;
+let lyricCueTimer = null;
+let lyricCueDeadline = null;
+let pearPanelVisible = true;
 let focusAddOnReady = false;
 let editingPosition = false;
 
@@ -45,27 +58,54 @@ function commandProblem(message, context) {
     statusText.textContent = '';
     return;
   }
+  if (context === 'lyrics') {
+    lyricsError = message;
+    updateLyrics(renderedLyrics);
+    return;
+  }
   if (context === 'search') catalogSearchError = message;
   else catalogAddFeedback = { message, error: true };
   updateCatalog(renderedCatalog);
 }
 
 function primaryInput() {
-  return form.hidden ? catalogView.query : source;
+  if (activeView === 'search') return catalogView?.query ?? source;
+  if (activeView === 'lyrics') return lyricsView?.track ?? source;
+  return source;
+}
+
+function interruptsLyricsClock(command) {
+  switch (command?.type) {
+    case 'seek':
+    case 'set_playback':
+    case 'previous':
+    case 'next':
+      return true;
+    case 'select':
+      return command.id !== renderedState?.current;
+    case 'remove':
+      return command.id === renderedState?.current;
+    default:
+      return false;
+  }
 }
 
 function send(command, context = 'queue') {
   if (pending) return;
 
   if (context === 'search') catalogSearchError = '';
-  if (context !== 'queue') catalogAddFeedback = null;
+  if (context === 'search' || context === 'result-add')
+    catalogAddFeedback = null;
+  if (context === 'lyrics') lyricsError = '';
   const sequence = nextSequence;
   const message = JSON.stringify({ sequence, command });
   if (message.length > 4096 || encoder.encode(message).length > 4096) {
     commandProblem(
       context === 'search'
         ? 'Enter a search of up to 160 characters.'
-        : 'This input is too long. Use shorter links or add fewer videos at a time.',
+        : context === 'lyrics'
+          ? 'Enter a track and artist of up to 160 characters each.'
+          : 'This input is too long. Use shorter links or add fewer videos at a time.',
       context,
     );
     primaryInput().focus();
@@ -77,11 +117,16 @@ function send(command, context = 'queue') {
     sequence,
     command,
     context,
+    current: renderedState?.current,
     entryCount: renderedState?.entries.length ?? 0,
     entryIndex: renderedState?.entries.indexOf(command.id) ?? -1,
   };
   if (context === 'queue' && command.type === 'add') {
     add.setAttribute('aria-disabled', 'true');
+  }
+  if (interruptsLyricsClock(command)) {
+    cancelLyricsClock();
+    updateLyricsTiming();
   }
 
   try {
@@ -96,6 +141,7 @@ function send(command, context = 'queue') {
     return;
   }
   if (catalogView) updateCatalog(renderedCatalog);
+  if (lyricsView) updateLyrics(renderedLyrics);
 }
 
 function formatTime(seconds) {
@@ -176,9 +222,33 @@ function updateTransport() {
 }
 
 window.renderPearTransport = (transport) => {
+  const clockChanged =
+    transport?.positionMs !== renderedTransport?.positionMs ||
+    transport?.clockRunning !== renderedTransport?.clockRunning ||
+    transport?.playbackRate !== renderedTransport?.playbackRate ||
+    transport?.duration !== renderedTransport?.duration ||
+    transport?.blocked !== renderedTransport?.blocked;
   renderedTransport = transport;
   updateTransport();
+  if (clockChanged) receiveLyricsClock(transport);
+  updateLyricsTiming();
 };
+
+function lyricsPanelVisible() {
+  return pearPanelVisible && !document.hidden;
+}
+
+function updateLyricsVisibility() {
+  if (!lyricsPanelVisible()) cancelLyricsClock();
+  updateLyricsTiming();
+}
+
+window.setPearPanelVisible = (visible) => {
+  pearPanelVisible = Boolean(visible);
+  updateLyricsVisibility();
+};
+document.addEventListener('visibilitychange', updateLyricsVisibility);
+window.addEventListener('pagehide', cancelLyricsClock);
 
 function videoTitle(titles, id) {
   const title =
@@ -338,36 +408,90 @@ function updateQueue(entries, current, entryTitles) {
   }
 }
 
-function showCatalog(open) {
-  const view = catalogView;
-  form.hidden = open;
-  queuePanel.hidden = open;
-  view.showQueue.setAttribute('aria-pressed', String(!open));
-  view.showSearch.setAttribute('aria-pressed', String(open));
-  view.form.hidden = !open;
-  view.results.hidden = !open || !view.results.childElementCount;
+function updateViews() {
+  if (
+    (activeView === 'search' && !catalogView) ||
+    (activeView === 'lyrics' && !lyricsView)
+  ) {
+    activeView = 'queue';
+  }
+
+  const hasOptionalView = Boolean(catalogView || lyricsView);
+  const active = document.activeElement;
+  let restoreFocus = false;
+  if (hasOptionalView && !viewSwitcher) {
+    viewSwitcher =
+      viewSwitcherTemplate.content.firstElementChild.cloneNode(true);
+    const [queueButton, searchButton, lyricsButton] = viewSwitcher.children;
+    queueButton.addEventListener('click', focusQueueAdd);
+    searchButton.addEventListener('click', () => showView('search'));
+    lyricsButton.addEventListener('click', () => showView('lyrics'));
+    panel.querySelector('.panel-header').append(viewSwitcher);
+  } else if (!hasOptionalView && viewSwitcher) {
+    restoreFocus = viewSwitcher.contains(active);
+    viewSwitcher.remove();
+    viewSwitcher = null;
+  }
+  panel.toggleAttribute('data-view-switcher', hasOptionalView);
+
+  if (viewSwitcher) {
+    const [queueButton, searchButton, lyricsButton] = viewSwitcher.children;
+    viewSwitcher.setAttribute(
+      'aria-label',
+      catalogView && lyricsView
+        ? 'Queue, search and lyrics'
+        : catalogView
+          ? 'Queue and search'
+          : 'Queue and lyrics',
+    );
+    searchButton.hidden = !catalogView;
+    lyricsButton.hidden = !lyricsView;
+    restoreFocus =
+      (active === searchButton && searchButton.hidden) ||
+      (active === lyricsButton && lyricsButton.hidden);
+    queueButton.setAttribute('aria-pressed', String(activeView === 'queue'));
+    searchButton.setAttribute('aria-pressed', String(activeView === 'search'));
+    lyricsButton.setAttribute('aria-pressed', String(activeView === 'lyrics'));
+  }
+
+  form.hidden = queuePanel.hidden = activeView !== 'queue';
+  if (catalogView) {
+    catalogView.form.hidden = activeView !== 'search';
+    catalogView.results.hidden =
+      catalogView.form.hidden || !catalogView.results.childElementCount;
+  }
+  if (lyricsView) {
+    lyricsView.form.hidden = activeView !== 'lyrics';
+    lyricsView.lines.hidden =
+      lyricsView.form.hidden || !lyricsView.lines.childElementCount;
+    if (lyricsView.form.hidden) lyricsView.gap.removeAttribute('data-running');
+  }
+  if (restoreFocus) primaryInput().focus();
+  updateLyricsTiming();
+}
+
+function showView(view) {
+  if (activeView === 'lyrics' && view !== 'lyrics') cancelLyricsClock();
+  activeView = view;
+  updateViews();
   primaryInput().focus();
 }
 
 function focusQueueAdd() {
   focusAddOnReady = source.disabled;
-  if (catalogView) showCatalog(false);
-  else source.focus();
+  showView('queue');
 }
 
 window.focusPearAdd = focusQueueAdd;
 
 function mountCatalog(query) {
-  const [navigation, searchForm, results] =
+  const [searchForm, results] =
     catalogTemplate.content.cloneNode(true).children;
-  const [showQueue, showSearch] = navigation.children;
   const input = searchForm.querySelector('#catalog-query');
   const submit = searchForm.querySelector('button');
   const feedback = searchForm.querySelector('#catalog-feedback');
   const addFeedback = searchForm.querySelector('#catalog-add-feedback');
   input.value = query;
-  showQueue.addEventListener('click', focusQueueAdd);
-  showSearch.addEventListener('click', () => showCatalog(true));
   searchForm.addEventListener('submit', (event) => {
     event.preventDefault();
     if (pending) return;
@@ -381,13 +505,8 @@ function mountCatalog(query) {
     input.value = query;
     send({ type: 'search', query }, 'search');
   });
-  panel.querySelector('.panel-header').append(navigation);
-  panel.setAttribute('data-catalog', '');
   catalogTemplate.before(searchForm, results);
   return {
-    navigation,
-    showQueue,
-    showSearch,
     form: searchForm,
     query: input,
     submit,
@@ -396,6 +515,14 @@ function mountCatalog(query) {
     results,
     renderedResults: [],
   };
+}
+
+function removeView(form, results) {
+  const active = document.activeElement;
+  const focused = form.contains(active) || results.contains(active);
+  form.remove();
+  results.remove();
+  return focused;
 }
 
 function createCatalogResult({ id, title, channel }) {
@@ -429,21 +556,11 @@ function updateCatalog(catalog) {
     catalogSearchError = '';
     catalogAddFeedback = null;
     if (catalogView) {
-      const panels = [
-        catalogView.navigation,
-        catalogView.form,
-        catalogView.results,
-      ];
-      const wasFocused = panels.some((element) =>
-        element.contains(document.activeElement),
-      );
-      for (const element of panels) element.remove();
-      panel.removeAttribute('data-catalog');
-      form.hidden = queuePanel.hidden = false;
+      const wasFocused = removeView(catalogView.form, catalogView.results);
       catalogView = null;
-      if (wasFocused) source.focus();
+      return wasFocused;
     }
-    return;
+    return false;
   }
 
   catalogView ??= mountCatalog(catalog.query);
@@ -498,10 +615,298 @@ function updateCatalog(catalog) {
   if (view.addFeedback.textContent !== addMessage) {
     view.addFeedback.textContent = addMessage;
   }
+  return false;
+}
+
+function hasLyricsDuration(lyrics) {
+  return Number.isFinite(lyrics?.duration) && lyrics.duration > 0;
+}
+
+function mountLyrics() {
+  const [lyricsForm, lines] = lyricsTemplate.content.cloneNode(true).children;
+  const track = lyricsForm.querySelector('#lyrics-track');
+  const artist = lyricsForm.querySelector('#lyrics-artist');
+  const submit = lyricsForm.querySelector('button');
+  const feedback = lyricsForm.querySelector('#lyrics-feedback');
+  const gap = document.createElement('span');
+  gap.className = 'lyrics-gap';
+  gap.setAttribute('role', 'img');
+  gap.setAttribute('aria-label', 'Instrumental break');
+  gap.append(
+    ...Array.from({ length: 3 }, () => document.createElement('span')),
+  );
+  lyricsForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (pending || !hasLyricsDuration(renderedLyrics)) return;
+    const title = track.value.trim();
+    const artistName = artist.value.trim();
+    if (!title || !artistName) {
+      commandProblem('Enter a track and artist.', 'lyrics');
+      (title ? artist : track).focus();
+      return;
+    }
+    track.value = title;
+    artist.value = artistName;
+    send({ type: 'find_lyrics', title, artist: artistName }, 'lyrics');
+  });
+  lyricsTemplate.before(lyricsForm, lines);
+  return {
+    form: lyricsForm,
+    lines,
+    track,
+    artist,
+    submit,
+    feedback,
+    gap,
+    trackDefault: '',
+    artistDefault: '',
+    resultKey: '',
+    timedLines: [],
+    activeLine: null,
+    activeWord: null,
+  };
+}
+
+function lyricsLine(text) {
+  const line = document.createElement('li');
+  line.className = 'lyrics-line';
+  line.dir = 'auto';
+  line.textContent = text;
+  return line;
+}
+
+function timedLyricsLine({ timeMs, text, words }) {
+  const element = lyricsLine(text);
+  const timedWords = [];
+  if (
+    text &&
+    words.length &&
+    words.map((word) => word.text).join('') === text
+  ) {
+    for (const word of words) {
+      const span = document.createElement('span');
+      span.textContent = word.text;
+      timedWords.push({ timeMs: word.timeMs, element: span });
+    }
+    element.replaceChildren(...timedWords.map((word) => word.element));
+  }
+  return { timeMs, element, words: timedWords, gap: text === '' };
+}
+
+function updateLyrics(lyrics, selectionChanged = false) {
+  renderedLyrics = lyrics ?? null;
+  if (!lyrics) {
+    lyricsError = '';
+    if (!lyricsView) return false;
+    cancelLyricsClock();
+    const wasFocused = removeView(lyricsView.form, lyricsView.lines);
+    lyricsView = null;
+    return wasFocused;
+  }
+
+  lyricsView ??= mountLyrics();
+  const view = lyricsView;
+  if (selectionChanged) lyricsError = '';
+  if (selectionChanged || view.track.value === view.trackDefault)
+    view.track.value = lyrics.track;
+  if (selectionChanged || view.artist.value === view.artistDefault)
+    view.artist.value = lyrics.artist;
+  view.trackDefault = lyrics.track;
+  view.artistDefault = lyrics.artist;
+
+  const finding =
+    lyrics.pending ||
+    (pending?.context === 'lyrics' &&
+      pending.current === renderedState?.current);
+  const result = finding ? null : lyrics.result;
+  const resultKey = result ? JSON.stringify(result) : '';
+  if (selectionChanged || view.resultKey !== resultKey) {
+    view.gap.remove();
+    view.activeLine = view.activeWord = null;
+    view.timedLines =
+      result?.kind === 'synced' ? result.lines.map(timedLyricsLine) : [];
+    const rows =
+      result?.kind === 'plain'
+        ? result.lines.map(lyricsLine)
+        : view.timedLines.map((line) => line.element);
+    if (!rows.length && view.lines.contains(document.activeElement))
+      view.track.focus();
+    view.lines.replaceChildren(...rows);
+    view.lines.scrollTop = 0;
+    view.resultKey = resultKey;
+  }
+  view.lines.hidden = view.form.hidden || !view.lines.childElementCount;
+
+  const hasDuration = hasLyricsDuration(lyrics);
+  view.submit.setAttribute(
+    'aria-disabled',
+    String(Boolean(pending) || !hasDuration),
+  );
+  const problem = lyricsError || (!finding && lyrics.problem);
+  let message = '';
+  if (problem) message = problem;
+  else if (finding) message = 'Finding lyrics…';
+  else if (!hasDuration) message = 'Waiting for video duration…';
+  else if (result?.kind === 'instrumental') message = 'Instrumental track.';
+  view.feedback.classList.toggle('error', Boolean(problem));
+  if (view.feedback.textContent !== message)
+    view.feedback.textContent = message;
+  updateLyricsTiming();
+  return false;
+}
+
+function lyricBoundaryAfter(items, timeMs) {
+  let first = 0;
+  let end = items.length;
+  while (first < end) {
+    const middle = Math.floor((first + end) / 2);
+    if (items[middle].timeMs <= timeMs) first = middle + 1;
+    else end = middle;
+  }
+  return first;
+}
+
+function scheduleLyricCue(deadline) {
+  if (deadline === lyricCueDeadline) return;
+  if (lyricCueTimer !== null) window.clearTimeout(lyricCueTimer);
+  lyricCueTimer = null;
+  lyricCueDeadline = deadline;
+  if (deadline !== null) {
+    lyricCueTimer = window.setTimeout(
+      () => {
+        lyricCueTimer = lyricCueDeadline = null;
+        updateLyricsTiming();
+      },
+      Math.max(0, Math.ceil(deadline - performance.now())),
+    );
+  }
+}
+
+function cancelLyricsClock() {
+  lyricsClock = null;
+  scheduleLyricCue(null);
+}
+
+function receiveLyricsClock(transport) {
+  cancelLyricsClock();
+  if (
+    !transport?.clockRunning ||
+    transport.blocked ||
+    !lyricsPanelVisible() ||
+    playerProblemText.textContent ||
+    editingPosition ||
+    interruptsLyricsClock(pending?.command)
+  )
+    return;
+
+  const { positionMs, duration, playbackRate } = transport;
+  const endMs = duration * 1000;
+  if (
+    !Number.isFinite(positionMs) ||
+    positionMs < 0 ||
+    !Number.isFinite(endMs) ||
+    positionMs >= endMs
+  )
+    return;
+  const rate =
+    Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+  const receivedAt = performance.now();
+  const limitMs = Math.min(endMs, positionMs + LYRIC_SAMPLE_INTERVAL_MS * rate);
+  lyricsClock = {
+    positionMs,
+    receivedAt,
+    rate,
+    limitMs,
+    expiresAt:
+      receivedAt +
+      Math.min(LYRIC_SAMPLE_INTERVAL_MS, (limitMs - positionMs) / rate),
+  };
+}
+
+function keepLyricInView(list, line, moving) {
+  const viewport = list.getBoundingClientRect();
+  const row = line.getBoundingClientRect();
+  const offset =
+    row.top < viewport.top
+      ? row.top - viewport.top
+      : Math.max(
+          0,
+          Math.min(row.top - viewport.top, row.bottom - viewport.bottom),
+        );
+  if (offset) {
+    const smooth =
+      moving && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    list.scrollBy({ top: offset, behavior: smooth ? 'smooth' : 'auto' });
+  }
+}
+
+function updateLyricsTiming() {
+  const view = lyricsView;
+  if (
+    !view ||
+    view.lines.hidden ||
+    !view.timedLines.length ||
+    !lyricsPanelVisible()
+  ) {
+    scheduleLyricCue(null);
+    view?.gap.removeAttribute('data-running');
+    return;
+  }
+
+  const clock = lyricsClock;
+  const now = performance.now();
+  const moving = Boolean(clock && now < clock.expiresAt);
+  const timeMs = clock
+    ? moving
+      ? Math.min(
+          clock.limitMs,
+          clock.positionMs + (now - clock.receivedAt) * clock.rate,
+        )
+      : clock.limitMs
+    : renderedTransport?.positionMs;
+  const nextLineIndex = Number.isFinite(timeMs)
+    ? lyricBoundaryAfter(view.timedLines, timeMs)
+    : 0;
+  const line = view.timedLines[nextLineIndex - 1] ?? null;
+  const nextWordIndex = line ? lyricBoundaryAfter(line.words, timeMs) : 0;
+  const word = line?.words[nextWordIndex - 1] ?? null;
+  if (line !== view.activeLine) {
+    view.activeLine?.element.removeAttribute('aria-current');
+    view.activeLine = line;
+    view.gap.remove();
+    if (line) {
+      line.element.setAttribute('aria-current', 'true');
+      if (line.gap) line.element.append(view.gap);
+      keepLyricInView(view.lines, line.element, moving);
+    }
+  }
+  if (line?.gap) view.gap.toggleAttribute('data-running', moving);
+  if (word !== view.activeWord) {
+    view.activeWord?.element.removeAttribute('data-active-word');
+    word?.element.setAttribute('data-active-word', '');
+    view.activeWord = word;
+  }
+
+  let deadline = null;
+  if (moving) {
+    const nextCue = Math.min(
+      view.timedLines[nextLineIndex]?.timeMs ?? Infinity,
+      line?.words[nextWordIndex]?.timeMs ?? Infinity,
+    );
+    if (nextCue <= clock.limitMs) {
+      deadline = Math.min(
+        clock.expiresAt,
+        clock.receivedAt + (nextCue - clock.positionMs) / clock.rate,
+      );
+    } else if (line?.gap) {
+      deadline = clock.expiresAt;
+    }
+  }
+  scheduleLyricCue(deadline);
 }
 
 window.renderPearState = (
-  { entries, current, titles, metadata, metadataProblem, catalog },
+  { entries, current, titles, metadata, metadataProblem, catalog, lyrics },
   error = null,
   notice = null,
   acknowledgedSequence = null,
@@ -599,13 +1004,20 @@ window.renderPearState = (
       message: error || confirmation,
       error: Boolean(error),
     };
+  } else if (context === 'lyrics') {
+    lyricsError = acknowledged.current === current ? (error ?? '') : '';
   } else if (acknowledged || error !== null) {
     errorText.textContent = error ?? '';
   }
   statusText.textContent = [context === 'queue' ? confirmation : '', notice]
     .filter(Boolean)
     .join(' ');
-  updateCatalog(catalog);
+  if (selectionChanged) renderedTransport = null;
+  if (selectionChanged || playerProblem) cancelLyricsClock();
+  const catalogWasFocused = updateCatalog(catalog);
+  const lyricsWasFocused = updateLyrics(lyrics, selectionChanged);
+  updateViews();
+  if (catalogWasFocused || lyricsWasFocused) primaryInput().focus();
   const problem = playerProblem ?? '';
   const problemChanged = playerProblemText.textContent !== problem;
   if (problemChanged) playerProblemText.textContent = problem;
@@ -613,7 +1025,6 @@ window.renderPearState = (
   if (metadataProblemText.textContent !== providerProblem) {
     metadataProblemText.textContent = providerProblem;
   }
-  if (selectionChanged) renderedTransport = null;
   if (selectionChanged || problemChanged) updateTransport();
 };
 
@@ -651,6 +1062,8 @@ openBrowser.addEventListener('click', () => send({ type: 'open_browser' }));
 
 seek.addEventListener('pointerdown', () => {
   editingPosition = true;
+  cancelLyricsClock();
+  updateLyricsTiming();
 });
 window.addEventListener('pointerup', () => {
   editingPosition = false;
@@ -665,6 +1078,8 @@ seek.addEventListener('blur', cancelSeekPreview);
 window.addEventListener('blur', cancelSeekPreview);
 seek.addEventListener('input', () => {
   editingPosition = true;
+  cancelLyricsClock();
+  updateLyricsTiming();
   updateElapsed();
 });
 seek.addEventListener('change', () => {

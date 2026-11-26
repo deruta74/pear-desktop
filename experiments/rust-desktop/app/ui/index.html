@@ -143,8 +143,8 @@
         ></ol>
       </section>
 
-      <template id="catalog-template">
-        <nav class="catalog-nav" aria-label="Queue and search">
+      <template id="view-switcher-template">
+        <nav class="view-switcher">
           <button
             id="show-queue"
             type="button"
@@ -161,7 +161,18 @@
           >
             Search
           </button>
+          <button
+            id="show-lyrics"
+            type="button"
+            aria-controls="lyrics-form lyrics-lines"
+            aria-pressed="false"
+          >
+            Lyrics
+          </button>
         </nav>
+      </template>
+
+      <template id="catalog-template">
         <form id="catalog-form" hidden>
           <label for="catalog-query">Search YouTube</label>
           <div class="add-controls">
@@ -184,6 +195,46 @@
           aria-label="YouTube results"
           hidden
         ></ul>
+      </template>
+
+      <template id="lyrics-template">
+        <form id="lyrics-form" hidden>
+          <div class="lyrics-fields">
+            <div>
+              <label for="lyrics-track">Track</label>
+              <input
+                id="lyrics-track"
+                type="text"
+                dir="auto"
+                autocomplete="off"
+                aria-describedby="lyrics-feedback"
+                required
+              />
+            </div>
+            <div>
+              <label for="lyrics-artist">Artist</label>
+              <input
+                id="lyrics-artist"
+                type="text"
+                dir="auto"
+                autocomplete="off"
+                aria-describedby="lyrics-feedback"
+                required
+              />
+            </div>
+            <button class="add-button" type="submit">Find lyrics</button>
+          </div>
+          <p class="lyrics-attribution">Lyrics from LRCLIB</p>
+          <p id="lyrics-feedback" class="feedback" aria-live="polite"></p>
+        </form>
+        <ol
+          id="lyrics-lines"
+          class="queue-items lyrics-lines"
+          role="list"
+          aria-label="Lyrics"
+          tabindex="0"
+          hidden
+        ></ol>
       </template>
     </main>
   </body>

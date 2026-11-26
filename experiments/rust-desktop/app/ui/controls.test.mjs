@@ -74,7 +74,7 @@ async function state(
   error = null,
   notice = null,
   sequence,
-  { titles, playerProblem, metadata, metadataProblem, catalog } = {},
+  { titles, playerProblem, metadata, metadataProblem, catalog, lyrics } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
   return page.evaluate(
@@ -95,6 +95,7 @@ async function state(
         metadata,
         metadataProblem,
         catalog,
+        lyrics,
       },
       error,
       notice,
@@ -861,6 +862,320 @@ test('fits Queue and Search rows at the minimum panel size alongside playback co
   const list = page.getByRole('list', { name: 'YouTube results' });
   const row = list.getByRole('listitem').first();
   assertVisibleQueueRow(await list.boundingBox(), await row.boundingBox());
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+});
+
+function lyricsState(overrides = {}) {
+  return {
+    track: 'Original track',
+    artist: 'Original artist',
+    duration: 180,
+    pending: false,
+    problem: null,
+    result: null,
+    ...overrides,
+  };
+}
+
+test('only looks up explicitly submitted Lyrics and clears old drafts and results on selection change', async (t) => {
+  const page = await panel(t);
+  const navigation = page.getByRole('navigation');
+  const tab = navigation.getByRole('button', { name: 'Lyrics' });
+  const track = page.getByRole('textbox', { name: 'Track' });
+  const artist = page.getByRole('textbox', { name: 'Artist' });
+  const lookup = page.getByRole('button', { name: 'Find lyrics' });
+  const entries = [first, second];
+  const catalog = searchState();
+  await state(page, entries, first, null, null, 1, { catalog });
+  await expect(tab).toHaveCount(0);
+
+  const result = { kind: 'plain', lines: ['<em>Original words</em>'] };
+  await state(page, entries, first, null, null, null, {
+    catalog,
+    lyrics: lyricsState({ duration: null, result }),
+  });
+  await expect(tab).toBeVisible();
+  await tab.press('Enter');
+  await expect(track).toBeFocused();
+  await expect(track).toHaveValue('Original track');
+  await expect(artist).toHaveValue('Original artist');
+  await expect(lookup).toBeDisabled();
+  await expect(page.getByText('Waiting for video duration…')).toBeVisible();
+  await track.fill('  Edited track  ');
+  await state(page, entries, first, null, null, null, {
+    catalog,
+    lyrics: lyricsState({ artist: 'Updated artist', result }),
+  });
+  await expect(track).toHaveValue('  Edited track  ');
+  await expect(artist).toHaveValue('Updated artist');
+  await expect(
+    page.getByText('<em>Original words</em>', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Lyrics from LRCLIB', { exact: true }),
+  ).toBeVisible();
+  await artist.fill('  Edited artist  ');
+  expect(await messages(page)).toHaveLength(1);
+  await artist.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: {
+      type: 'find_lyrics',
+      title: 'Edited track',
+      artist: 'Edited artist',
+    },
+  });
+  await expect(
+    page.getByText('<em>Original words</em>', { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText('Finding lyrics…')).toBeVisible();
+
+  await state(page, entries, second, null, null, 2, {
+    catalog,
+    lyrics: lyricsState({ track: 'Next track', artist: 'Next artist' }),
+  });
+  await expect(track).toHaveValue('Next track');
+  await expect(artist).toHaveValue('Next artist');
+  await expect(page.getByText('Finding lyrics…')).toHaveCount(0);
+  await expect(page.locator('#selection-id')).toHaveText(second);
+  await state(page, entries, second, null, null, null, {
+    catalog,
+    lyrics: null,
+  });
+  await expect(tab).toHaveCount(0);
+  await expect(
+    page.getByRole('textbox', { name: 'YouTube link or video ID' }),
+  ).toBeFocused();
+});
+
+test('uses sampled lyric timing for one active line, word or instrumental gap', async (t) => {
+  const page = await panel(t);
+  const result = {
+    kind: 'synced',
+    lines: [
+      { timeMs: 0, text: '', words: [] },
+      {
+        timeMs: 1000,
+        text: '<b>Words</b> here',
+        words: [
+          { timeMs: 1000, text: '<b>Words</b> ' },
+          { timeMs: 1500, text: 'here' },
+        ],
+      },
+      { timeMs: 2400, text: '', words: [] },
+      {
+        timeMs: 3500,
+        text: 'Plain fallback',
+        words: [{ timeMs: 3500, text: 'Other words' }],
+      },
+    ],
+  };
+  const sample = (positionMs, clockRunning) =>
+    transport(page, { ...readyTransport, positionMs, clockRunning });
+  await state(page, [first], first, null, null, 1, {
+    lyrics: lyricsState({ result }),
+  });
+  const tab = page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Lyrics' });
+  await expect(tab).toBeVisible();
+  await tab.click();
+  const list = page.getByRole('list', { name: 'Lyrics' });
+  const lines = list.getByRole('listitem');
+  const gap = list.getByRole('img', { name: 'Instrumental break' });
+  await sample(400, true);
+  await expect(gap).toHaveCount(1);
+  await expect(gap.locator('span')).toHaveCount(3);
+  await expect(lines.nth(0)).toHaveAttribute('aria-current', 'true');
+  await expect(gap).toHaveAttribute('data-running', '');
+  await sample(1100, true);
+  await expect(gap).toHaveCount(0);
+  await expect(lines.nth(1)).toHaveAttribute('aria-current', 'true');
+  await expect(lines.nth(1)).toHaveText('<b>Words</b> here');
+  await expect(lines.nth(1).locator('b')).toHaveCount(0);
+  await expect(list.locator('[data-active-word]')).toHaveText('<b>Words</b>');
+  await sample(1500, false);
+  await expect(list.locator('[data-active-word]')).toHaveText('here');
+  await sample(2600, false);
+  await expect(gap).toHaveCount(1);
+  await expect(gap).not.toHaveAttribute('data-running', '');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await sample(2600, true);
+  await expect(gap).toHaveCSS('animation-name', 'none');
+  await sample(3600, true);
+  await expect(lines.nth(3)).toHaveAttribute('aria-current', 'true');
+  await expect(lines.nth(3)).toHaveText('Plain fallback');
+  await expect(list.locator('[data-active-word]')).toHaveCount(0);
+  await sample(null, false);
+  await expect(list.locator('[aria-current]')).toHaveCount(0);
+
+  await state(page, [first], first, null, null, null, {
+    lyrics: lyricsState({ result: { kind: 'instrumental' } }),
+  });
+  await expect(page.getByText('Instrumental track.')).toBeVisible();
+  await expect(gap).toHaveCount(0);
+});
+
+async function timedLyricsPane(t) {
+  const page = await panel(t);
+  const result = {
+    kind: 'synced',
+    lines: [
+      {
+        timeMs: 1000,
+        text: 'One two',
+        words: [
+          { timeMs: 1000, text: 'One ' },
+          { timeMs: 1200, text: 'two' },
+        ],
+      },
+      { timeMs: 1500, text: 'Second line', words: [] },
+      { timeMs: 1900, text: 'Last line in this sample', words: [] },
+      { timeMs: 2150, text: 'Beyond the first sample', words: [] },
+      { timeMs: 3100, text: 'Beyond duration', words: [] },
+    ],
+  };
+  const lyrics = lyricsState({ result });
+  const entries = [first, second];
+  await state(page, entries, first, null, null, 1, { lyrics });
+  await page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Lyrics' })
+    .click();
+  const time = new Date('2026-01-01T00:00:00Z');
+  await page.clock.install({ time });
+  await page.clock.pauseAt(new Date(time.getTime() + 1000));
+  return {
+    page,
+    lyrics,
+    entries,
+    activeLine: page.locator('#lyrics-lines [aria-current]'),
+    activeWord: page.locator('#lyrics-lines [data-active-word]'),
+    sample: (positionMs, options = {}) =>
+      transport(page, {
+        ...readyTransport,
+        position: Math.floor(positionMs / 1000),
+        duration: 3,
+        positionMs,
+        clockRunning: true,
+        ...options,
+      }),
+  };
+}
+
+test('advances subsecond lyric cues from one sample and stops at the clock and duration bounds', async (t) => {
+  const { page, lyrics, entries, activeLine, activeWord, sample } =
+    await timedLyricsPane(t);
+  await sample(1000);
+  await expect(activeWord).toHaveText('One');
+  await page.clock.runFor(225);
+  await expect(activeWord).toHaveText('two');
+  await state(page, entries, first, null, null, null, { lyrics });
+  await sample(1000);
+  await page.clock.runFor(325);
+  await expect(activeLine).toHaveText('Second line');
+  await page.clock.runFor(1600);
+  await expect(activeLine).toHaveText('Last line in this sample');
+
+  await sample(1800, { playbackRate: 2 });
+  await page.clock.runFor(85);
+  await expect(activeLine).toHaveText('Last line in this sample');
+  await page.clock.runFor(145);
+  await expect(activeLine).toHaveText('Beyond the first sample');
+  await page.clock.runFor(750);
+  await expect(activeLine).toHaveText('Beyond the first sample');
+});
+
+test('cancels lyric cue timers during pause, seek and panel or document hide', async (t) => {
+  const { page, activeLine, activeWord, sample } = await timedLyricsPane(t);
+  await sample(1000);
+  await page.clock.runFor(80);
+  await sample(1080, { clockRunning: false });
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+
+  await sample(1020);
+  const seek = page.getByRole('slider', { name: 'Playback position' });
+  await seek.dispatchEvent('pointerdown');
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+  await seek.dispatchEvent('pointercancel');
+
+  await sample(1030);
+  const navigation = page.getByRole('navigation');
+  await navigation.getByRole('button', { name: 'Queue' }).press('Enter');
+  await page.clock.runFor(700);
+  await navigation.getByRole('button', { name: 'Lyrics' }).press('Enter');
+  await expect(activeWord).toHaveText('One');
+
+  await sample(1040);
+  await page.evaluate(() => window.setPearPanelVisible?.(false));
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+  await page.evaluate(() => window.setPearPanelVisible?.(true));
+  await sample(1060);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      value: true,
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+  await page.evaluate(() => {
+    delete document.hidden;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+  await sample(1065);
+  await sample(1080, { playing: true, clockRunning: false });
+  await page.clock.runFor(700);
+  await expect(activeWord).toHaveText('One');
+
+  await sample(1070);
+  await page.getByRole('button', { name: 'Next video' }).press('Enter');
+  await page.clock.runFor(700);
+  await expect(activeLine).toHaveText('One two');
+  await expect(activeWord).toHaveText('One');
+});
+
+test('fits a complete lyric line at the minimum panel size with all views and long playing metadata', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  await state(page, [first], first, null, null, 1, {
+    catalog: searchState(),
+    metadata: {
+      title: 'Current video with a long title and multiple lines '.repeat(8),
+      channel: 'Current channel with a long display name '.repeat(8),
+    },
+    lyrics: lyricsState({
+      result: {
+        kind: 'plain',
+        lines: ['A long lyric line that still wraps safely. '.repeat(5)],
+      },
+    }),
+  });
+  await transport(page, {
+    ...readyTransport,
+    positionMs: 9000,
+    clockRunning: true,
+  });
+  const tab = page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Lyrics' });
+  await expect(tab).toBeVisible();
+  await tab.click();
+  const list = page.getByRole('list', { name: 'Lyrics' });
+  assertVisibleQueueRow(
+    await list.boundingBox(),
+    await list.getByRole('listitem').first().boundingBox(),
+  );
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     384,
   );

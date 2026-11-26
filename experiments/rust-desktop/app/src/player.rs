@@ -2,6 +2,10 @@
 mod catalog;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod iframe;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod lyrics;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod lyrics_lookup;
 mod metadata;
 mod metadata_lookup;
 mod platform;
@@ -79,6 +83,8 @@ enum PlayerEvent {
     TransportCommitted(u64),
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     TransportSample(u64, u64, String),
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    LyricsResult(u64, lyrics_lookup::Response),
 }
 
 #[derive(Deserialize)]
@@ -99,6 +105,9 @@ struct QueueView<'a> {
     metadata_problem: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     catalog: Option<&'a catalog::View>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lyrics: Option<&'a lyrics_lookup::View>,
 }
 
 #[derive(Clone, Copy)]
@@ -387,11 +396,14 @@ fn player_flow(
     metadata: Option<Instant>,
     catalog: Option<Instant>,
     #[cfg(any(target_os = "macos", target_os = "linux"))] transport: Option<&transport::Transport>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))] lyrics: Option<Instant>,
     #[cfg(target_os = "linux")] timer: &mut platform::DeadlineTimer,
 ) -> ControlFlow {
     let deadlines = load.into_iter().chain(metadata).chain(catalog);
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let deadlines = deadlines.chain(transport.and_then(transport::Transport::deadline));
+    let deadlines = deadlines
+        .chain(transport.and_then(transport::Transport::deadline))
+        .chain(lyrics);
     let deadline = deadlines.min();
     #[cfg(target_os = "linux")]
     let deadline = timer.schedule(deadline);
@@ -516,6 +528,16 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut lyrics = (mode.iframe_player && !mode.smoke)
+        .then(|| lyrics_lookup::Lookup::new(event_loop.create_proxy()))
+        .and_then(|result| match result {
+            Ok(lyrics) => Some(lyrics),
+            Err(_) => {
+                eprintln!("Could not start LRCLIB lyrics lookup.");
+                None
+            }
+        });
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let results = event_loop.create_proxy();
     #[cfg(target_os = "linux")]
     let mut timer = platform::DeadlineTimer::default();
@@ -528,6 +550,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             catalog.as_ref().and_then(catalog::Catalog::deadline),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             transport.as_ref(),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            lyrics.as_ref().and_then(lyrics_lookup::Lookup::deadline),
             #[cfg(target_os = "linux")]
             &mut timer,
         );
@@ -573,6 +597,14 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         Ok(()) => {
                             queue_visible = show;
                             toggle_queue.set_text(if show { "Hide Queue" } else { "Show Queue" });
+                            #[cfg(any(target_os = "macos", target_os = "linux"))]
+                            if mode.iframe_player
+                                && let Err(reason) = controls.evaluate_script(&format!(
+                                    "window.setPearPanelVisible?.({show});"
+                                ))
+                            {
+                                eprintln!("Could not update sidebar visibility: {reason}");
+                            }
                             if !show && let Some(player) = current_player.as_ref() {
                                 let _ = player.focus();
                             }
@@ -624,6 +656,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::UserEvent(PlayerEvent::SearchResults(revision, response)) => catalog
                 .as_mut()
                 .is_some_and(|catalog| catalog.receive(revision, response, Instant::now())),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            Event::UserEvent(PlayerEvent::LyricsResult(revision, response)) => lyrics
+                .as_mut()
+                .is_some_and(|lyrics| lyrics.receive(revision, response, Instant::now())),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::TransportCommitted(id)) if id == generation => {
                 if let Some(transport) = &mut transport {
@@ -682,7 +718,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     }
                 }
                 #[cfg(any(target_os = "macos", target_os = "linux"))]
-                let overdue = overdue || expired;
+                let overdue = {
+                    let lyrics_changed = lyrics.as_mut().is_some_and(|lyrics| lyrics.tick(now));
+                    overdue || expired || lyrics_changed
+                };
                 overdue || metadata_changed || catalog_changed
             }
             Event::UserEvent(PlayerEvent::Command(message)) => {
@@ -703,6 +742,12 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     Command::Search { query } => {
                         if let Some(catalog) = &mut catalog {
                             catalog.submit(&query, Instant::now());
+                        }
+                    }
+                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    Command::FindLyrics { title, artist } => {
+                        if let Some(lyrics) = &mut lyrics {
+                            lyrics.submit(&title, &artist, Instant::now());
                         }
                     }
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -766,12 +811,31 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
         }
 
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        let update_queue = {
+            let duration_changed = lyrics.as_mut().is_some_and(|lyrics| {
+                if update_queue || reload_player {
+                    let queue = library.state();
+                    let current = queue.current.as_deref();
+                    let metadata = lookup.as_ref().and_then(metadata_lookup::Lookup::metadata);
+                    let title = metadata
+                        .map(|metadata| metadata.title.as_str())
+                        .or_else(|| current.and_then(|id| queue.titles.get(id).map(String::as_str)));
+                    let channel = metadata.map(|metadata| metadata.channel.as_str());
+                    lyrics.select(current, title, channel);
+                }
+                lyrics.set_duration(transport.as_ref().and_then(transport::Transport::duration))
+            });
+            update_queue || duration_changed
+        };
         *flow = player_flow(
             load_deadline,
             lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
             catalog.as_ref().and_then(catalog::Catalog::deadline),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             transport.as_ref(),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            lyrics.as_ref().and_then(lyrics_lookup::Lookup::deadline),
             #[cfg(target_os = "linux")]
             &mut timer,
         );
@@ -798,6 +862,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     metadata: lookup.as_ref().and_then(metadata_lookup::Lookup::metadata),
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
                     catalog: catalog.as_ref().map(catalog::Catalog::view),
+                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    lyrics: lyrics.as_ref().and_then(lyrics_lookup::Lookup::view),
                 },
                 error.as_deref(),
                 notice,
