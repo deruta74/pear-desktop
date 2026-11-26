@@ -20,7 +20,7 @@ Choose **Add links** and paste one link or ID per line to add several videos tog
 
 Use the arrows beside Pear to revisit earlier Queue, Search, Lyrics, and Library views. With the panel focused, press **⌘[** or **⌘]** on macOS, or **Alt+Left** or **Alt+Right** on Windows and Linux. Pear keeps up to 32 destinations for the current window session.
 
-Select the title or artwork in **Now playing** to open Queue and reveal the current video. Pear keeps the active filter and leaves playback running.
+Select the title or artwork in **Now playing** to open Queue. Pear reveals the current video when it matches the active filter. Playback continues while you browse.
 
 On macOS, launch the bundled preview executable with `PEAR_PREVIEW_EXPERIMENTAL_PANEL_SWIPE=1` to try swiping left or right over the controls panel header. The experiment uses horizontal pixel-wheel input and follows the current system scroll direction. Keep focus out of text and playback controls while trying it. Native WebKit page swipes remain disabled.
 
