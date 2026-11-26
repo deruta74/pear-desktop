@@ -38,6 +38,18 @@
             <span class="skip-icon" aria-hidden="true"></span>
           </button>
           <button
+            id="play-toggle"
+            class="icon-button play-toggle"
+            type="button"
+            aria-label="Play video"
+            aria-describedby="transport-hint"
+            title="Play video"
+            hidden
+            disabled
+          >
+            <span class="play-icon" aria-hidden="true"></span>
+          </button>
+          <button
             id="next"
             class="icon-button"
             type="button"
@@ -57,7 +69,21 @@
             <span class="external-icon" aria-hidden="true"></span>
           </button>
         </div>
+        <div id="transport-timeline" class="transport-timeline" hidden>
+          <span id="elapsed" aria-hidden="true"></span>
+          <input
+            id="playback-position"
+            type="range"
+            min="0"
+            step="1"
+            aria-label="Playback position"
+            disabled
+          />
+          <span id="duration" aria-hidden="true"></span>
+        </div>
+        <p id="transport-hint" class="feedback" aria-live="polite"></p>
         <p id="player-problem" class="feedback error" role="alert"></p>
+        <p id="metadata-problem" class="feedback" aria-live="polite"></p>
       </section>
 
       <form id="add-video">

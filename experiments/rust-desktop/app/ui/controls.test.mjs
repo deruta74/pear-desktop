@@ -74,22 +74,169 @@ async function state(
   error = null,
   notice = null,
   sequence,
-  { titles, playerProblem } = {},
+  { titles, playerProblem, metadata, metadataProblem } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
   return page.evaluate(
-    ({ entries, current, error, notice, sequence, titles, playerProblem }) => {
+    ({ queueState, error, notice, sequence, playerProblem }) => {
       window.renderPearState(
-        { entries, current, titles },
+        queueState,
         error,
         notice,
         sequence,
         playerProblem,
       );
     },
-    { entries, current, error, notice, sequence, titles, playerProblem },
+    {
+      queueState: { entries, current, titles, metadata, metadataProblem },
+      error,
+      notice,
+      sequence,
+      playerProblem,
+    },
   );
 }
+
+function transport(page, snapshot) {
+  return page.evaluate(
+    (snapshot) => window.renderPearTransport?.(snapshot),
+    snapshot,
+  );
+}
+
+const readyTransport = {
+  ready: true,
+  hasPlayed: true,
+  playing: false,
+  position: 15,
+  duration: 140,
+  blocked: false,
+};
+
+test('exposes experimental playback only after the video pane starts playing', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  await state(page, [first, second], first);
+  const play = page.getByRole('button', { name: 'Play video' });
+  const pause = page.getByRole('button', { name: 'Pause video' });
+  const timeline = page.getByRole('slider', { name: 'Playback position' });
+  await expect(play).toBeHidden();
+  await expect(timeline).toBeHidden();
+
+  await transport(page, { ...readyTransport, ready: false, hasPlayed: false });
+  await expect(play).toBeVisible();
+  await expect(play).toBeDisabled();
+  await expect(timeline).toBeHidden();
+  await transport(page, { ...readyTransport, hasPlayed: false });
+  await expect(play).toBeDisabled();
+  await expect(
+    page.getByText(/start playback in the video pane/i),
+  ).toBeVisible();
+  expect(await messages(page)).toHaveLength(1);
+
+  await transport(page, { ...readyTransport, playing: true });
+  await expect(pause).toBeEnabled();
+  await expect(timeline).toBeVisible();
+  const actions = await page
+    .locator('.playback-actions button')
+    .evaluateAll((buttons) =>
+      buttons.map((button) => button.getBoundingClientRect().top),
+    );
+  expect(new Set(actions).size).toBe(1);
+  const { y, height } = await timeline.boundingBox();
+  expect(y).toBeGreaterThan(actions[0]);
+  expect(y + height).toBeLessThan(520);
+  await pause.focus();
+  await page.keyboard.press('Space');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'set_playback', playing: false },
+  });
+  await page.keyboard.press('Space');
+  expect(await messages(page)).toHaveLength(2);
+  await state(page, [first, second], first);
+  await transport(page, readyTransport);
+  await expect(play).toBeFocused();
+  await page.keyboard.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 3,
+    command: { type: 'set_playback', playing: true },
+  });
+
+  await state(page, [first, second], second);
+  await transport(page, { ...readyTransport, hasPlayed: false });
+  await expect(timeline).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: 'Open in browser' }),
+  ).toBeFocused();
+  await transport(page, null);
+  await expect(play).toBeHidden();
+});
+
+test('previews a timeline drag through position polls and seeks when it is committed', async (t) => {
+  const page = await panel(t);
+  await state(page, [first], first);
+  await transport(page, readyTransport);
+  const timeline = page.getByRole('slider', { name: 'Playback position' });
+  await expect(timeline).toHaveValue('15');
+  await expect(timeline).toHaveAttribute('aria-valuetext', '0:15 of 2:20');
+  await expect(page.getByText('2:20', { exact: true })).toBeVisible();
+
+  const { x, y, width, height } = await timeline.boundingBox();
+  await page.mouse.move(x + width / 2, y + height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x + (width * 3) / 4, y + height / 2, { steps: 3 });
+  const preview = await timeline.inputValue();
+  expect(Number(preview)).toBeGreaterThan(15);
+  await transport(page, { ...readyTransport, position: 20 });
+  await expect(timeline).toHaveValue(preview);
+  expect(await messages(page)).toHaveLength(1);
+
+  await page.mouse.up();
+  expect(await messages(page)).toEqual([
+    { sequence: 1, command: { type: 'ready' } },
+    { sequence: 2, command: { type: 'seek', position: Number(preview) } },
+  ]);
+  await state(page, [first], first);
+  await transport(page, { ...readyTransport, position: Number(preview) });
+  await timeline.focus();
+  await page.keyboard.press('ArrowRight');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 3,
+    command: { type: 'seek', position: Number(preview) + 1 },
+  });
+  await state(page, [first], first);
+  await transport(page, { ...readyTransport, position: Number(preview) + 2 });
+  await expect(timeline).toHaveValue(String(Number(preview) + 2));
+  await expect(timeline).toBeFocused();
+});
+
+test('hides unavailable timeline data and disables transport on a player failure', async (t) => {
+  const page = await panel(t);
+  await state(page, [first], first);
+  const play = page.getByRole('button', { name: 'Play video' });
+  const timeline = page.getByRole('slider', { name: 'Playback position' });
+  await transport(page, { ...readyTransport, duration: null });
+  await expect(play).toBeEnabled();
+  await expect(timeline).toBeHidden();
+
+  await transport(page, { ...readyTransport, blocked: true });
+  await expect(play).toBeDisabled();
+  await expect(timeline).toBeHidden();
+  await expect(page.getByText('Playback controls unavailable.')).toBeVisible();
+
+  await transport(page, readyTransport);
+  await timeline.focus();
+  await state(page, [first], first, null, null, null, {
+    playerProblem: 'The video player stopped. Use Reload Player.',
+  });
+  await expect(play).toBeDisabled();
+  await expect(timeline).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: 'Open in browser' }),
+  ).toBeFocused();
+  await expect(page.getByText('Playback controls unavailable.')).toBeHidden();
+});
 
 test('keeps invalid input for correction and clears input after an acknowledged add', async (t) => {
   const page = await panel(t);
@@ -348,6 +495,101 @@ test('renders literal titles and ID fallbacks without Object.hasOwn', async (t) 
   await expect(
     page.getByRole('button', { name: `Select ${second}` }),
   ).toBeVisible();
+});
+
+test('renders selected YouTube metadata as searchable literal text and clears it with the selection', async (t) => {
+  const page = await panel(t);
+  const entries = [first, second];
+  const titles = { [first]: 'Saved title' };
+  const metadata = {
+    title: '<b>Official piano & strings</b>',
+    channel: '<i>Artist & friends</i>',
+  };
+  const currentTitle = page.locator('#selection-id');
+  const attribution = page.getByText('YouTube · <i>Artist & friends</i>', {
+    exact: true,
+  });
+  const filter = page.getByRole('searchbox', { name: 'Filter queue' });
+  const officialRow = page.getByRole('button', {
+    name: 'Select <b>Official piano & strings</b>',
+  });
+
+  await state(page, entries, first, null, null, 1, { titles, metadata });
+  await expect(currentTitle).toHaveText('<b>Official piano & strings</b>');
+  await expect(officialRow).toHaveText('<b>Official piano & strings</b>');
+  await expect(attribution).toBeVisible();
+  await expect(page.locator('.selection b, .selection i')).toHaveCount(0);
+  await filter.fill('official piano');
+  await expect(page.getByRole('listitem')).toHaveCount(1);
+  await expect(officialRow).toBeVisible();
+
+  await state(page, entries, second, null, null, null, { titles });
+  await expect(currentTitle).toHaveText(second);
+  await expect(page.locator('.selection-attribution')).toHaveCount(0);
+  await expect(page.getByText('No matching videos.')).toBeVisible();
+  await filter.fill('saved title');
+  await expect(
+    page.getByRole('button', { name: 'Select Saved title' }),
+  ).toBeVisible();
+
+  await state(page, entries, first, null, null, null, { titles, metadata });
+  await state(page, entries, first, null, null, null, {
+    titles,
+    metadata: null,
+  });
+  await expect(currentTitle).toHaveText('Saved title');
+  await expect(page.locator('.selection-attribution')).toHaveCount(0);
+});
+
+test('shows a supplied metadata problem independently of playback and queue feedback', async (t) => {
+  const page = await panel(t);
+  const metadataProblem = 'YouTube video details are unavailable.';
+  const problemText = page.getByText(metadataProblem, { exact: true });
+  const playerAlert = page
+    .getByRole('region', { name: 'Current video' })
+    .getByRole('alert');
+  const queueStatus = page.getByRole('status');
+
+  await state(page, [first], first);
+  await transport(page, readyTransport);
+  await expect(problemText).toHaveCount(0);
+
+  await state(page, [first], first, null, 'Queue loaded.', null, {
+    metadataProblem,
+  });
+  await expect(problemText).toBeVisible();
+  await expect(problemText).toHaveAttribute('aria-live', 'polite');
+  await expect(playerAlert).toBeEmpty();
+  await expect(queueStatus).toHaveText('Queue loaded.');
+  await expect(page.getByRole('button', { name: 'Play video' })).toBeEnabled();
+
+  await state(page, [first], first, null, null, null, {
+    metadataProblem: null,
+  });
+  await expect(problemText).toHaveCount(0);
+});
+
+test('fits a queue row at the minimum panel size while displaying long YouTube metadata', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const entries = [first, second, third];
+  await state(page, entries, first, null, null, 1, {
+    metadata: {
+      title: 'A long video title that takes multiple lines '.repeat(5),
+      channel: 'A channel with a long display name '.repeat(8),
+    },
+  });
+  await transport(page, readyTransport);
+  const attribution = page.getByText(/^YouTube · A channel/);
+  await expect(attribution).toBeVisible();
+  expect(
+    await attribution.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    ),
+  ).toBe(true);
+  const list = await page.locator('#queue-items').boundingBox();
+  const row = await page.locator('#queue-items > li').first().boundingBox();
+  assertVisibleQueueRow(list, row);
 });
 
 test('updates the player alert independently from queue acknowledgements and validation', async (t) => {
