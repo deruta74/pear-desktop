@@ -9,7 +9,7 @@ mod library;
 mod local_audio;
 mod player;
 
-use std::{error::Error, sync::Arc};
+use std::{error::Error, ffi::OsString, path::PathBuf, sync::Arc};
 
 use muda::{
     Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
@@ -218,13 +218,13 @@ fn startup_failed(error: impl std::fmt::Display, guidance: &'static str) -> ! {
     std::process::exit(1)
 }
 
+fn local_audio_files(mut arguments: impl Iterator<Item = OsString>) -> Option<Vec<PathBuf>> {
+    (arguments.next()? == "--local-audio").then(|| arguments.map(PathBuf::from).collect())
+}
+
 fn main() {
-    let local = std::env::args_os()
-        .nth(1)
-        .is_some_and(|arg| arg == "--local-audio")
-        && std::env::args_os().nth(2).is_none();
-    let result = if local {
-        local_audio::run()
+    let result = if let Some(files) = local_audio_files(std::env::args_os().skip(1)) {
+        local_audio::run(files)
     } else {
         match player::launch_mode() {
             Ok(Some(mode)) => player::run(mode),
@@ -248,6 +248,34 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::PreviewPage;
+    use std::{ffi::OsString, path::PathBuf};
+
+    #[test]
+    fn local_audio_launch_keeps_file_order_and_does_not_claim_other_modes() {
+        let parse = |args: &[&str]| super::local_audio_files(args.iter().map(OsString::from));
+        assert_eq!(parse(&[]), None);
+        assert_eq!(parse(&["--queue"]), None);
+        assert_eq!(parse(&["--local-audio"]), Some(Vec::new()));
+        assert_eq!(
+            parse(&["--local-audio", "Folder/first track.flac", "second.opus"]),
+            Some(vec![
+                PathBuf::from("Folder/first track.flac"),
+                PathBuf::from("second.opus"),
+            ])
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_audio_launch_preserves_non_utf8_file_paths() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let name = OsString::from_vec(b"track-\xff.wav".to_vec());
+        assert_eq!(
+            super::local_audio_files([OsString::from("--local-audio"), name.clone()].into_iter()),
+            Some(vec![PathBuf::from(name)])
+        );
+    }
 
     #[test]
     fn permits_only_the_exact_youtube_music_origin() {

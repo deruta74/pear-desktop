@@ -63,7 +63,7 @@ Choose **File → Open Local Audio Window**, then **Open audio files**, or drop 
 
 Pear streams mono or stereo integer PCM and IEEE float WAV, native FLAC with a known duration, MP3, and single-stream Ogg Opus (`.opus` or `.ogg`) through the system’s default output. It uses MP3 encoder delay and padding information when available and counts complete frames when the file lacks duration metadata. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. Effect settings carry across tracks in the current session.
 
-You can also pass `--local-audio` to the executable. Local playback runs offline in a separate window and uses its own session. Press **Space** outside an input or button to pause or resume. The embedded YouTube player has its own playback controls.
+You can also pass `--local-audio` to the executable. To preload a queue from the command line, follow it with file paths, for example `--local-audio "First track.wav" "Second track.opus"`. Local playback runs offline in a separate window and uses its own session. Press **Space** outside an input or button to pause or resume. The embedded YouTube player has its own playback controls.
 
 Local Audio publishes the current track and available playback controls to macOS Now Playing, MPRIS on Linux, and Windows System Media Transport Controls.
 

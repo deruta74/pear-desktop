@@ -264,7 +264,7 @@ pub(crate) fn launch() -> std::io::Result<()> {
         })
 }
 
-pub(crate) fn run() -> Result<()> {
+pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
     let store = presets::Store::from_environment()?;
     let (mut presets, mut error) = match store.read() {
         Ok(presets) => (presets, None),
@@ -332,6 +332,9 @@ pub(crate) fn run() -> Result<()> {
     #[cfg(target_os = "windows")]
     crate::verify_private_session(&view)?;
     view.load_url(DOCUMENT)?;
+    if !initial_files.is_empty() {
+        let _ = result_events.send_event(AudioEvent::DropFiles(initial_files));
+    }
     let media_events = event_loop.create_proxy();
     let dispatch_media = move |request| {
         let _ = media_events.send_event(AudioEvent::Media(request));
