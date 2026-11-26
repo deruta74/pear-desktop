@@ -14,14 +14,32 @@ embedUrl.search = new URLSearchParams({
     autoplay: '0',
 });
 const embed = embedUrl.href;
-const officialPlayName = /^Play(?: video)?(?:\s*\([^)]*\))?$/i;
-const playSelector = '#movie_player button.ytp-large-play-button';
+// Match the preflight screenshot dimensions/glyph and the pinned app's left video pane layout.
+const nativeClient = { width: 1028, height: 680, glyphX: 321, glyphY: 340, queueWidth: 384 };
 
 function exactDebuggerUrl(value, port) {
     if (typeof value !== 'string') return null;
     const prefix = 'ws://127.0.0.1:' + port + '/devtools/browser/';
     if (!value.startsWith(prefix) || value.length !== prefix.length + 36) return null;
     return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.slice(prefix.length)) ? value : null;
+}
+
+function glyphAlignedCenter(rect, viewport) {
+    const { left, top, width, height } = rect;
+    const { dpr, scale, offsetLeft, offsetTop, visualWidth, visualHeight } = viewport;
+    if (![left, top, width, height, dpr, viewport.width, viewport.height,
+        visualWidth, visualHeight].every(Number.isFinite) || width <= 0 || height <= 0 || dpr <= 0 ||
+        scale !== 1 || offsetLeft !== 0 || offsetTop !== 0 || left !== 0 || top !== 0 ||
+        Math.abs(width - viewport.width) > 1 || Math.abs(height - viewport.height) > 1 ||
+        Math.abs(width - visualWidth) > 1 || Math.abs(height - visualHeight) > 1) return null;
+
+    const x = left + width / 2;
+    const y = top + height / 2;
+    if (x <= 0 || y <= 0 || x >= visualWidth || y >= visualHeight ||
+        Math.abs((width + nativeClient.queueWidth) * dpr - nativeClient.width) > 2 ||
+        Math.abs(height * dpr - nativeClient.height) > 2 ||
+        Math.abs(x * dpr - nativeClient.glyphX) > 2 || Math.abs(y * dpr - nativeClient.glyphY) > 2) return null;
+    return { x, y };
 }
 
 async function until(milliseconds, sample) {
@@ -88,38 +106,39 @@ async function run(port, result) {
         if (!await video.locator('html').evaluate(() => document.visibilityState === 'visible' &&
             window.pearIframePlayer?.snapshot()?.ready === true)) return;
 
-        const button = frame.locator(playSelector);
-        result.stage = 'official-play-button-missing';
-        const candidate = await until(6_000, async () => {
-            const count = await button.count();
-            if (!count) return null;
-            result.stage = count === 1 ? 'official-play-button-unavailable' : 'official-play-button-ambiguous';
-            return count === 1 ? button.elementHandle({ timeout: 600 }).catch(() => null) : null;
-        });
-        if (!candidate) return;
-        try {
-            const validateButton = () => candidate.evaluate((element, expected) => ({
-                fixture: location.href === expected.embed && element.isConnected &&
-                    element.matches(expected.selector) && document.visibilityState === 'visible' &&
-                    !element.closest('#movie_player.ad-showing, #movie_player.ad-interrupting'),
-                named: new RegExp(expected.label, 'i').test(element.getAttribute('aria-label') ?? ''),
-                painted: element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
-            }), { embed, selector: playSelector, label: officialPlayName.source });
-            result.stage = 'official-play-label-mismatch';
-            let action = await validateButton();
-            if (!action.named) return;
-            result.stage = 'official-play-not-actionable';
-            if (!action.fixture || !action.painted) return;
-            await candidate.click({ trial: true, timeout: 900 });
-            result.stage = 'official-play-identity-changed';
-            action = await validateButton();
-            if (!action.fixture || !action.named || !action.painted || video.url() !== wrapper ||
-                await owner.count() !== 1 || await owner.getAttribute('src') !== embed) return;
-            result.stage = 'official-play-click';
-            await candidate.click({ timeout: 1_500 });
-        } finally {
-            await candidate.dispose().catch(() => {});
-        }
+        result.stage = 'iframe-geometry-mismatch';
+        const geometry = await owner.evaluate((iframe, expected) => {
+            const visual = window.visualViewport;
+            if (window.self !== window.top || location.href !== expected.wrapper || document.visibilityState !== 'visible' ||
+                !iframe.isConnected || iframe.getAttribute('src') !== expected.embed || !visual ||
+                !iframe.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return null;
+
+            const { left, top, width, height } = iframe.getBoundingClientRect();
+            if (document.elementFromPoint(left + width / 2, top + height / 2) !== iframe) return null;
+            return {
+                rect: { left, top, width, height },
+                viewport: {
+                    width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visual.scale,
+                    visualWidth: visual.width, visualHeight: visual.height,
+                    offsetLeft: visual.offsetLeft, offsetTop: visual.offsetTop,
+                },
+            };
+        }, { wrapper, embed });
+        if (!geometry) return;
+        const center = glyphAlignedCenter(geometry.rect, geometry.viewport);
+        if (!center) return;
+
+        result.stage = 'iframe-target-mismatch';
+        const targetVisible = await frame.locator('html').evaluate(
+            (_, expected) => location.href === expected.embed && document.visibilityState === 'visible' &&
+                Math.abs(innerWidth - expected.width) <= 1 && Math.abs(innerHeight - expected.height) <= 1 &&
+                document.elementFromPoint(innerWidth / 2, innerHeight / 2) !== null,
+            { embed, width: geometry.rect.width, height: geometry.rect.height }, { timeout: 600 },
+        );
+        if (!targetVisible || video.url() !== wrapper) return;
+
+        result.stage = 'iframe-center-click';
+        await video.mouse.click(center.x, center.y);
 
         result.stage = 'clock-signal';
         await writeFile(join(__dirname, 'profile', 'visual-play-clicked'), '', { flag: 'wx' });
@@ -175,4 +194,4 @@ async function main() {
 }
 
 if (require.main === module) void main();
-module.exports = { exactDebuggerUrl, officialPlayName, embed };
+module.exports = { exactDebuggerUrl, glyphAlignedCenter, embed };

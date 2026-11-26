@@ -349,9 +349,8 @@ try {
     if ($lines.Count -ne 1) { throw 'unexpected-probe-output' }
     $probe = $lines[0] | ConvertFrom-Json -AsHashtable
     $probeStages = @('endpoint-metadata', 'cdp-connect', 'fixture-panes', 'exact-official-frame',
-        'wrapper-not-visible', 'official-play-button-missing', 'official-play-button-unavailable',
-        'official-play-button-ambiguous', 'official-play-label-mismatch', 'official-play-not-actionable',
-        'official-play-identity-changed', 'official-play-click', 'clock-signal', 'clicked',
+        'wrapper-not-visible', 'iframe-geometry-mismatch', 'iframe-target-mismatch',
+        'iframe-center-click', 'clock-signal', 'clicked',
         'invalid-port', 'probe-bootstrap', 'cdp-deadline')
     if ($probe -isnot [System.Collections.IDictionary] -or $probe.Count -ne 4 -or
         $probe.stage -isnot [string] -or $probe.stage -cnotin $probeStages -or $probe.mediaPresent -isnot [bool] -or
