@@ -6,6 +6,7 @@
 mod page;
 
 mod library;
+mod local_audio;
 mod player;
 
 use std::{error::Error, sync::Arc};
@@ -218,14 +219,22 @@ fn startup_failed(error: impl std::fmt::Display, guidance: &'static str) -> ! {
 }
 
 fn main() {
-    let result = match player::launch_mode() {
-        Ok(Some(mode)) => player::run(mode),
-        Ok(None) if cfg!(feature = "benchmark") => run(),
-        Ok(None) => startup_failed(
-            "Unexpected argument",
-            "Unexpected argument. Launch Pear Desktop Rust Preview without arguments, or use --queue or --iframe-player.",
-        ),
-        Err(error) => Err(error),
+    let local = std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--local-audio")
+        && std::env::args_os().nth(2).is_none();
+    let result = if local {
+        local_audio::run()
+    } else {
+        match player::launch_mode() {
+            Ok(Some(mode)) => player::run(mode),
+            Ok(None) if cfg!(feature = "benchmark") => run(),
+            Ok(None) => startup_failed(
+                "Unexpected argument",
+                "Unexpected argument. Launch Pear Desktop Rust Preview without arguments, or use --queue, --iframe-player, or --local-audio.",
+            ),
+            Err(error) => Err(error),
+        }
     };
 
     if let Err(error) = result {

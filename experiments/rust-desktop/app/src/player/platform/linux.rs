@@ -12,10 +12,10 @@ use super::{PANEL_WIDTH, Pane};
 use crate::Result;
 
 #[derive(Default)]
-pub(in crate::player) struct DeadlineTimer(Option<(Instant, glib::Source)>);
+pub(crate) struct DeadlineTimer(Option<(Instant, glib::Source)>);
 
 impl DeadlineTimer {
-    pub(in crate::player) fn schedule(&mut self, deadline: Option<Instant>) -> Option<Instant> {
+    pub(crate) fn schedule(&mut self, deadline: Option<Instant>) -> Option<Instant> {
         if let (Some(next), Some((scheduled, source))) = (deadline, self.0.as_ref())
             && *scheduled <= next
             && !source.is_destroyed()

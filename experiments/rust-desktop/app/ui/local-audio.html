@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pear Local Audio</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/local-audio.css" />
+    <script src="/local-audio.js" defer></script>
+  </head>
+  <body>
+    <main class="local-player">
+      <header class="local-header">
+        <h1>Local audio</h1>
+        <button id="open" class="add-button" type="button">
+          Open WAV file
+        </button>
+      </header>
+      <p id="empty">Choose a WAV file to play it from this device.</p>
+      <p id="opening" role="status" hidden>Opening WAV…</p>
+      <p id="problem" class="feedback error" role="alert"></p>
+      <section id="player" class="local-track" aria-label="Playback" hidden>
+        <h2 id="track" class="queue-title" dir="auto"></h2>
+        <div class="transport-timeline">
+          <span id="elapsed" aria-hidden="true"></span>
+          <input
+            id="seek"
+            type="range"
+            min="0"
+            max="0"
+            step="1"
+            aria-label="Playback position"
+          />
+          <span id="duration" aria-hidden="true"></span>
+        </div>
+        <div class="local-actions">
+          <button id="play" class="add-button" type="button">Play</button>
+          <div class="local-slider">
+            <label for="volume">Volume</label>
+            <input
+              id="volume"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value="100"
+            />
+            <output id="volume-value" for="volume" aria-hidden="true"
+              >100%</output
+            >
+          </div>
+        </div>
+      </section>
+      <section
+        id="effects"
+        class="local-effects"
+        aria-labelledby="effects-heading"
+        hidden
+      >
+        <header class="local-header">
+          <h2 id="effects-heading">Slowed + Reverb</h2>
+          <button id="reset" type="button">Reset effects</button>
+        </header>
+        <div class="local-slider">
+          <label for="speed">Speed</label>
+          <input
+            id="speed"
+            type="range"
+            min="70"
+            max="130"
+            step="1"
+            value="100"
+          />
+          <output id="speed-value" for="speed" aria-hidden="true">1.00×</output>
+        </div>
+        <div class="local-slider">
+          <label for="intensity">Reverb</label>
+          <input
+            id="intensity"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="0"
+          />
+          <output id="intensity-value" for="intensity" aria-hidden="true"
+            >0%</output
+          >
+        </div>
+        <div class="local-filters">
+          <div>
+            <label for="high-pass">High-pass (Hz)</label>
+            <input
+              id="high-pass"
+              type="number"
+              min="20"
+              max="20000"
+              step="1"
+              value="180"
+            />
+          </div>
+          <div>
+            <label for="low-pass">Low-pass (Hz)</label>
+            <input
+              id="low-pass"
+              type="number"
+              min="20"
+              max="20000"
+              step="1"
+              value="6500"
+            />
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

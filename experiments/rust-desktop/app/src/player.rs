@@ -8,6 +8,8 @@ mod lyrics_lookup;
 mod metadata;
 mod metadata_lookup;
 mod platform;
+#[cfg(target_os = "linux")]
+pub(crate) use platform::DeadlineTimer;
 mod playlists;
 mod preferences;
 mod speed_menu;
@@ -218,7 +220,7 @@ fn controls_command(request: &Request<String>) -> Option<ControlMessage> {
     serde_json::from_str(request.body()).ok()
 }
 
-fn isolated_builder(builder: WebViewBuilder<'_>) -> WebViewBuilder<'_> {
+pub(crate) fn isolated_builder(builder: WebViewBuilder<'_>) -> WebViewBuilder<'_> {
     builder
         .with_incognito(true)
         .with_autoplay(false)
@@ -586,7 +588,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     );
     let legal = MenuItem::new("Terms and Privacy", true, None);
     let app_menu = Submenu::with_items("Pear Desktop", true, &[&quit])?;
-    let file_menu = Submenu::with_items("File", true, &[&add_video, &open_music])?;
+    let local_audio = MenuItem::new("Open Local Audio Window", true, None);
+    let file_menu = Submenu::with_items("File", true, &[&add_video, &open_music, &local_audio])?;
     let view_menu = Submenu::with_items("View", true, &[&toggle_queue, &reload])?;
     let toggle_iframe = CheckMenuItem::new(
         IFRAME_MENU_LABEL,
@@ -759,6 +762,13 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *quit.id() => {
                 *flow = ControlFlow::Exit;
                 return;
+            }
+            Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *local_audio.id() => {
+                if let Err(reason) = crate::local_audio::launch() {
+                    eprintln!("Could not open the local audio window: {reason}");
+                    error = Some("Could not open the local audio window.".into());
+                }
+                true
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *open_music.id() => {
                 if approved

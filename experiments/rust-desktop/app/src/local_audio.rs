@@ -1,0 +1,477 @@
+mod engine;
+
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+    process::{Command as Process, Stdio},
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use pear_preview_dsp::ReverbSettings;
+use serde::{Deserialize, Serialize};
+use tao::{
+    dpi::LogicalSize,
+    event::{Event, StartCause, WindowEvent},
+    event_loop::{ControlFlow, EventLoopBuilder},
+    window::{Window, WindowBuilder},
+};
+use wry::{
+    WebViewBuilder,
+    http::{Request, Response, header},
+};
+
+use crate::{Result, attach_menu, build_webview, player::isolated_builder};
+
+const SCHEME: &str = "pear-audio";
+const ASSET_ROOT: &str = "pear-audio://app.local/";
+#[cfg(not(target_os = "windows"))]
+const DOCUMENT: &str = ASSET_ROOT;
+#[cfg(target_os = "windows")]
+const DOCUMENT: &str = "https://pear-audio.app.local/";
+#[cfg(not(target_os = "windows"))]
+const ASSET_SOURCE: &str = "pear-audio:";
+#[cfg(target_os = "windows")]
+const ASSET_SOURCE: &str = "https://pear-audio.app.local";
+const UPDATE_INTERVAL: Duration = Duration::from_millis(250);
+const IDLE_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+enum AudioCommand {
+    Ready {},
+    Open {},
+    SetPlaying {
+        playing: bool,
+    },
+    Seek {
+        position_ms: u64,
+    },
+    SetVolume {
+        volume: f64,
+    },
+    SetSpeed {
+        speed: f64,
+    },
+    SetReverb {
+        intensity: f32,
+        high_pass_hz: f32,
+        low_pass_hz: f32,
+    },
+}
+
+enum AudioEvent {
+    Command(AudioCommand),
+    Menu(MenuEvent),
+    Prepared(std::result::Result<(String, engine::PreparedWav), engine::EngineOpenError>),
+    Opened(std::result::Result<Track, engine::EngineOpenError>),
+}
+
+struct Track {
+    name: String,
+    engine: engine::Engine,
+}
+
+#[derive(Serialize)]
+struct View<'a> {
+    track: Option<&'a str>,
+    transport: Option<engine::Snapshot>,
+    error: Option<&'a str>,
+    opening: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settings: Option<Settings>,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Settings {
+    volume: f64,
+    speed: f64,
+    intensity: f32,
+    high_pass_hz: f32,
+    low_pass_hz: f32,
+}
+
+fn command(request: &Request<String>) -> Option<AudioCommand> {
+    if request.uri() != DOCUMENT || request.body().len() > 512 {
+        return None;
+    }
+    serde_json::from_str(request.body()).ok()
+}
+
+fn assets(request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+    let asset: Option<(&str, &[u8])> = if request.method() == "GET" {
+        match request.uri().to_string().as_str() {
+            ASSET_ROOT => Some((
+                "text/html; charset=utf-8",
+                include_bytes!("../ui/local-audio.html"),
+            )),
+            "pear-audio://app.local/style.css" => {
+                Some(("text/css; charset=utf-8", include_bytes!("../ui/style.css")))
+            }
+            "pear-audio://app.local/local-audio.css" => Some((
+                "text/css; charset=utf-8",
+                include_bytes!("../ui/local-audio.css"),
+            )),
+            "pear-audio://app.local/local-audio.js" => Some((
+                "text/javascript; charset=utf-8",
+                include_bytes!("../ui/local-audio.js"),
+            )),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let Some((content_type, bytes)) = asset else {
+        return Response::builder()
+            .status(404)
+            .body(Cow::Borrowed(&[][..]))
+            .expect("valid static response");
+    };
+    Response::builder()
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::CONTENT_SECURITY_POLICY, format!(
+            "default-src 'none'; script-src {ASSET_SOURCE}; style-src {ASSET_SOURCE}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        ))
+        .body(Cow::Borrowed(bytes))
+        .expect("valid bundled audio asset")
+}
+
+fn title(path: &Path) -> String {
+    let name: String = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(180)
+        .collect();
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        "WAV file"
+    } else {
+        trimmed
+    }
+    .to_owned()
+}
+
+fn pick_file(window: &Window) -> Option<PathBuf> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        rfd::FileDialog::new()
+            .set_parent(window)
+            .set_title("Open WAV file")
+            .add_filter("WAV audio", &["wav", "wave"])
+            .pick_file()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::{FileChooserExt, NativeDialogExt};
+        use tao::platform::unix::WindowExtUnix;
+
+        let dialog = gtk::FileChooserNative::new(
+            Some("Open WAV file"),
+            Some(window.gtk_window()),
+            gtk::FileChooserAction::Open,
+            Some("Open"),
+            Some("Cancel"),
+        );
+        let filter = gtk::FileFilter::new();
+        filter.set_name(Some("WAV audio"));
+        for pattern in ["*.[wW][aA][vV]", "*.[wW][aA][vV][eE]"] {
+            filter.add_pattern(pattern);
+        }
+        dialog.add_filter(filter);
+        let accepted = dialog.run() == gtk::ResponseType::Accept;
+        accepted.then(|| dialog.filename()).flatten()
+    }
+}
+
+pub(crate) fn launch() -> std::io::Result<()> {
+    Process::new(std::env::current_exe()?)
+        .arg("--local-audio")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|mut child| {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        })
+}
+
+pub(crate) fn run() -> Result<()> {
+    let event_loop = EventLoopBuilder::<AudioEvent>::with_user_event().build();
+    let window = WindowBuilder::new()
+        .with_title("Pear Local Audio")
+        .with_inner_size(LogicalSize::new(560, 580))
+        .with_min_inner_size(LogicalSize::new(420, 475))
+        .build(&event_loop)?;
+
+    use muda::accelerator::{Accelerator, CMD_OR_CTRL, Code};
+    let key = |key| (!cfg!(target_os = "windows")).then(|| Accelerator::new(CMD_OR_CTRL, key));
+    let open = MenuItem::new("Open WAV File…", true, key(Code::KeyO));
+    let quit = MenuItem::new("Quit Pear Local Audio", true, key(Code::KeyQ));
+    let menu = Menu::with_items(&[
+        &Submenu::with_items("Pear Local Audio", true, &[&quit])?,
+        &Submenu::with_items("File", true, &[&open])?,
+        &Submenu::with_items(
+            "Edit",
+            true,
+            &[
+                &PredefinedMenuItem::cut(None),
+                &PredefinedMenuItem::copy(None),
+                &PredefinedMenuItem::paste(None),
+                &PredefinedMenuItem::select_all(None),
+            ],
+        )?,
+    ])?;
+    attach_menu(&window, &menu)?;
+    let menu_events = event_loop.create_proxy();
+    MenuEvent::set_event_handler(Some(Arc::new(move |event| {
+        let _ = menu_events.send_event(AudioEvent::Menu(event));
+    })));
+    let events = event_loop.create_proxy();
+    let result_events = events.clone();
+    let builder = isolated_builder(WebViewBuilder::new())
+        .with_custom_protocol(SCHEME.into(), |_, request| assets(request))
+        .with_navigation_handler(|url| url == DOCUMENT)
+        .with_drag_drop_handler(|_| true)
+        .with_ipc_handler(move |request| {
+            if let Some(command) = command(&request) {
+                let _ = events.send_event(AudioEvent::Command(command));
+            }
+        });
+    #[cfg(target_os = "windows")]
+    let builder = {
+        use wry::WebViewBuilderExtWindows;
+        builder
+            .with_https_scheme(true)
+            .with_browser_accelerator_keys(false)
+            .with_default_context_menus(false)
+    };
+    let view = build_webview(&window, builder)?;
+    #[cfg(target_os = "windows")]
+    crate::verify_private_session(&view)?;
+    view.load_url(DOCUMENT)?;
+    let mut track: Option<Track> = None;
+    let mut error: Option<String> = None;
+    let mut volume = 1.0;
+    let mut speed = 1.0;
+    let mut reverb = ReverbSettings::default();
+    let mut opening = false;
+    let mut deadline = None;
+    #[cfg(target_os = "linux")]
+    let mut timer = crate::player::DeadlineTimer::default();
+
+    event_loop.run(move |event, _, flow| {
+        let _keep_menu_alive = &menu;
+        let action = match event {
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::CloseRequested,
+                ..
+            } if window_id == window.id() => {
+                track.take();
+                *flow = ControlFlow::Exit;
+                return;
+            }
+            Event::UserEvent(AudioEvent::Menu(event)) if event.id == *quit.id() => {
+                track.take();
+                *flow = ControlFlow::Exit;
+                return;
+            }
+            Event::UserEvent(AudioEvent::Menu(event)) if event.id == *open.id() => {
+                Some(AudioCommand::Open {})
+            }
+            Event::UserEvent(AudioEvent::Command(command)) => Some(command),
+            Event::UserEvent(AudioEvent::Prepared(Ok((name, wav)))) => {
+                // A direct ALSA endpoint can permit only one active stream.
+                // Keep the old track while validating the file and release it
+                // before asking the current default output for a new stream.
+                track.take();
+                let result_events = result_events.clone();
+                if std::thread::Builder::new()
+                    .name("pear-audio-output".into())
+                    .spawn(move || {
+                        let result =
+                            engine::Engine::open_prepared(wav).map(|engine| Track { name, engine });
+                        let _ = result_events.send_event(AudioEvent::Opened(result));
+                    })
+                    .is_err()
+                {
+                    opening = false;
+                    open.set_enabled(true);
+                    error = Some("Could not start the default audio output.".into());
+                }
+                Some(AudioCommand::Ready {})
+            }
+            Event::UserEvent(AudioEvent::Prepared(Err(problem))) => {
+                opening = false;
+                open.set_enabled(true);
+                error = Some(problem.to_string());
+                Some(AudioCommand::Ready {})
+            }
+            Event::UserEvent(AudioEvent::Opened(result)) => {
+                opening = false;
+                open.set_enabled(true);
+                match result {
+                    Ok(mut next) => {
+                        next.engine.set_volume(volume);
+                        next.engine.set_speed(speed);
+                        next.engine.set_reverb(reverb);
+                        track = Some(next);
+                        error = None;
+                    }
+                    Err(problem) => error = Some(problem.to_string()),
+                }
+                Some(AudioCommand::Ready {})
+            }
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => None,
+            _ => return,
+        };
+        let send_settings = matches!(action, Some(AudioCommand::Ready {}));
+        match action {
+            Some(AudioCommand::Open {}) => {
+                if !opening && let Some(path) = pick_file(&window) {
+                    let result_events = result_events.clone();
+                    match std::thread::Builder::new()
+                        .name("pear-audio-open".into())
+                        .spawn(move || {
+                            let result =
+                                engine::PreparedWav::read(&path).map(|wav| (title(&path), wav));
+                            let _ = result_events.send_event(AudioEvent::Prepared(result));
+                        }) {
+                        Ok(_) => {
+                            opening = true;
+                            error = None;
+                            open.set_enabled(false);
+                        }
+                        Err(_) => error = Some("Could not open the selected WAV file.".into()),
+                    }
+                }
+            }
+            Some(action) => {
+                if let Some(Track { engine, .. }) = &mut track {
+                    match action {
+                        AudioCommand::SetPlaying { playing } => engine.set_playing(playing),
+                        AudioCommand::Seek { position_ms } => engine.seek_ms(position_ms),
+                        AudioCommand::SetVolume { volume: value }
+                            if (0.0..=1.0).contains(&value) =>
+                        {
+                            volume = value;
+                            engine.set_volume(volume);
+                        }
+                        AudioCommand::SetSpeed { speed: value } if (0.7..=1.3).contains(&value) => {
+                            speed = value;
+                            engine.set_speed(speed);
+                        }
+                        AudioCommand::SetReverb {
+                            intensity,
+                            high_pass_hz,
+                            low_pass_hz,
+                        } if (0.0..=1.0).contains(&intensity)
+                            && (20.0..=20_000.0).contains(&high_pass_hz)
+                            && (20.0..=20_000.0).contains(&low_pass_hz) =>
+                        {
+                            reverb = ReverbSettings {
+                                intensity,
+                                high_pass_hz,
+                                low_pass_hz,
+                            };
+                            engine.set_reverb(reverb);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            None if !deadline.is_some_and(|when| Instant::now() >= when) => return,
+            None => {}
+        }
+        let transport = track.as_mut().map(|track| track.engine.snapshot());
+        deadline = transport
+            .as_ref()
+            .filter(|snapshot| snapshot.error.is_none())
+            .map(|snapshot| {
+                Instant::now()
+                    + if snapshot.playing {
+                        UPDATE_INTERVAL
+                    } else {
+                        IDLE_UPDATE_INTERVAL
+                    }
+            });
+        #[cfg(target_os = "linux")]
+        {
+            deadline = timer.schedule(deadline);
+        }
+        *flow = deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil);
+        let state = View {
+            track: track.as_ref().map(|track| track.name.as_str()),
+            transport,
+            error: error.as_deref(),
+            opening,
+            settings: send_settings.then_some(Settings {
+                volume,
+                speed,
+                intensity: reverb.intensity,
+                high_pass_hz: reverb.high_pass_hz,
+                low_pass_hz: reverb.low_pass_hz,
+            }),
+        };
+        if let Ok(state) = serde_json::to_string(&state)
+            && let Err(problem) =
+                view.evaluate_script(&format!("window.renderPearLocal?.({state});"))
+        {
+            eprintln!("Could not update local playback controls: {problem}");
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_unbundled_navigation_and_ipc_payloads() {
+        let request = |uri, method| {
+            Request::builder()
+                .uri(uri)
+                .method(method)
+                .body(Vec::new())
+                .unwrap()
+        };
+        assert_eq!(assets(request(ASSET_ROOT, "GET")).status(), 200);
+        assert_eq!(
+            assets(request("pear-audio://app.local/local-audio.js", "GET")).status(),
+            200
+        );
+        for uri in [
+            "pear-audio://app.local/?file=track.wav",
+            "pear-audio://app.local.example/local-audio.js",
+            "pear-audio://app.local/../local-audio.js",
+            "https://example.com/track.wav",
+        ] {
+            assert_eq!(assets(request(uri, "GET")).status(), 404);
+        }
+        assert_eq!(assets(request(ASSET_ROOT, "POST")).status(), 404);
+
+        let message = |uri, body: &str| Request::builder().uri(uri).body(body.to_owned()).unwrap();
+        assert!(matches!(
+            command(&message(DOCUMENT, r#"{"type":"open"}"#)),
+            Some(AudioCommand::Open {})
+        ));
+        assert!(
+            command(&message(
+                DOCUMENT,
+                r#"{"type":"open","path":"/tmp/track.wav"}"#
+            ))
+            .is_none()
+        );
+        assert!(command(&message("https://example.com/", r#"{"type":"open"}"#)).is_none());
+        assert!(command(&message(DOCUMENT, &" ".repeat(513))).is_none());
+        assert_eq!(title(Path::new("music/test.wav")), "test.wav");
+    }
+}
