@@ -14,7 +14,7 @@ The script builds an ad hoc signed local app. The queue accepts YouTube and YouT
 
 To build for an Intel Mac, install the `x86_64-apple-darwin` Rust target and run `experiments/rust-desktop/tools/bundle-macos.sh preview x86_64-apple-darwin`. For Apple silicon, use `aarch64-apple-darwin`.
 
-On first launch, choose **Open local audio** to play WAV, FLAC, and MP3 files offline. Read the terms and privacy policy and choose **Agree and continue** to enable YouTube playback and lookups. **Help → Terms and Privacy** reopens the policy at any time. The local profile records the accepted policy revision.
+On first launch, choose **Open local audio** to play WAV, FLAC, MP3, and Ogg Opus files offline. Read the terms and privacy policy and choose **Agree and continue** to enable YouTube playback and lookups. **Help → Terms and Privacy** reopens the policy at any time. The local profile records the accepted policy revision.
 
 Choose **Add links** and paste one link or ID per line to add several videos together. Enter submits, and Shift+Enter inserts a line. The queue skips duplicates and identifies invalid lines before saving the batch. Use **Filter queue** to find an entry by title or ID. Press Escape in the filter field to show the full queue again. **Play next** moves a queued video or adds a search result immediately after the current video while playback continues.
 
@@ -61,13 +61,13 @@ In `--iframe-player`, start the video and open **Lyrics**. Check the track name 
 
 Choose **File → Open Local Audio Window**, then **Open audio files**, or drop up to 200 files into the Local Audio window. Select a track from the list or use Previous and Next. At the end of a playing track, Pear lets the effect tail finish and starts the next readable file. The queue lasts for the current local audio session.
 
-Pear streams mono or stereo integer PCM and IEEE float WAV, native FLAC with a known duration, and MP3 through the system’s default output. It uses MP3 encoder delay and padding information when available and counts complete frames when the file lacks duration metadata. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. Effect settings carry across tracks in the current session.
+Pear streams mono or stereo integer PCM and IEEE float WAV, native FLAC with a known duration, MP3, and single-stream Ogg Opus (`.opus` or `.ogg`) through the system’s default output. It uses MP3 encoder delay and padding information when available and counts complete frames when the file lacks duration metadata. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. Effect settings carry across tracks in the current session.
 
 You can also pass `--local-audio` to the executable. Local playback runs offline in a separate window and uses its own session. Press **Space** outside an input or button to pause or resume. The embedded YouTube player has its own playback controls.
 
 Expand **Equalizer** to choose the 8-, 14- or 20-band layout, or add up to 64 custom peaking bands. In **Custom**, click the graph to add a point and drag it to set frequency and gain. The fields below the graph accept exact frequency, gain and Q values. **Auto preamp** adjusts attenuation for the active EQ curve and the local volume. Named presets are saved in the local audio profile so they can be loaded after restarting Pear.
 
-FLAC and MP3 decoding use Symphonia 0.6.1, licensed under MPL 2.0. [Symphonia source](https://github.com/pdeljanov/Symphonia/tree/v0.6.1)
+Symphonia 0.6.1 handles FLAC, MP3, and Ogg demuxing. The symphonia-opus 0.1.3 library decodes Opus. Both are licensed under MPL 2.0. [Symphonia source](https://github.com/pdeljanov/Symphonia/tree/v0.6.1) · [symphonia-opus source](https://crates.io/crates/symphonia-opus/0.1.3)
 
 ### Video details and optional search
 

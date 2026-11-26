@@ -197,7 +197,10 @@ fn pick_files(window: &Window) -> Vec<PathBuf> {
         rfd::FileDialog::new()
             .set_parent(window)
             .set_title("Open audio files")
-            .add_filter("Audio files", &["wav", "wave", "flac", "mp3"])
+            .add_filter(
+                "Audio files",
+                &["wav", "wave", "flac", "mp3", "opus", "ogg"],
+            )
             .pick_files()
             .unwrap_or_default()
     }
@@ -221,6 +224,8 @@ fn pick_files(window: &Window) -> Vec<PathBuf> {
             "*.[wW][aA][vV][eE]",
             "*.[fF][lL][aA][cC]",
             "*.[mM][pP]3",
+            "*.[oO][pP][uU][sS]",
+            "*.[oO][gG][gG]",
         ] {
             filter.add_pattern(pattern);
         }

@@ -214,7 +214,7 @@ test('opens local audio from Terms without agreeing or dismissing the disclosure
 
   await render();
   await expect(
-    region.getByText(/Play WAV, FLAC, and MP3 files offline/),
+    region.getByText(/Play WAV, FLAC, MP3, and Ogg Opus files offline/),
   ).toBeVisible();
   await localAudio.press('Enter');
   await expect(localAudio).toBeFocused();

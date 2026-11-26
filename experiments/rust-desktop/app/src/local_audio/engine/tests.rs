@@ -1,6 +1,6 @@
 use std::{
     fs,
-    io::Cursor,
+    io::{Cursor, Seek, SeekFrom, Write},
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
@@ -12,10 +12,14 @@ struct Fixture(PathBuf);
 
 impl Fixture {
     fn from_bytes(bytes: &[u8]) -> Self {
+        Self::with_extension(bytes, "wav")
+    }
+
+    fn with_extension(bytes: &[u8], extension: &str) -> Self {
         static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 
         let path = std::env::temp_dir().join(format!(
-            "pear-local-audio-{}-{}.wav",
+            "pear-local-audio-{}-{}.{extension}",
             std::process::id(),
             NEXT_FILE.fetch_add(1, Ordering::Relaxed)
         ));
@@ -24,7 +28,7 @@ impl Fixture {
             .create_new(true)
             .open(&path)
             .unwrap();
-        std::io::Write::write_all(&mut file, bytes).unwrap();
+        file.write_all(bytes).unwrap();
         Self(path)
     }
 }
@@ -73,6 +77,106 @@ fn only_a_decoding_failure_can_advance_a_playing_track() {
     assert!(!shared.take_end(DECODE_ERROR, false, true));
     assert!(shared.take_end(DECODE_ERROR, false, false));
     assert!(!shared.take_end(DECODE_ERROR, false, false));
+}
+
+#[test]
+fn ogg_opus_preskip_can_cross_packet_boundaries() {
+    // A 37 ms mono libopus encode with OpusHead pre-skip set to 1,001 frames.
+    let media = include_bytes!("fixtures/mono-preskip.opus");
+    let fixture = Fixture::with_extension(media, "opus");
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().sample_rate, 48_000);
+    assert_eq!(source.info().frames, 1_087);
+    for index in 0..1_087 {
+        let frame = source.read_frame().unwrap();
+        assert_eq!(frame[0], frame[1]);
+        match index {
+            0 => assert_opus_frame(frame, [0.075_286_865; 2]),
+            43 => assert_opus_frame(frame, [-0.063_842_77; 2]),
+            1_086 => assert_opus_frame(frame, [-0.006_500_244; 2]),
+            _ => (),
+        }
+    }
+    assert_eq!(
+        source.read_frame().unwrap_err().kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
+    source.seek_to(0).unwrap();
+    assert_opus_frame(source.read_frame().unwrap(), [0.075_286_865; 2]);
+}
+
+#[test]
+fn ogg_opus_seeks_to_sequential_samples_through_the_padded_final_page() {
+    // A 5.975 s stereo libopus encode with large pages that exercise Ogg bisection.
+    let media = include_bytes!("fixtures/stereo-tail-page.ogg");
+    let fixture = Fixture::with_extension(media, "ogg");
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().sample_rate, 48_000);
+    assert_eq!(source.info().frames, 286_800);
+    let frames: Vec<_> = (0..source.info().frames)
+        .map(|_| source.read_frame().unwrap())
+        .collect();
+    assert_opus_frame(frames[43], [0.239_135_74, 0.066_040_04]);
+    assert_opus_frame(frames[286_799], [-0.157_012_94, -0.180_236_82]);
+    assert_eq!(
+        source.read_frame().unwrap_err().kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
+    for index in [67_560, 0, 285_789, 143_400, 286_799, 1] {
+        source.seek_to(index).unwrap();
+        let start = index as usize;
+        for &expected in &frames[start..(start + 512).min(frames.len())] {
+            assert_opus_frame(source.read_frame().unwrap(), expected);
+        }
+    }
+    source.seek_to(286_800).unwrap();
+    assert_eq!(
+        source.read_frame().unwrap_err().kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
+}
+
+#[test]
+fn ogg_opus_rejects_invalid_inputs_and_other_ogg_codecs() {
+    let opus = include_bytes!("fixtures/mono-preskip.opus");
+    let vorbis = include_bytes!("fixtures/reject-vorbis.ogg");
+    for bytes in [&b"OggSbad header"[..], &opus[..opus.len() - 1], &vorbis[..]] {
+        let fixture = Fixture::with_extension(bytes, "opus");
+        assert!(matches!(
+            AudioSource::open(&fixture.0),
+            Err(EngineOpenError::UnsupportedAudio)
+        ));
+    }
+}
+
+#[test]
+fn ogg_opus_bounds_resynchronization_on_a_large_gap() {
+    let media = include_bytes!("fixtures/mono-preskip.opus");
+    let audio_start = media
+        .windows(4)
+        .enumerate()
+        .filter(|(_, header)| *header == b"OggS")
+        .nth(2)
+        .unwrap()
+        .0;
+    let fixture = Fixture::with_extension(&media[..audio_start], "opus");
+    let mut file = fs::OpenOptions::new().write(true).open(&fixture.0).unwrap();
+    file.seek(SeekFrom::End(20 * 1024 * 1024)).unwrap();
+    file.write_all(&media[audio_start..]).unwrap();
+    drop(file);
+    assert!(matches!(
+        AudioSource::open(&fixture.0),
+        Err(EngineOpenError::UnsupportedAudio)
+    ));
+}
+
+fn assert_opus_frame(actual: [f32; 2], expected: [f32; 2]) {
+    for (actual, expected) in actual.into_iter().zip(expected) {
+        assert!(
+            (actual - expected).abs() < 0.000_075,
+            "{actual} != {expected}"
+        );
+    }
 }
 
 #[test]
