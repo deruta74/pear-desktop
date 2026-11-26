@@ -26,12 +26,8 @@ jobs:
           package-manager-cache: false
       - name: Verify comparison rules
         run: node --test tools/windows-playback-comparison.test.cjs
-      - name: Build the existing native benchmark
-        run: |
-          rustup toolchain install stable --profile minimal
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo +stable build --locked --features benchmark -p pear-desktop-preview
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
       - name: Compare the official player in Pear and stock Edge
-        timeout-minutes: 4
-        run: ./tools/windows-playback-comparison.ps1 (Resolve-Path 'target/debug/pear-desktop-preview.exe').Path
+        timeout-minutes: 16
+        run: ./tools/windows-playback-comparison.ps1

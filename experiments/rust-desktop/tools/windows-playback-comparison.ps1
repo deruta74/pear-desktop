@@ -1,16 +1,13 @@
-param(
-    [Parameter(Mandatory = $true)]
-    [string] $PreviewExe
-)
-
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows' -or
     $env:GITHUB_REPOSITORY -cne 'deruta74/pear-desktop' -or
-    $env:GITHUB_REF -cne 'refs/heads/diagnostic/rust-windows-playback-comparison' -or !$env:RUNNER_TEMP) {
+    $env:GITHUB_REF -cne 'refs/heads/diagnostic/rust-windows-playback-comparison' -or
+    $env:GITHUB_SHA -cnotmatch '^[0-9a-f]{40}$' -or !$env:RUNNER_TEMP) {
     throw 'Unexpected Windows playback comparison environment.'
 }
 
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
 $root = Join-Path $env:RUNNER_TEMP "pear-playback-$([guid]::NewGuid().ToString('N'))"
 $profile = Join-Path $root 'pear'
 $webviewProfile = Join-Path $profile 'WebView2'
@@ -39,6 +36,28 @@ function Get-OwnedIPv4Listener([int] $port) {
 
 try {
     $null = New-Item -ItemType Directory -Path $root, $profile
+    $stage = 'diagnostic-source'
+    $source = Join-Path $root 'source'
+    $targetDir = Join-Path $root 'cargo-target'
+    $target = 'x86_64-pc-windows-msvc'
+    & git -C $repo worktree add --detach $source $env:GITHUB_SHA *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'worktree' }
+    try {
+        # This is the QA overlay used by run 45763048496. The repository checkout
+        # and all ordinary builds keep their original WebView2 configuration.
+        & git -C $source apply (Join-Path $PSScriptRoot 'windows-iframe-playback-qa.patch') *> $null
+        if ($LASTEXITCODE -ne 0) { throw 'overlay' }
+        $stage = 'diagnostic-build'
+        $manifest = Join-Path $source 'experiments/rust-desktop/Cargo.toml'
+        & cargo +stable build --locked --manifest-path $manifest --target $target --target-dir $targetDir `
+            --features windows-iframe-playback-qa -p pear-desktop-preview *> $null
+        if ($LASTEXITCODE -ne 0) { throw 'build' }
+    } finally {
+        & git -C $repo worktree remove --force $source *> $null
+        if ($LASTEXITCODE -ne 0) { throw 'worktree-cleanup' }
+    }
+    $previewExe = Join-Path $targetDir "$target/debug/pear-desktop-preview.exe"
+
     $stage = 'playwright-install'
     & npm.cmd install --prefix $root --cache (Join-Path $root 'npm-cache') --registry 'https://registry.npmjs.org/' `
         --ignore-scripts --no-audit --no-fund --no-package-lock --no-progress --fetch-retries=0 `
@@ -67,11 +86,11 @@ try {
         WEBVIEW2_USER_DATA_FOLDER = $null
         WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER = $null
         WEBVIEW2_WAIT_FOR_SCRIPT_DEBUGGER = $null
-        # The runtime appends these to the app's normal WebView2 arguments.
-        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port"
+        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $null
+        PEAR_PREVIEW_SMOKE_CDP_PORT = $port.ToString([Globalization.CultureInfo]::InvariantCulture)
     }
     $stdout = Join-Path $profile 'stdout'
-    $preview = Start-Process -FilePath $PreviewExe -ArgumentList '--iframe-player-smoke' -WorkingDirectory $profile `
+    $preview = Start-Process -FilePath $previewExe -ArgumentList '--iframe-player-smoke' -WorkingDirectory $profile `
         -Environment $environment -RedirectStandardOutput $stdout `
         -RedirectStandardError (Join-Path $profile 'stderr') -PassThru
 

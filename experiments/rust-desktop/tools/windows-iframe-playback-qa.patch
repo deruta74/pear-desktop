@@ -1,0 +1,35 @@
+--- a/experiments/rust-desktop/app/Cargo.toml
++++ b/experiments/rust-desktop/app/Cargo.toml
+@@ -8,4 +8,5 @@
+ [features]
+ benchmark = []
++windows-iframe-playback-qa = ["benchmark"]
+
+ [dependencies]
+--- a/experiments/rust-desktop/app/src/player/platform/windows.rs
++++ b/experiments/rust-desktop/app/src/player/platform/windows.rs
+@@ -338,6 +338,24 @@
+         let (video_bounds, controls_bounds) = child_bounds(window, queue_visible, true);
+         let mut context = WebContext::new(Some(self.webview_data_dir.clone()));
+         let builder = configure(WebViewBuilder::new_with_web_context(&mut context));
++        #[cfg(feature = "windows-iframe-playback-qa")]
++        let builder = if let Some(port) = std::env::var_os("PEAR_PREVIEW_SMOKE_CDP_PORT") {
++            if !std::env::args_os().skip(1).eq(["--iframe-player-smoke"]) {
++                return Err("Windows QA debugging requires the IFrame smoke mode.".into());
++            }
++            let port = port
++                .to_str()
++                .and_then(|port| port.parse::<std::num::NonZeroU16>().ok())
++                .ok_or("Invalid Windows QA debugging port.")?;
++            // Supplying arguments overrides Wry's defaults. Preserve its current flags
++            // for this app so the diagnostic changes only the loopback CDP listener.
++            builder.with_additional_browser_args(format!(
++                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
++                 --remote-debugging-address=127.0.0.1 --remote-debugging-port={port}"
++            ))
++        } else {
++            builder
++        };
+         let builder = match pane {
+             Pane::Video => builder
+                 .with_profile_name("PearPreviewVideo")
