@@ -10,6 +10,7 @@ const assets = new Map([
   ['/', ['index.html', 'text/html']],
   ['/style.css', ['style.css', 'text/css']],
   ['/controls.js', ['controls.js', 'text/javascript']],
+  ['/history-swipes.js', ['history-swipes.js', 'text/javascript']],
 ]);
 let browser;
 
@@ -23,7 +24,10 @@ before(async () => {
 
 after(() => browser?.close());
 
-async function panel(t, { withoutObjectHasOwn = false, platform } = {}) {
+async function panel(
+  t,
+  { withoutObjectHasOwn = false, platform, experimentalSwipe = false } = {},
+) {
   const page = await browser.newPage({ viewport: { width: 370, height: 600 } });
   t.after(() => page.close());
   await page.route('**/*', async (route) => {
@@ -49,16 +53,17 @@ async function panel(t, { withoutObjectHasOwn = false, platform } = {}) {
     });
   });
   await page.addInitScript(
-    ({ withoutObjectHasOwn, platform }) => {
+    ({ withoutObjectHasOwn, platform, experimentalSwipe }) => {
       if (withoutObjectHasOwn) delete Object.hasOwn;
       if (platform)
         Object.defineProperty(navigator, 'platform', { value: platform });
+      window.pearExperimentalPanelSwipe = experimentalSwipe;
       window.pearMessages = [];
       window.ipc = {
         postMessage: (message) => window.pearMessages.push(JSON.parse(message)),
       };
     },
-    { withoutObjectHasOwn, platform },
+    { withoutObjectHasOwn, platform, experimentalSwipe },
   );
   const response = await page.goto(origin);
   expect(response.status()).toBe(200);
@@ -244,6 +249,219 @@ test('keeps recent panel destinations and skips destinations that become unavail
   });
   expect(steps).toBe(31);
   expect(await messages(page)).toHaveLength(1);
+});
+
+async function swipeFixture(t, experimentalSwipe = true) {
+  const page = await panel(t, { platform: 'MacIntel', experimentalSwipe });
+  const accepted = legalState({ accepted: true, show: false });
+  const render = (legal = accepted) =>
+    state(page, [first, second], first, null, null, undefined, {
+      legal,
+      catalog: searchState(),
+      lyrics: lyricsState(),
+      savedPlaylists: savedPlaylists(),
+    });
+  await render();
+  await transport(page, readyTransport);
+  const nav = page.getByRole('navigation');
+  const show = (name) => nav.getByRole('button', { name });
+  const header = page.getByRole('heading', { name: 'Pear', exact: true });
+  const screen = async (name) => {
+    await expect(show(name)).toHaveAttribute('aria-pressed', 'true');
+  };
+  await page.evaluate(() => {
+    window.fixtureWheelTime = 0;
+    window.fixtureWheelSettled = 0;
+    Object.defineProperty(performance, 'now', {
+      value: () => window.fixtureWheelTime,
+    });
+    window.addEventListener(
+      'wheel',
+      (event) => {
+        if (event.isTrusted) {
+          setTimeout(() => window.fixtureWheelSettled++, 0);
+        }
+      },
+      { passive: true },
+    );
+  });
+  const wheel = async (x, y = 0, gap = 5) => {
+    const next = await page.evaluate((gap) => {
+      window.fixtureWheelTime += gap;
+      return window.fixtureWheelSettled + 1;
+    }, gap);
+    await page.mouse.wheel(x, y);
+    await expect
+      .poll(() => page.evaluate(() => window.fixtureWheelSettled))
+      .toBe(next);
+  };
+  const swipe = async (x, gap = 601) => {
+    await wheel(x, 0, gap);
+    await wheel(x);
+  };
+  const pointAtHeader = async () => {
+    await header.click();
+    await header.hover();
+  };
+  return { page, render, accepted, show, screen, wheel, swipe, pointAtHeader };
+}
+
+test('experimental panel swipes reverse a changed destination and ignore same-direction momentum', async (t) => {
+  const { page, show, screen, wheel, swipe, pointAtHeader } =
+    await swipeFixture(t);
+  for (const view of ['Search', 'Lyrics', 'Library']) await show(view).click();
+  await pointAtHeader();
+  await swipe(-100);
+  await screen('Lyrics');
+  for (let index = 0; index < 12; index++) await wheel(-3, 1, 80);
+  await swipe(-110, 10);
+  await screen('Lyrics');
+
+  // A deliberate reverse stroke can start softly, then sustain meaningful motion.
+  await wheel(1, 0, 55);
+  for (const delta of [2, 3, 5, 21, 34, 55, 70]) await wheel(delta);
+  await screen('Library');
+  await swipe(120, 10);
+  await screen('Library');
+
+  await wheel(-1, 0, 55);
+  for (const delta of [2, 3, 5, 21, 34, 55, 70]) await wheel(-delta);
+  await screen('Lyrics');
+  await swipe(-120, 10);
+  await screen('Lyrics');
+
+  // An isolated rebound after the short gap cannot grant another traversal.
+  await wheel(195, 0, 55);
+  await wheel(1);
+  await screen('Lyrics');
+  expect(await messages(page)).toHaveLength(1);
+  expect(page.url()).toBe(origin + '/');
+});
+
+test('normal panel sessions ignore even trusted horizontal wheel input', async (t) => {
+  const { show, screen, swipe, pointAtHeader } = await swipeFixture(t, false);
+  await show('Search').click();
+  await pointAtHeader();
+  await swipe(-100);
+  await screen('Search');
+});
+
+test('experimental swipes respect edit focus, protected regions, and cancelled or vertical streams', async (t) => {
+  const { page, show, screen, wheel, swipe, pointAtHeader } =
+    await swipeFixture(t);
+  await show('Search').click();
+  const input = page.locator('#catalog-query');
+  await input.fill('Keep this draft');
+  await page.getByRole('heading', { name: 'Pear', exact: true }).hover();
+  await swipe(-100);
+  await screen('Search');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('Keep this draft');
+
+  await pointAtHeader();
+  await page.getByRole('slider', { name: 'Playback position' }).hover();
+  await wheel(-100, 0, 601);
+  await page.getByRole('heading', { name: 'Pear', exact: true }).hover();
+  await wheel(-100);
+  await wheel(-100);
+  await screen('Search');
+
+  await page.evaluate(() => {
+    const scroller = document.createElement('div');
+    scroller.id = 'fixture-scroller';
+    scroller.style.cssText =
+      'position:fixed;top:160px;left:20px;width:140px;height:55px;overflow-x:auto';
+    const item = document.createElement('div');
+    item.style.cssText = 'width:400px;height:30px';
+    scroller.append(item);
+    document.getElementById('pear-panel').append(scroller);
+  });
+  await page.locator('#fixture-scroller').hover();
+  await wheel(-100, 0, 601); // A wheel at the left edge still belongs to this scroller.
+  await page.getByRole('heading', { name: 'Pear', exact: true }).hover();
+  await swipe(-100, 5);
+  await screen('Search');
+
+  await wheel(5, 20, 601);
+  await swipe(-120, 5);
+  await screen('Search');
+
+  await page.evaluate(() => {
+    window.addEventListener(
+      'wheel',
+      (event) => {
+        event.preventDefault();
+        window.fixtureWheelCancelled = event.defaultPrevented;
+      },
+      { passive: false, once: true },
+    );
+  });
+  await wheel(-100, 0, 601);
+  expect(await page.evaluate(() => window.fixtureWheelCancelled)).toBe(true);
+  await swipe(-100, 5);
+  await screen('Search');
+  await swipe(-100);
+  await screen('Queue');
+  await expect(input).toHaveValue('Keep this draft');
+});
+
+test('experimental swipes stop on a hide, consent overlay, or manual history change', async (t) => {
+  const { page, render, accepted, show, screen, wheel, swipe, pointAtHeader } =
+    await swipeFixture(t);
+  for (const view of ['Search', 'Lyrics', 'Library']) await show(view).click();
+  await pointAtHeader();
+  await wheel(-100, 0, 601);
+  await page.evaluate(() => {
+    window.setPearPanelVisible(false);
+    window.setPearPanelVisible(true);
+  });
+  await swipe(-100, 5);
+  await screen('Library');
+
+  await wheel(-100, 0, 601);
+  await render({ ...accepted, show: true });
+  await swipe(-100, 5);
+  await render();
+  await swipe(-100, 5);
+  await screen('Library');
+
+  await pointAtHeader();
+  await swipe(-100);
+  await screen('Lyrics');
+  await page.keyboard.press('Meta+[');
+  await screen('Search');
+  await swipe(100, 55);
+  await screen('Search');
+
+  // A fresh stroke is still able to use the verified keyboard destination.
+  await swipe(100);
+  await screen('Lyrics');
+  expect(await messages(page)).toHaveLength(1);
+});
+
+test('experimental reversals require the same destination and cancel at history bounds', async (t) => {
+  const { page, accepted, show, screen, swipe, pointAtHeader } =
+    await swipeFixture(t);
+  for (const view of ['Search', 'Lyrics', 'Library']) await show(view).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await pointAtHeader();
+  await swipe(-100);
+  await screen('Search');
+  await state(page, [first, second], first, null, null, null, {
+    legal: accepted,
+    catalog: searchState(),
+    savedPlaylists: savedPlaylists(),
+  });
+  await swipe(100, 55);
+  await screen('Search');
+  await swipe(100);
+  await screen('Library');
+
+  await swipe(100); // The Forward direction is at its boundary.
+  await swipe(-100, 55);
+  await screen('Library');
+  await swipe(-100);
+  await screen('Search');
 });
 
 test('requires deliberate agreement before mounting playback or requesting artwork', async (t) => {

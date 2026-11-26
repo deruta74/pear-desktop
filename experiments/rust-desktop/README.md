@@ -20,6 +20,8 @@ Choose **Add links** and paste one link or ID per line to add several videos tog
 
 Use the arrows beside Pear to revisit earlier Queue, Search, Lyrics, and Library views. With the panel focused, press **⌘[** or **⌘]** on macOS, or **Alt+Left** or **Alt+Right** on Windows and Linux. Pear keeps up to 32 destinations for the current window session.
 
+On macOS, launch the bundled preview executable with `PEAR_PREVIEW_EXPERIMENTAL_PANEL_SWIPE=1` to try swiping left or right over the controls panel header. The experiment uses horizontal pixel-wheel input and follows the current system scroll direction. Keep focus out of text and playback controls while trying it. Native WebKit page swipes remain disabled.
+
 Open **Library** to save the current queue as a local playlist. Open a saved playlist to rename it, choose a track, or add its tracks to the queue while the current video plays. The library stores playlists in `playlists.json` next to `queue.json`.
 
 In **Queue**, choose **Add links**, then open **Play a YouTube playlist** and paste a public YouTube or YouTube Music playlist link. Choose **Play playlist in Pear**, then press Play in the visible YouTube player. This works without a YouTube Data API key. Use the embedded player’s controls for the playlist. Choose **Return to queue** to restore the selected queue video, or select another queue entry to switch directly. **Open in browser** opens the same playlist if playback is unavailable in Pear. On macOS, this feature uses the bundled app.

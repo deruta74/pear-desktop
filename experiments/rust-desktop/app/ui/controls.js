@@ -83,6 +83,7 @@ let playingPublicPlaylist = false;
 let activeView = 'queue';
 const viewHistory = [activeView];
 let viewHistoryIndex = 0;
+let interruptHistorySwipe;
 let viewSwitcher = null;
 let renderedCatalog = null;
 let renderedBrowserSearch = false;
@@ -304,6 +305,7 @@ function updateLegal(legal) {
   renderedLegal = legal ?? null;
 
   if (visible && !wasVisible) {
+    interruptHistorySwipe?.();
     const active = document.activeElement;
     focusBeforeLegal = panel.contains(active) ? active : null;
     editingPosition = false;
@@ -481,6 +483,7 @@ function updateLyricsVisibility() {
 }
 
 window.setPearPanelVisible = (visible) => {
+  if (pearPanelVisible !== Boolean(visible)) interruptHistorySwipe?.();
   pearPanelVisible = Boolean(visible);
   updateLyricsVisibility();
 };
@@ -704,6 +707,7 @@ function historyDestination(step) {
 
 function updateViews() {
   if (!viewAvailable(activeView)) {
+    interruptHistorySwipe?.();
     activeView = 'queue';
     viewHistory[viewHistoryIndex] = activeView;
   }
@@ -784,6 +788,7 @@ function activateView(view) {
 }
 
 function showView(view) {
+  interruptHistorySwipe?.();
   if (!controlsVisible() || !viewAvailable(view)) return;
   if (view !== activeView) {
     viewHistory.length = viewHistoryIndex + 1;
@@ -796,9 +801,9 @@ function showView(view) {
 }
 
 function traverseViewHistory(step) {
-  if (!controlsVisible()) return;
+  if (!controlsVisible()) return false;
   const index = historyDestination(step);
-  if (index < 0) return;
+  if (index < 0) return false;
   const focused = document.activeElement;
   viewHistoryIndex = index;
   activateView(viewHistory[index]);
@@ -807,10 +812,30 @@ function traverseViewHistory(step) {
       preventScroll: true,
     });
   }
+  return true;
 }
 
-historyBack.addEventListener('click', () => traverseViewHistory(-1));
-historyForward.addEventListener('click', () => traverseViewHistory(1));
+function requestViewHistory(step) {
+  interruptHistorySwipe?.();
+  traverseViewHistory(step);
+}
+
+historyBack.addEventListener('click', () => requestViewHistory(-1));
+historyForward.addEventListener('click', () => requestViewHistory(1));
+
+if (window.pearExperimentalPanelSwipe === true) {
+  interruptHistorySwipe = attachPanelHistorySwipes(
+    panel,
+    controlsVisible,
+    (step) => {
+      const from = viewHistoryIndex;
+      if (!traverseViewHistory(step)) return null;
+      const to = viewHistoryIndex;
+      return () =>
+        viewHistoryIndex === to && historyDestination(-step) === from;
+    },
+  );
+}
 
 document.addEventListener('keydown', (event) => {
   if (
@@ -837,7 +862,7 @@ document.addEventListener('keydown', (event) => {
     (shortcut && event.key === forwardKey);
   if (back || forward) {
     event.preventDefault();
-    traverseViewHistory(back ? -1 : 1);
+    requestViewHistory(back ? -1 : 1);
   }
 });
 

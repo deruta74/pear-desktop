@@ -200,6 +200,10 @@ fn controls_response(request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> 
                 "text/javascript; charset=utf-8",
                 include_bytes!("../ui/controls.js"),
             )),
+            "pear-queue://app.local/history-swipes.js" => Some((
+                "text/javascript; charset=utf-8",
+                include_bytes!("../ui/history-swipes.js"),
+            )),
             _ => None,
         }
     } else {
@@ -676,10 +680,19 @@ pub fn run(mode: LaunchMode) -> Result<()> {
 
     let layout = Layout::new(&window, &data_dir)?;
     let controls_proxy = event_loop.create_proxy();
+    let experimental_panel_swipe = cfg!(target_os = "macos")
+        && std::env::var_os("PEAR_PREVIEW_EXPERIMENTAL_PANEL_SWIPE")
+            .is_some_and(|value| value == "1");
     let controls = layout.build(
         &window,
         move |builder| {
-            isolated_builder(builder)
+            let builder = isolated_builder(builder);
+            let builder = if experimental_panel_swipe {
+                builder.with_initialization_script("window.pearExperimentalPanelSwipe = true;")
+            } else {
+                builder
+            };
+            builder
                 .with_custom_protocol("pear-queue".into(), |_, request| controls_response(request))
                 .with_navigation_handler(|url| url == CONTROLS_URL)
                 .with_ipc_handler(move |request| {
@@ -1748,6 +1761,15 @@ mod tests {
         assert_eq!(
             response.headers()[header::CONTENT_SECURITY_POLICY],
             CONTROLS_CSP
+        );
+        let swipe_script = controls_response(request(
+            "pear-queue://app.local/history-swipes.js",
+            "GET",
+        ));
+        assert_eq!(swipe_script.status(), 200);
+        assert_eq!(
+            swipe_script.headers()[header::CONTENT_TYPE],
+            "text/javascript; charset=utf-8"
         );
         assert_eq!(
             controls_response(request(CONTROLS_ASSET_URL, "POST")).status(),
