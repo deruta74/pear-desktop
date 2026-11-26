@@ -128,6 +128,7 @@ impl Queue {
             upcoming.swap(0, different);
         }
         self.revision = self.revision.wrapping_add(1);
+        self.consecutive_failures = 0;
         true
     }
 
@@ -372,6 +373,27 @@ mod tests {
         assert_eq!(queue.finish(), (true, 1));
         assert!(queue.advance(End::DecodeError).is_none());
         assert!(!queue.opening());
+    }
+
+    #[test]
+    fn repeat_queue_uses_the_new_order_after_shuffle_during_a_failed_pass() {
+        let mut queue = queue_with(&["Broken A.wav", "Good.wav", "Broken B.wav"], 2);
+        assert!(queue.set_repeat(queue.view().revision, RepeatMode::Queue));
+        assert_eq!(
+            queue.advance(End::DecodeError),
+            Some(Advance::Open("Broken A.wav".into()))
+        );
+        queue.finish();
+        assert!(queue.shuffle_upcoming(queue.view().revision));
+        assert_eq!(
+            queue.advance(End::DecodeError),
+            Some(Advance::Open("Broken B.wav".into()))
+        );
+        queue.finish();
+        assert_eq!(
+            queue.advance(End::DecodeError),
+            Some(Advance::Open("Good.wav".into()))
+        );
     }
 
     #[test]
