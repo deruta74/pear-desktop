@@ -80,7 +80,20 @@
         </div>
       </section>
       <section id="local-queue" class="local-queue" hidden>
-        <h2 id="queue-heading">Queue</h2>
+        <div class="local-header">
+          <h2 id="queue-heading">Queue</h2>
+          <div class="local-queue-tools">
+            <button id="shuffle-upcoming" type="button" aria-disabled="true">
+              Shuffle upcoming
+            </button>
+            <label for="queue-repeat">Repeat</label>
+            <select id="queue-repeat" disabled>
+              <option value="off">Off</option>
+              <option value="queue">Queue</option>
+              <option value="track">Track</option>
+            </select>
+          </div>
+        </div>
         <ol id="queue-tracks" role="list" aria-labelledby="queue-heading"></ol>
       </section>
       <details id="local-eq" class="local-effects local-eq" hidden>

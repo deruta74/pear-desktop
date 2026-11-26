@@ -49,6 +49,13 @@ enum AudioCommand {
         revision: u32,
         index: usize,
     },
+    ShuffleUpcoming {
+        revision: u32,
+    },
+    SetRepeat {
+        revision: u32,
+        mode: queue::RepeatMode,
+    },
     SetPlaying {
         playing: bool,
     },
@@ -417,6 +424,11 @@ pub(crate) fn run() -> Result<()> {
             _ => return,
         };
         let send_settings = matches!(action, Some(AudioCommand::Ready {}));
+        let send_queue = send_settings
+            || matches!(
+                action,
+                Some(AudioCommand::ShuffleUpcoming { .. } | AudioCommand::SetRepeat { .. })
+            );
         let eq_revision = match &action {
             Some(
                 AudioCommand::SetEqualizer { revision, .. }
@@ -448,6 +460,12 @@ pub(crate) fn run() -> Result<()> {
                     .as_ref()
                     .is_some_and(|track| track.engine.is_playing());
                 requested_path = queue.select(revision, index, play);
+            }
+            Some(AudioCommand::ShuffleUpcoming { revision }) => {
+                queue.shuffle_upcoming(revision);
+            }
+            Some(AudioCommand::SetRepeat { revision, mode }) => {
+                queue.set_repeat(revision, mode);
             }
             Some(action) => {
                 if let Some(Track { engine, .. }) = &mut track {
@@ -532,12 +550,27 @@ pub(crate) fn run() -> Result<()> {
             None if !deadline.is_some_and(|when| Instant::now() >= when) => return,
             None => {}
         }
-        let transport = track
-            .as_mut()
-            .map(|track| track.engine.snapshot(queue.opening()));
-        if requested_path.is_none() && transport.as_ref().is_some_and(|state| state.finished) {
-            requested_path = queue.advance();
-        }
+        let transport = track.as_mut().map(|track| {
+            let snapshot = track.engine.snapshot(queue.opening());
+            if !snapshot.finished || requested_path.is_some() {
+                return snapshot;
+            }
+            let end = if snapshot.error.is_some() {
+                queue::End::DecodeError
+            } else {
+                queue::End::Natural
+            };
+            match queue.advance(end) {
+                Some(queue::Advance::Open(path)) => requested_path = Some(path),
+                Some(queue::Advance::Replay) => {
+                    track.engine.set_playing(true);
+                    // Poll for the next end on the next event, even for very short files.
+                    return track.engine.snapshot(true);
+                }
+                None => {}
+            }
+            snapshot
+        });
         if let Some(path) = requested_path {
             let result_events = result_events.clone();
             match std::thread::Builder::new()
@@ -579,7 +612,7 @@ pub(crate) fn run() -> Result<()> {
             transport,
             error: error.as_deref(),
             opening,
-            queue: send_settings.then(|| queue.view()),
+            queue: send_queue.then(|| queue.view()),
             settings: send_settings.then_some(Settings {
                 volume,
                 speed,
@@ -653,7 +686,10 @@ mod tests {
         assert!(!queue.opening());
         assert_eq!(queue.view().selected, Some(0));
 
-        assert_eq!(queue.advance().unwrap(), Path::new("bad.mp3"));
+        assert_eq!(
+            queue.advance(queue::End::Natural),
+            Some(queue::Advance::Open("bad.mp3".into()))
+        );
         assert!(queue.select(revision, 2, true).is_none());
         assert_eq!(
             queue.retry_after_read_error().unwrap(),
@@ -661,7 +697,7 @@ mod tests {
         );
         assert_eq!(queue.finish(), (true, 1));
         assert_eq!(queue.view().selected, Some(2));
-        assert!(queue.advance().is_none());
+        assert!(queue.advance(queue::End::Natural).is_none());
     }
 
     #[test]
@@ -693,6 +729,23 @@ mod tests {
             command(&message(DOCUMENT, r#"{"type":"open"}"#)),
             Some(AudioCommand::Open {})
         ));
+        assert!(matches!(
+            command(&message(
+                DOCUMENT,
+                r#"{"type":"set_repeat","revision":1,"mode":"track"}"#
+            )),
+            Some(AudioCommand::SetRepeat {
+                revision: 1,
+                mode: queue::RepeatMode::Track,
+            })
+        ));
+        assert!(
+            command(&message(
+                DOCUMENT,
+                r#"{"type":"set_repeat","revision":1,"mode":"invalid"}"#
+            ))
+            .is_none()
+        );
         assert!(
             command(&message(
                 DOCUMENT,

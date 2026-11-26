@@ -8,6 +8,8 @@ const previous = element('previous');
 const play = element('play');
 const next = element('next');
 const queueList = element('queue-tracks');
+const shuffle = element('shuffle-upcoming');
+const repeat = element('queue-repeat');
 const volume = element('volume');
 const speed = element('speed');
 const intensity = element('intensity');
@@ -45,7 +47,12 @@ function queueButton(index) {
 }
 
 function renderQueue() {
-  const { tracks, selected } = queueState;
+  const {
+    tracks,
+    selected,
+    canShuffle,
+    repeat: repeatMode = 'off',
+  } = queueState;
   const focusedRow = queueList.querySelector('button:focus');
   const focusedIndex = Number(focusedRow?.dataset.index ?? -1);
   const tabStopIndex =
@@ -74,6 +81,9 @@ function renderQueue() {
     button.tabIndex = index === tabStopIndex ? 0 : -1;
   }
   element('local-queue').hidden = tracks.length === 0;
+  shuffle.setAttribute('aria-disabled', String(opening || !canShuffle));
+  repeat.disabled = opening || tracks.length === 0;
+  if (repeat.value !== repeatMode) repeat.value = repeatMode;
   previous.setAttribute(
     'aria-disabled',
     String(opening || selected === null || selected === 0),
@@ -194,6 +204,14 @@ play.addEventListener('click', () => {
 });
 next.addEventListener('click', () => {
   if (queueState.selected !== null) selectTrack(queueState.selected + 1);
+});
+shuffle.addEventListener('click', () => {
+  if (!opening && queueState.canShuffle)
+    send('shuffle_upcoming', { revision: queueState.revision });
+});
+repeat.addEventListener('change', () => {
+  if (!repeat.disabled)
+    send('set_repeat', { revision: queueState.revision, mode: repeat.value });
 });
 document.addEventListener('keydown', (event) => {
   if (

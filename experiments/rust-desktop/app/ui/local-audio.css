@@ -56,6 +56,32 @@
   font-size: 1.0625rem;
 }
 
+.local-queue-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.local-queue-tools label {
+  margin-inline-start: 0.25rem;
+}
+
+.local-queue-tools select {
+  min-block-size: var(--target);
+  border: 1px solid var(--control-border);
+  border-radius: 0.5rem;
+  padding-inline: 0.375rem;
+  color: inherit;
+  background: var(--control);
+  font: inherit;
+}
+
+.local-queue-tools select:disabled {
+  border-color: var(--line);
+  color: var(--disabled);
+}
+
 .local-queue ol {
   display: grid;
   gap: 0.25rem;
@@ -70,7 +96,7 @@
   min-inline-size: 0;
 }
 
-.local-queue button {
+.local-queue ol button {
   display: block;
   inline-size: 100%;
   overflow: hidden;
@@ -82,11 +108,11 @@
   white-space: nowrap;
 }
 
-.local-queue button[aria-disabled='true'] {
+.local-queue ol button[aria-disabled='true'] {
   color: var(--muted);
 }
 
-.local-queue button[aria-current='true'] {
+.local-queue ol button[aria-current='true'] {
   background: var(--current);
   color: var(--accent);
 }

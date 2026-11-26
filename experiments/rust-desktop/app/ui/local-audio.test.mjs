@@ -343,3 +343,78 @@ test('blocks transport and queue changes while opening and at the queue bounds',
     index: 0,
   });
 });
+
+test('shuffles upcoming tracks and sets repeat mode through the current queue revision', async (t) => {
+  const { page, messages, render } = await localAudioPage(t, {
+    width: 290,
+    height: 475,
+  });
+  const track = 'Current.wav';
+  const transport = { positionMs: 1500, durationMs: 48000, playing: true };
+  const queue = {
+    revision: 17,
+    tracks: [track, 'Second.mp3', 'Third.flac'],
+    selected: 0,
+    canShuffle: true,
+    repeat: 'off',
+  };
+  const shuffle = page.getByRole('button', { name: 'Shuffle upcoming' });
+  const repeat = page.getByRole('combobox', { name: 'Repeat' });
+  await expect(shuffle).toBeHidden();
+  await expect(repeat).toBeHidden();
+  await render({ track, transport, queue });
+  await expect(repeat).toHaveValue('off', { timeout: 1000 });
+  await shuffle.focus();
+  await page.keyboard.press('Enter');
+  expect((await messages()).at(-1)).toEqual({
+    type: 'shuffle_upcoming',
+    revision: 17,
+  });
+  const shuffled = {
+    ...queue,
+    revision: 18,
+    tracks: [track, 'Third.flac', 'Second.mp3'],
+  };
+  await render({ track, transport, queue: shuffled });
+  await expect(shuffle).toBeFocused();
+  await expect(
+    page.getByRole('button', { name: 'Pause', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toHaveValue('1500');
+  await repeat.selectOption('track');
+  expect((await messages()).at(-1)).toEqual({
+    type: 'set_repeat',
+    revision: 18,
+    mode: 'track',
+  });
+  await render({ track, transport, queue: { ...shuffled, repeat: 'track' } });
+  await render({ track, transport });
+  await expect(repeat).toHaveValue('track');
+  await repeat.selectOption('queue');
+  expect((await messages()).at(-1)).toEqual({
+    type: 'set_repeat',
+    revision: 18,
+    mode: 'queue',
+  });
+
+  await render({ track, transport, opening: true });
+  await expect(shuffle).toBeDisabled();
+  await expect(repeat).toBeDisabled();
+  const count = (await messages()).length;
+  await shuffle.evaluate((button) => button.click());
+  expect(await messages()).toHaveLength(count);
+  await render({
+    track,
+    transport,
+    queue: { ...shuffled, selected: 2, canShuffle: false, repeat: 'queue' },
+  });
+  await expect(shuffle).toBeDisabled();
+  await expect(repeat).toBeEnabled();
+  await expect(repeat).toHaveValue('queue');
+  await expect(page.getByRole('button', { name: 'Next track' })).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    290,
+  );
+});
