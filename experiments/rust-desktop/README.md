@@ -18,9 +18,11 @@ Paste one link or ID per line to add several videos together. Enter submits, and
 
 Open **Library** to save the current queue as a local playlist. Open a saved playlist to rename it, choose a track, or add its tracks to the queue while the current video plays. The library stores playlists in `playlists.json` next to `queue.json`.
 
+Open **Play a YouTube playlist** below the queue’s link field and paste a public YouTube or YouTube Music playlist link. Choose **Play playlist in Pear**, then press Play in the YouTube player. This works without a YouTube Data API key and leaves the saved queue and selection in place. Use the embedded player’s controls for the playlist. Choose **Return to queue** or select a queue entry to switch back. **Open in browser** opens the same playlist if playback is unavailable in Pear. On macOS, this feature uses the bundled app.
+
 The local controls and the official player use separate private WebViews. Only the bundled controls can send queue commands to Rust. The player loads the selected embed with the native app's Referer and uses the website's controls and media requests. It can play videos whose owners allow embedding in the current region.
 
-**Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
+**Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
 
 ### Experimental playback controls
 

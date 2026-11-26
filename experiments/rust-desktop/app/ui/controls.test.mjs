@@ -230,6 +230,7 @@ async function state(
     savedPlaylists,
     preferencesProblem,
     legal,
+    publicPlaylist,
   } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
@@ -257,6 +258,7 @@ async function state(
         savedPlaylists,
         preferencesProblem,
         legal,
+        publicPlaylist,
       },
       error,
       notice,
@@ -304,6 +306,53 @@ test('uses Space for playback only outside editable controls and after the offic
     sequence: 2,
     command: { type: 'set_playback', playing: false },
   });
+});
+
+test('opens a public playlist without catalog access and returns to the saved queue', async (t) => {
+  const page = await panel(t);
+  const entries = [first, second];
+  const url = 'https://music.youtube.com/playlist?list=PLC77007E23FF423C6';
+  const play = page.getByRole('button', { name: 'Play video' });
+  const returnToQueue = page.getByRole('button', { name: 'Return to queue' });
+  await state(page, entries, first);
+  await transport(page, readyTransport);
+  await expect(play).toBeVisible();
+  await page.getByText('Play a YouTube playlist', { exact: true }).click();
+  await page.getByLabel('Public playlist link').fill(url);
+  await page.getByRole('button', { name: 'Play playlist in Pear' }).click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'play_public_playlist',
+    source: url,
+  });
+  await state(page, entries, first, null, null, 2, { publicPlaylist: true });
+  await expect(returnToQueue).toBeVisible();
+  await expect(play).toBeHidden();
+  await transport(page, readyTransport);
+  await expect(play).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: `Select ${first}` }),
+  ).toHaveAttribute('aria-current', 'true');
+  await returnToQueue.click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'return_to_queue',
+  });
+  await state(page, entries, first, null, null, 3);
+  await expect(returnToQueue).toBeHidden();
+  await expect(play).toBeHidden();
+  await transport(page, readyTransport);
+  await expect(play).toBeVisible();
+
+  await state(page, entries, first, null, null, null, { publicPlaylist: true });
+  await page.getByRole('button', { name: `Select ${first}` }).click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'select',
+    id: first,
+  });
+  await state(page, entries, first);
+  await expect(returnToQueue).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: `Select ${second}` }),
+  ).toBeVisible();
 });
 
 test('makes available audio output controls usable before the first play', async (t) => {

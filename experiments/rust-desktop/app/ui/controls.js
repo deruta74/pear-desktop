@@ -47,6 +47,12 @@ const declineLegal = document.getElementById('decline-legal');
 const closeLegal = document.getElementById('close-legal');
 const legalButtons = legalPanel.querySelectorAll('button');
 const encoder = new TextEncoder();
+const playlistDetails = document.getElementById('public-playlist');
+const playlistForm = document.getElementById('public-playlist-form');
+const playlistLink = document.getElementById('public-playlist-link');
+const playlistFeedback = document.getElementById('public-playlist-feedback');
+const returnToQueue = document.getElementById('return-to-queue');
+const queueInputs = document.getElementById('queue-inputs');
 // The native transport polls once per second.
 const LYRIC_SAMPLE_INTERVAL_MS = 1000;
 
@@ -54,6 +60,7 @@ let nextSequence = 1;
 let pending = null;
 let renderedState = null;
 let renderedTransport = null;
+let playingPublicPlaylist = false;
 let activeView = 'queue';
 let viewSwitcher = null;
 let renderedCatalog = null;
@@ -82,6 +89,10 @@ let legalCommandProblem = '';
 let focusBeforeLegal = null;
 
 function commandProblem(message, context) {
+  if (context === 'public-playlist') {
+    playlistFeedback.textContent = message;
+    return;
+  }
   if (context === 'legal') {
     legalCommandProblem = message;
     updateLegalControls();
@@ -396,7 +407,7 @@ function updateTransport() {
 }
 
 window.renderPearTransport = (transport) => {
-  if (panel.hidden && !renderedLegal?.accepted) return;
+  if (playingPublicPlaylist || (panel.hidden && !renderedLegal?.accepted)) return;
   const clockChanged =
     transport?.positionMs !== renderedTransport?.positionMs ||
     transport?.clockRunning !== renderedTransport?.clockRunning ||
@@ -655,7 +666,7 @@ function updateViews() {
     );
   }
 
-  form.hidden = queuePanel.hidden = activeView !== 'queue';
+  form.hidden = queuePanel.hidden = queueInputs.hidden = activeView !== 'queue';
   if (catalogView) {
     catalogView.form.hidden = activeView !== 'search';
     catalogView.results.hidden =
@@ -1493,6 +1504,7 @@ window.renderPearState = (
     savedPlaylists,
     preferencesProblem,
     legal,
+    publicPlaylist,
   },
   error = null,
   notice = null,
@@ -1522,7 +1534,10 @@ window.renderPearState = (
 
   const index = entries.indexOf(current);
   const hasSelection = index !== -1;
-  const selectedMetadata = hasSelection ? metadata : null;
+  const playlistChanged = playingPublicPlaylist !== (publicPlaylist === true);
+  playingPublicPlaylist = publicPlaylist === true;
+  const selectedMetadata =
+    hasSelection && !playingPublicPlaylist ? metadata : null;
   const officialTitle = selectedMetadata?.title.trim();
   const entryTitles = entries.map((id) => videoTitle(titles, id));
   if (officialTitle) entryTitles[index] = officialTitle;
@@ -1530,23 +1545,36 @@ window.renderPearState = (
   const selectionChanged =
     renderedState !== null && current !== renderedState.current;
   const active = document.activeElement;
-  const selectionLabel = hasSelection ? currentTitle || current : '';
+  const selectionLabel = playingPublicPlaylist
+    ? 'YouTube playlist'
+    : hasSelection
+      ? currentTitle || current
+      : '';
   if (selection.textContent !== selectionLabel) {
     selection.textContent = selectionLabel;
-    selection.title = hasSelection ? selectionLabel : '';
+    selection.title = selectionLabel;
   }
-  selection.classList.toggle('video-id', hasSelection && !currentTitle);
+  selection.classList.toggle(
+    'video-id',
+    hasSelection && !currentTitle && !playingPublicPlaylist,
+  );
   updateSelectionAttribution(selectedMetadata?.channel.trim());
   if (!panel.hidden)
-    updateSelectionArtwork(current, selectedMetadata?.thumbnailUrl);
-  selectionPanel.hidden = !hasSelection;
-  panel.toggleAttribute('data-empty', !hasSelection);
-  position.textContent = hasSelection
+    updateSelectionArtwork(
+      playingPublicPlaylist ? null : current,
+      selectedMetadata?.thumbnailUrl,
+    );
+  selectionPanel.hidden = !hasSelection && !playingPublicPlaylist;
+  panel.toggleAttribute('data-empty', selectionPanel.hidden);
+  position.textContent = hasSelection && !playingPublicPlaylist
     ? `${index + 1} of ${entries.length}`
     : '';
-  previous.disabled = index <= 0;
-  next.disabled = !hasSelection || index >= entries.length - 1;
-  openBrowser.disabled = !hasSelection;
+  previous.disabled = playingPublicPlaylist || index <= 0;
+  next.disabled =
+    playingPublicPlaylist || !hasSelection || index >= entries.length - 1;
+  returnToQueue.hidden = !playingPublicPlaylist;
+  previous.hidden = next.hidden = playingPublicPlaylist;
+  openBrowser.disabled = !hasSelection && !playingPublicPlaylist;
 
   if (active === previous && previous.disabled)
     (next.disabled ? primaryInput() : next).focus();
@@ -1612,7 +1640,13 @@ window.renderPearState = (
     }
   }
 
-  if (context === 'search') {
+  if (context === 'public-playlist') {
+    playlistFeedback.textContent = error ?? '';
+    if (!error) {
+      playlistDetails.open = false;
+      returnToQueue.focus({ preventScroll: true });
+    }
+  } else if (context === 'search') {
     catalogSearchError = error ?? '';
   } else if (context === 'browser-search') {
     browserSearchError = error ?? '';
@@ -1641,13 +1675,16 @@ window.renderPearState = (
       .filter(Boolean)
       .join(' ');
   }
-  if (selectionChanged) renderedTransport = null;
+  if (selectionChanged || playlistChanged) renderedTransport = null;
   lyricsSwitchingActive = Boolean(lyricsSwitching);
   updateShuffleAvailability();
-  if (selectionChanged || playerProblem || lyricsSwitchingActive)
+  if (selectionChanged || playlistChanged || playerProblem || lyricsSwitchingActive)
     cancelLyricsClock();
   const catalogWasFocused = updateCatalog(catalog, browserSearch === true);
-  const lyricsWasFocused = updateLyrics(lyrics, selectionChanged);
+  const lyricsWasFocused = updateLyrics(
+    playingPublicPlaylist ? null : lyrics,
+    selectionChanged || playlistChanged,
+  );
   const libraryWasFocused = updateLibrary(
     savedPlaylists,
     context === 'library' && !error ? command : null,
@@ -1665,7 +1702,7 @@ window.renderPearState = (
   if (preferencesProblemText.textContent !== (preferencesProblem ?? '')) {
     preferencesProblemText.textContent = preferencesProblem ?? '';
   }
-  if (selectionChanged || problemChanged) updateTransport();
+  if (selectionChanged || playlistChanged || problemChanged) updateTransport();
   else if (acknowledged) updateAudioOutput();
   if (restoreFocus) {
     const previousFocus = focusBeforeLegal;
@@ -1674,7 +1711,21 @@ window.renderPearState = (
     if (document.activeElement !== previousFocus) primaryInput().focus();
   }
   if (!panel.hidden && focusAddOnReady) focusQueueAdd();
+  if (active === returnToQueue && returnToQueue.hidden)
+    primaryInput().focus({ preventScroll: true });
 };
+
+playlistForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  send(
+    { type: 'play_public_playlist', source: playlistLink.value.trim() },
+    'public-playlist',
+  );
+});
+
+returnToQueue.addEventListener('click', () => {
+  send({ type: 'return_to_queue' });
+});
 
 acceptLegal.addEventListener('click', () => {
   if (renderedLegal && !renderedLegal.accepted) {

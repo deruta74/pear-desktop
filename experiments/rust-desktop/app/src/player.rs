@@ -90,6 +90,8 @@ struct ControlMessage {
 struct QueueView<'a> {
     #[serde(flatten)]
     queue: &'a QueueState,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    public_playlist: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<&'a metadata::Metadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -253,11 +255,47 @@ fn video_title(document_title: &str) -> Option<&str> {
     Some(title)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PlaybackTarget<'a> {
+    Queue(&'a str),
+    PublicPlaylist(&'a iframe::PublicPlaylist),
+}
+
+fn playback_target<'a>(
+    queue: &'a QueueState,
+    playlist: Option<&'a iframe::PublicPlaylist>,
+) -> Option<PlaybackTarget<'a>> {
+    match playlist {
+        Some(playlist) => Some(PlaybackTarget::PublicPlaylist(playlist)),
+        None => queue.current.as_deref().map(PlaybackTarget::Queue),
+    }
+}
+
+fn queue_video<'a>(
+    queue: &'a QueueState,
+    playlist: Option<&iframe::PublicPlaylist>,
+) -> Option<&'a str> {
+    if playlist.is_some() {
+        None
+    } else {
+        queue.current.as_deref()
+    }
+}
+
+fn queue_edit_requires_reload(
+    playlist: &mut Option<iframe::PublicPlaylist>,
+    selecting: bool,
+    queue_requires_reload: bool,
+) -> bool {
+    let leaving_playlist = selecting && playlist.take().is_some();
+    leaving_playlist || (playlist.is_none() && queue_requires_reload)
+}
+
 fn show_video(
     layout: &Layout,
     window: &Window,
     queue_visible: bool,
-    id: &str,
+    target: PlaybackTarget<'_>,
     generation: u64,
     events: tao::event_loop::EventLoopProxy<PlayerEvent>,
     mode: LaunchMode,
@@ -266,8 +304,13 @@ fn show_video(
     let report_problem = move |message| {
         let _ = problem_events.send_event(PlayerEvent::VideoProblem(generation, message));
     };
-    if mode.iframe_player {
-        let page = Arc::new(iframe::Page::new(id)?);
+    let page = match target {
+        PlaybackTarget::PublicPlaylist(playlist) => Some(iframe::Page::playlist(playlist)?),
+        PlaybackTarget::Queue(id) if mode.iframe_player => Some(iframe::Page::new(id)?),
+        PlaybackTarget::Queue(_) => None,
+    };
+    if let Some(page) = page {
+        let page = Arc::new(page);
         #[cfg(not(target_os = "windows"))]
         let navigation = page.clone();
         #[cfg(target_os = "windows")]
@@ -328,6 +371,9 @@ fn show_video(
         page.load(&view, mode.audio_output)?;
         return Ok(view);
     }
+    let PlaybackTarget::Queue(id) = target else {
+        unreachable!("public playlists use the local IFrame wrapper");
+    };
     let url = embed_url(id);
     let permitted_url = url.clone();
     let title_events = events.clone();
@@ -598,19 +644,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let load = move |layout: &Layout,
                      window: &Window,
                      library: &Library,
+                     playlist: Option<&iframe::PublicPlaylist>,
                      generation,
                      queue_visible,
                      mode| {
-        library
-            .state()
-            .current
-            .as_deref()
-            .map(|id| {
+        playback_target(library.state(), playlist)
+            .map(|target| {
                 show_video(
                     layout,
                     window,
                     queue_visible,
-                    id,
+                    target,
                     generation,
                     loader.clone(),
                     mode,
@@ -620,8 +664,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     };
     let mut queue_visible = true;
     let mut generation = 0;
+    let mut public_playlist = None;
     let (mut current_player, mut player_error) = if approved {
-        match load(&layout, &window, &library, generation, queue_visible, mode) {
+        match load(
+            &layout,
+            &window,
+            &library,
+            None,
+            generation,
+            queue_visible,
+            mode,
+        ) {
             Ok(video) => (video, None),
             Err(error) => (None, Some(format!("Could not open the player: {error}"))),
         }
@@ -709,6 +762,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *open_music.id() => {
                 if approved
+                    && public_playlist.is_none()
                     && let Some(id) = library.state().current.as_deref()
                     && let Err(reason) =
                         open::that_detached(format!("https://music.youtube.com/watch?v={id}"))
@@ -749,7 +803,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 if enabled != mode.iframe_player {
                     mode.iframe_player = enabled;
                     toggle_advance.set_enabled(enabled);
-                    transport = enabled.then(transport::Transport::default);
+                    transport = (enabled && public_playlist.is_none()).then(transport::Transport::default);
                     if enabled {
                         if lyrics.is_none() {
                             lyrics = lyrics_worker();
@@ -762,7 +816,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             eprintln!("Could not reset the playback controls: {reason}");
                         }
                     }
-                    reload_player = true;
+                    reload_player = public_playlist.is_none();
                 }
                 true
             }
@@ -824,7 +878,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 true
             }
-            Event::UserEvent(PlayerEvent::TitleChanged(id, title)) if id == generation => {
+            Event::UserEvent(PlayerEvent::TitleChanged(id, title)) if id == generation && public_playlist.is_none() => {
                 let first_title = titled_generation != Some(id);
                 if first_title {
                     if mode.smoke {
@@ -861,10 +915,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 .as_mut()
                 .is_some_and(|lyrics| lyrics.receive(revision, response, Instant::now())),
             Event::UserEvent(PlayerEvent::TransportCommitted(id)) if id == generation => {
-                if let Some(transport) = &mut transport {
-                    transport.reset(true);
+                if public_playlist.is_some() {
+                    titled_generation = Some(id);
+                    load_deadline = None;
+                    loading_slow = false;
+                    true
+                } else {
+                    if let Some(transport) = &mut transport {
+                        transport.reset(true);
+                    }
+                    false
                 }
-                false
             }
             Event::UserEvent(PlayerEvent::TransportSample(id, sequence, response)) if id == generation => {
                 let Some(transport) = &mut transport else { return };
@@ -1005,13 +1066,29 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     }
                     _ if !approved => {}
                     Command::OpenBrowser {} => {
-                        if let Some(id) = &library.state().current
-                            && let Err(reason) =
-                                open::that_detached(format!("https://www.youtube.com/watch?v={id}"))
+                        let url = playback_target(library.state(), public_playlist.as_ref())
+                            .map(|target| match target {
+                                PlaybackTarget::Queue(id) => format!("https://www.youtube.com/watch?v={id}"),
+                                PlaybackTarget::PublicPlaylist(playlist) => playlist.browser_url(),
+                            });
+                        if let Some(url) = url && let Err(reason) = open::that_detached(url)
                         {
                             error = Some(format!("Could not open the browser: {reason}"));
                         }
                     }
+                    Command::PlayPublicPlaylist { source } => {
+                        match iframe::PublicPlaylist::from_link(&source) {
+                            Ok(playlist) => {
+                                public_playlist = Some(playlist);
+                                reload_player = true;
+                            }
+                            Err(reason) => error = Some(reason.to_string()),
+                        }
+                    }
+                    Command::ReturnToQueue {} => {
+                        reload_player = public_playlist.take().is_some();
+                    }
+                    Command::Next {} | Command::Previous {} if public_playlist.is_some() => {}
                     Command::Search { query } => {
                         if let Some(catalog) = &mut catalog {
                             catalog.submit(&query, Instant::now());
@@ -1039,16 +1116,19 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                     Command::Playlist(command) => {
+                        let select = matches!(&command, crate::library::playlists::Command::SelectPlaylistTrack { .. });
                         let cancel_switch = auto_advance.pending()
                             && matches!(&command, crate::library::playlists::Command::SelectPlaylistTrack { video, .. }
                                 if library.state().current.as_ref() == Some(video));
                         match playlists.apply(command, &mut library) {
-                            Ok(changed) => reload_player = changed || cancel_switch,
+                            Ok(changed) => reload_player = queue_edit_requires_reload(
+                                &mut public_playlist, select, changed || cancel_switch,
+                            ),
                             Err(reason) => error = Some(reason.to_string()),
                         }
                     }
                     Command::FindLyrics { title, artist } => {
-                        if mode.iframe_player && let Some(lyrics) = &mut lyrics {
+                        if mode.iframe_player && public_playlist.is_none() && let Some(lyrics) = &mut lyrics {
                             lyrics.submit(&title, &artist, Instant::now());
                         }
                     }
@@ -1098,11 +1178,14 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                     command => {
+                        let select = matches!(&command, Command::Select { .. });
                         let cancel_switch = auto_advance.pending()
                             && matches!(&command, Command::Select { id }
                                 if library.state().current.as_ref() == Some(id));
                         match library.apply(command) {
-                            Ok(changed) => reload_player = changed || cancel_switch,
+                            Ok(changed) => reload_player = queue_edit_requires_reload(
+                                &mut public_playlist, select, changed || cancel_switch,
+                            ),
                             Err(reason) => error = Some(reason.to_string()),
                         }
                     }
@@ -1170,17 +1253,21 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             loading_slow = false;
             {
                 auto_advance.cancel();
-                if let Some(transport) = &mut transport {
+                if public_playlist.is_some() {
+                    transport = None;
+                } else if let Some(transport) = &mut transport {
                     transport.reset(false);
+                } else if mode.iframe_player {
+                    transport = Some(transport::Transport::default());
                 }
             }
             if let Some(lookup) = &mut lookup {
-                lookup.select(library.state().current.as_deref());
+                lookup.select(queue_video(library.state(), public_playlist.as_ref()));
             }
             // Remove the old WebView before creating the next one so its audio stops
             // even if the new WebView fails to initialize.
             drop(current_player.take());
-            match load(&layout, &window, &library, generation, queue_visible, mode) {
+            match load(&layout, &window, &library, public_playlist.as_ref(), generation, queue_visible, mode) {
                 Ok(video) => {
                     current_player = video;
                     player_error = None;
@@ -1206,7 +1293,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             let duration_changed = mode.iframe_player && lyrics.as_mut().is_some_and(|lyrics| {
                 if update_queue || reload_player {
                     let queue = library.state();
-                    let current = queue.current.as_deref();
+                    let current = queue_video(queue, public_playlist.as_ref());
                     let metadata = lookup.as_ref().and_then(metadata_lookup::Lookup::metadata);
                     let title = metadata
                         .map(|metadata| metadata.title.as_str())
@@ -1233,13 +1320,14 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             &mut timer,
         );
         if controls_ready && update_queue {
-            open_music.set_enabled(approved && library.state().current.is_some());
+            open_music.set_enabled(approved && queue_video(library.state(), public_playlist.as_ref()).is_some());
             let player_ready = titled_generation == Some(generation);
             let player_ready = player_ready || transport.as_ref().is_some_and(transport::Transport::ready);
             let loading_slow = loading_slow || transport.as_ref().is_some_and(transport::Transport::is_stale);
             let notice = if switching {
                 Some("Opening the next video…")
-            } else if library.state().current.is_none()
+            } else if public_playlist.is_some()
+                || library.state().current.is_none()
                 || player_error.is_some()
                 || player_ready
             {
@@ -1253,6 +1341,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 &controls,
                 QueueView {
                     queue: library.state(),
+                    public_playlist: public_playlist.is_some(),
                     metadata: lookup.as_ref().and_then(metadata_lookup::Lookup::metadata),
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
                     browser_search: approved && !mode.smoke && catalog.is_none(),
@@ -1265,7 +1354,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         problem: legal_problem,
                     },
                     preferences_problem,
-                    lyrics: lyrics.as_ref().and_then(lyrics_lookup::Lookup::view),
+                    lyrics: if public_playlist.is_some() { None } else { lyrics.as_ref().and_then(lyrics_lookup::Lookup::view) },
                     lyrics_switching: switching,
                 },
                 error.as_deref(),
@@ -1301,6 +1390,40 @@ pub fn run(mode: LaunchMode) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_playlist_temporarily_replaces_playback_without_selecting_a_queue_video() {
+        let mut queue = QueueState::default();
+        let initial = "M7lc1UVf-VE";
+        queue.entries.push(initial.into());
+        queue.current = Some(initial.into());
+        let before = serde_json::to_value(&queue).unwrap();
+        let playlist = iframe::PublicPlaylist::from_link(
+            "https://www.youtube.com/playlist?list=PLC77007E23FF423C6",
+        )
+        .unwrap();
+
+        assert_eq!(
+            playback_target(&queue, None),
+            Some(PlaybackTarget::Queue(initial))
+        );
+        assert_eq!(queue_video(&queue, None), Some(initial));
+        assert_eq!(
+            playback_target(&queue, Some(&playlist)),
+            Some(PlaybackTarget::PublicPlaylist(&playlist)),
+        );
+        assert_eq!(queue_video(&queue, Some(&playlist)), None);
+        assert_eq!(serde_json::to_value(&queue).unwrap(), before);
+        let mut session = Some(playlist);
+        assert!(!queue_edit_requires_reload(&mut session, false, true));
+        assert!(session.is_some());
+        assert!(queue_edit_requires_reload(&mut session, true, false));
+        assert!(session.is_none());
+        assert_eq!(
+            playback_target(&queue, session.as_ref()),
+            Some(PlaybackTarget::Queue(initial))
+        );
+    }
 
     #[test]
     fn extracts_only_embedded_video_titles() {

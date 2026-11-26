@@ -84,6 +84,14 @@
             <span class="external-icon" aria-hidden="true"></span>
           </button>
           <button
+            id="return-to-queue"
+            class="browser-button"
+            type="button"
+            hidden
+          >
+            Return to queue
+          </button>
+          <button
             id="show-audio-controls"
             class="icon-button"
             type="button"
@@ -146,27 +154,48 @@
         <p id="metadata-problem" class="feedback" aria-live="polite"></p>
       </section>
 
-      <form id="add-video">
-        <label for="video-source">YouTube link or video ID</label>
-        <div class="add-controls">
-          <textarea
-            id="video-source"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-            placeholder="Paste links or IDs, one per line"
-            aria-describedby="queue-error"
-            rows="2"
-            required
-            disabled
-          ></textarea>
-          <button id="add-button" class="add-button" type="submit" disabled>
-            Add
-          </button>
-        </div>
-        <p id="queue-error" class="feedback error" role="alert"></p>
-        <p id="queue-status" class="feedback" role="status">Loading queue…</p>
-      </form>
+      <div id="queue-inputs">
+        <form id="add-video">
+          <label for="video-source">YouTube link or video ID</label>
+          <div class="add-controls">
+            <textarea
+              id="video-source"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="Paste links or IDs, one per line"
+              aria-describedby="queue-error"
+              rows="2"
+              required
+              disabled
+            ></textarea>
+            <button id="add-button" class="add-button" type="submit" disabled>
+              Add
+            </button>
+          </div>
+          <p id="queue-error" class="feedback error" role="alert"></p>
+          <p id="queue-status" class="feedback" role="status">Loading queue…</p>
+        </form>
+
+        <details id="public-playlist">
+          <summary>Play a YouTube playlist</summary>
+          <form id="public-playlist-form">
+            <label for="public-playlist-link">Public playlist link</label>
+            <div class="add-controls">
+              <input
+                id="public-playlist-link"
+                placeholder="Paste a public playlist link"
+                autocomplete="off"
+                spellcheck="false"
+                aria-describedby="public-playlist-feedback"
+                required
+              />
+              <button class="add-button" type="submit">Play playlist in Pear</button>
+            </div>
+            <p id="public-playlist-feedback" class="feedback error" role="alert"></p>
+          </form>
+        </details>
+      </div>
 
       <section id="queue-panel" class="queue" aria-labelledby="queue-heading">
         <div class="queue-toolbar">
@@ -466,10 +495,14 @@
             When you select or restore a video, Pear shares its ID with YouTube
             to load the embedded player and fetch details and artwork. Details
             use YouTube oEmbed or the YouTube Data API with a key you configure.
-            The in-app Data API search sends your search text to YouTube and
-            uses the configured key’s project quota. When you choose Open in
-            browser for a YouTube Music search, Pear passes your search text to
-            your browser to submit to YouTube Music.
+            When you open a public playlist in Pear, Pear sends its playlist ID
+            to the embedded player for playback or to the YouTube Data API when
+            you ask to browse it. The playback session is temporary. Pear
+            doesn’t access your private YouTube account or save the playlist’s
+            playback items to your local queue. Data API search and browsing use
+            the configured key’s project quota. When you choose Open in browser
+            for a YouTube Music search, Pear passes your search text to your
+            browser to submit to YouTube Music.
           </p>
           <p>
             Pear uses separate private WebViews for the controls and player.

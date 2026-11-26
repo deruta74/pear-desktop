@@ -443,6 +443,7 @@ button.play-toggle:enabled:active {
 }
 
 .play-toggle[hidden],
+.playback-actions button[hidden],
 .transport-timeline[hidden],
 #show-audio-controls[hidden],
 .audio-controls[hidden],
@@ -458,6 +459,31 @@ button.play-toggle:enabled:active {
   margin-inline-start: auto;
   padding-inline: 0.5rem;
   font-size: 0.8125rem;
+}
+
+#return-to-queue {
+  margin-inline-start: 0;
+}
+
+#queue-inputs {
+  position: relative;
+}
+
+#public-playlist[open] {
+  margin-block-start: 0.5rem;
+}
+
+#public-playlist > summary {
+  position: absolute;
+  inset-block-start: 0.125rem;
+  inset-inline-end: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+#public-playlist-form {
+  margin-block-start: 0.25rem;
 }
 
 .external-icon {
