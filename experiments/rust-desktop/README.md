@@ -57,7 +57,9 @@ Pear shows the title, channel and artwork for the selected video when YouTube su
 
 To enable in-app search, store a developer key restricted to YouTube Data API v3 in a private text file and set `PEAR_YOUTUBE_API_KEY_FILE` to that file's path. Pear then uses the Data API for video details and music search. Search requests use the configured project's API quota and run when you submit a query. Lookup results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
 
-Without a key, **Search** opens the submitted query in YouTube Music in the system browser. **File → Open in YouTube Music** opens the currently selected video there.
+With a key configured, paste a public YouTube or YouTube Music playlist link into Search to browse its first page of up to 50 items. Pear displays the available videos in playlist order and opens the one you choose in YouTube Music. Playlist results stay in memory and do not change the local queue. [Playlist items API](https://developers.google.com/youtube/v3/docs/playlistItems/list)
+
+Without a key, **Search** opens the submitted query or public playlist link in YouTube Music in the system browser. **File → Open in YouTube Music** opens the currently selected video there.
 
 ## Run the queue on Linux or Windows
 

@@ -265,10 +265,13 @@ fn embed_url(id: &str) -> String {
 }
 
 fn music_search_url(query: &str) -> Result<url::Url> {
-    let query =
-        metadata::normalize_query(query).ok_or("Enter a search term of up to 160 characters.")?;
-    let mut url = url::Url::parse("https://music.youtube.com/search")?;
-    url.query_pairs_mut().append_pair("q", &query);
+    let (endpoint, parameter, value) = match catalog::Query::parse(query)? {
+        catalog::Query::Search(query) => ("search", "q", query),
+        catalog::Query::Playlist(id) => ("playlist", "list", id),
+    };
+    let mut url = url::Url::parse("https://music.youtube.com/")?;
+    url.set_path(endpoint);
+    url.query_pairs_mut().append_pair(parameter, &value);
     Ok(url)
 }
 
@@ -1067,6 +1070,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             Err(reason) => error = Some(reason.to_string()),
                         }
                     }
+                    Command::OpenPlaylistVideo { id } => {
+                        if !catalog.as_ref().is_some_and(|catalog|
+                            catalog.can_open_playlist_video(&id, Instant::now())
+                        ) {
+                            error = Some("That playlist video is no longer available here.".into());
+                        } else if let Err(reason) =
+                            open::that_detached(format!("https://music.youtube.com/watch?v={id}"))
+                        {
+                            error = Some(format!("Could not open YouTube Music: {reason}"));
+                        }
+                    }
                     Command::Playlist(command) => {
                         #[cfg(any(target_os = "macos", target_os = "linux"))]
                         let cancel_switch = auto_advance.pending()
@@ -1444,6 +1458,13 @@ mod tests {
         assert!(music_search_url(" ").is_err());
         assert!(music_search_url("search\nextra").is_err());
         assert!(music_search_url(&"界".repeat(161)).is_err());
+        let playlist =
+            music_search_url("music.youtube.com/playlist?si=sharing&list=PL_1234567890").unwrap();
+        assert_eq!(
+            playlist.as_str(),
+            "https://music.youtube.com/playlist?list=PL_1234567890"
+        );
+        assert!(music_search_url("https://example.com/?token=private").is_err());
     }
 
     #[test]

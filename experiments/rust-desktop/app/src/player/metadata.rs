@@ -12,11 +12,14 @@ use crate::library::valid_id;
 
 const VIDEOS_ENDPOINT: &str = "https://www.googleapis.com/youtube/v3/videos";
 const SEARCH_ENDPOINT: &str = "https://www.googleapis.com/youtube/v3/search";
+const PLAYLIST_ITEMS_ENDPOINT: &str = "https://www.googleapis.com/youtube/v3/playlistItems";
 const EMBED_ENDPOINT: &str = "https://www.youtube.com/oembed";
 const MAX_VIDEO_BODY_BYTES: u64 = 16 * 1024;
 const MAX_SEARCH_BODY_BYTES: u64 = 48 * 1024;
+const MAX_PLAYLIST_BODY_BYTES: u64 = 128 * 1024;
 const MAX_SEARCH_QUERY_CHARS: usize = 160;
 const MAX_SEARCH_RESULTS: usize = 12;
+const MAX_PLAYLIST_ITEMS: usize = 50;
 const MAX_FIELD_CHARS: usize = 180;
 const MAX_KEY_FILE_BYTES: u64 = 512;
 
@@ -47,10 +50,19 @@ pub(super) struct SearchResult {
     pub(super) channel: String,
 }
 
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct PlaylistItems {
+    pub(super) items: Vec<SearchResult>,
+    pub(super) has_more: bool,
+    pub(super) unavailable: usize,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum LookupError {
     InvalidVideoId,
     InvalidQuery,
+    InvalidPlaylist,
     InvalidKey,
     InvalidKeyConfiguration,
     QuotaExceeded,
@@ -136,6 +148,26 @@ impl Client {
         interpret_search_response(response.status().as_u16(), response.body_mut())
     }
 
+    pub(super) fn playlist_items(&self, id: &str) -> Result<PlaylistItems, LookupError> {
+        if !valid_playlist_id(id) {
+            return Err(LookupError::InvalidPlaylist);
+        }
+        let max_results = MAX_PLAYLIST_ITEMS.to_string();
+        let mut response = self.data_api_get(
+            PLAYLIST_ITEMS_ENDPOINT,
+            &[
+                ("part", "snippet,status"),
+                ("playlistId", id),
+                ("maxResults", &max_results),
+                (
+                    "fields",
+                    "nextPageToken,items(snippet(resourceId(videoId),title,videoOwnerChannelTitle),status(privacyStatus))",
+                ),
+            ],
+        )?;
+        interpret_playlist_response(response.status().as_u16(), response.body_mut())
+    }
+
     fn json_request(&self, endpoint: &str, params: &[(&str, &str)]) -> RequestBuilder<WithoutBody> {
         self.agent
             .get(endpoint)
@@ -156,6 +188,42 @@ impl Client {
             .call()
             .map_err(transport_error)
     }
+}
+
+pub(super) fn playlist_id(input: &str) -> Option<String> {
+    if input.chars().any(char::is_control) {
+        return None;
+    }
+    let input = input.trim();
+    if !input.is_ascii() || input.contains(['#', ' ', '\\']) {
+        return None;
+    }
+    let input = input
+        .strip_prefix("https://")
+        .or_else(|| input.strip_prefix("//"))
+        .unwrap_or(input);
+    let (host, path_and_query) = input.split_once('/')?;
+    if !matches!(
+        host,
+        "www.youtube.com" | "youtube.com" | "music.youtube.com"
+    ) {
+        return None;
+    }
+    let query = path_and_query.strip_prefix("playlist?")?;
+    let mut ids = url::form_urlencoded::parse(query.as_bytes())
+        .filter_map(|(key, value)| (key == "list").then_some(value));
+    let id = ids.next()?;
+    if ids.next().is_some() {
+        return None;
+    }
+    valid_playlist_id(&id).then(|| id.into_owned())
+}
+
+fn valid_playlist_id(id: &str) -> bool {
+    (12..=128).contains(&id.len())
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 pub(super) fn normalize_query(query: &str) -> Option<String> {
@@ -240,6 +308,39 @@ struct SearchItem {
 #[serde(rename_all = "camelCase")]
 struct SearchVideoId {
     video_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaylistPage {
+    items: Vec<PlaylistItem>,
+    next_page_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PlaylistItem {
+    snippet: Option<PlaylistSnippet>,
+    status: Option<PlaylistStatus>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaylistSnippet {
+    resource_id: Option<PlaylistResourceId>,
+    title: Option<String>,
+    video_owner_channel_title: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaylistResourceId {
+    video_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaylistStatus {
+    privacy_status: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -347,6 +448,51 @@ fn interpret_search_response(
         }
     }
     Ok(results)
+}
+
+fn interpret_playlist_response(status: u16, body: &mut Body) -> Result<PlaylistItems, LookupError> {
+    let bytes =
+        read_api_response(status, body, MAX_PLAYLIST_BODY_BYTES)?.ok_or(LookupError::Service)?;
+    let page: PlaylistPage =
+        serde_json::from_slice(&bytes).map_err(|_| LookupError::InvalidResponse)?;
+    let row_count = page.items.len().min(MAX_PLAYLIST_ITEMS);
+    let has_more = page.items.len() > MAX_PLAYLIST_ITEMS
+        || page.next_page_token.is_some_and(|token| !token.is_empty());
+    let items: Vec<_> = page
+        .items
+        .into_iter()
+        .take(MAX_PLAYLIST_ITEMS)
+        .filter_map(playlist_video)
+        .collect();
+    Ok(PlaylistItems {
+        unavailable: row_count - items.len(),
+        items,
+        has_more,
+    })
+}
+
+fn playlist_video(item: PlaylistItem) -> Option<SearchResult> {
+    let privacy = item.status.and_then(|status| status.privacy_status);
+    if privacy.as_deref() == Some("private") {
+        return None;
+    }
+    let snippet = item.snippet?;
+    let id = snippet.resource_id?.video_id?;
+    let title = display_field(&snippet.title?).ok()?;
+    let placeholder =
+        title.eq_ignore_ascii_case("Deleted video") || title.eq_ignore_ascii_case("Private video");
+    if !valid_id(&id) || (placeholder && !matches!(privacy.as_deref(), Some("public" | "unlisted")))
+    {
+        return None;
+    }
+    Some(SearchResult {
+        id,
+        title,
+        channel: snippet
+            .video_owner_channel_title
+            .and_then(|channel| display_field(&channel).ok())
+            .unwrap_or_default(),
+    })
 }
 
 fn read_api_response(
@@ -798,5 +944,164 @@ mod tests {
         assert_eq!(search_response(403, quota), Err(LookupError::QuotaExceeded));
         assert_eq!(search_response(403, throttled), Err(LookupError::Throttled));
         assert_eq!(search_response(429, b""), Err(LookupError::Throttled));
+    }
+
+    const PLAYLIST_ID: &str = "PL1234567890_abcdef-GH";
+
+    #[test]
+    fn recognizes_only_playlist_links_on_trusted_hosts() {
+        for input in [
+            format!("https://www.youtube.com/playlist?list={PLAYLIST_ID}&si=share"),
+            format!("https://youtube.com/playlist?list={PLAYLIST_ID}"),
+            format!("https://music.youtube.com/playlist?si=share&list={PLAYLIST_ID}"),
+            format!("music.youtube.com/playlist?list={PLAYLIST_ID}"),
+            format!("//www.youtube.com/playlist?list={PLAYLIST_ID}"),
+        ] {
+            assert_eq!(playlist_id(&input).as_deref(), Some(PLAYLIST_ID));
+        }
+
+        for input in [
+            VIDEO_ID.to_owned(),
+            PLAYLIST_ID.to_owned(),
+            "someverylongquery".into(),
+            "PLmörethanenough".into(),
+            format!("http://www.youtube.com/playlist?list={PLAYLIST_ID}"),
+            format!("https://www.youtube.com.evil.test/playlist?list={PLAYLIST_ID}"),
+            format!("https://www.youtube.com:443/playlist?list={PLAYLIST_ID}"),
+            format!("https://@www.youtube.com/playlist?list={PLAYLIST_ID}"),
+            format!("https://youtu.be/playlist?list={PLAYLIST_ID}"),
+            format!("https://www.youtube.com/main/../playlist?list={PLAYLIST_ID}"),
+            format!("https://www.youtube.com/watch?v={VIDEO_ID}&list={PLAYLIST_ID}"),
+            format!("https://www.youtube.com/playlist?list={PLAYLIST_ID}&%6cist="),
+            format!("https://www.youtube.com/playlist?list={PLAYLIST_ID}#anchor"),
+            format!("https://www.youtube.com/playlist?list={VIDEO_ID}"),
+        ] {
+            assert_eq!(playlist_id(&input), None, "{input}");
+        }
+    }
+
+    fn playlist_response(
+        status: u16,
+        json: impl Into<Vec<u8>>,
+    ) -> Result<PlaylistItems, LookupError> {
+        let mut body = Body::builder().mime_type("application/json").data(json);
+        interpret_playlist_response(status, &mut body)
+    }
+
+    #[test]
+    fn preserves_playlist_order_and_uses_only_video_owner_channels() {
+        let json = br#"{
+            "nextPageToken": "later",
+            "items": [
+                {"snippet": {"resourceId": {"videoId": "dQw4w9WgXcQ"}, "title": " First\nTrack ", "channelTitle": "Playlist curator", "videoOwnerChannelTitle": "First Artist"}},
+                {"snippet": {"resourceId": {"videoId": "jNQXAC9IVRw"}, "title": "An unreleased track", "videoOwnerChannelTitle": "Artist"}, "status": {"privacyStatus": "private"}},
+                {"snippet": {"resourceId": {"videoId": "jNQXAC9IVRw"}, "title": "Deleted video", "videoOwnerChannelTitle": "Artist"}},
+                {"snippet": {"resourceId": {"videoId": "jNQXAC9IVRw"}, "title": "Deleted video", "videoOwnerChannelTitle": "Artist"}, "status": {"privacyStatus": "public"}},
+                {"snippet": {"resourceId": {"videoId": "wrong"}, "title": "Invalid ID", "videoOwnerChannelTitle": "Artist"}},
+                {"snippet": {"resourceId": {"videoId": "jNQXAC9IVRw"}, "title": "No owner", "channelTitle": "Playlist curator"}},
+                {"snippet": {"resourceId": {"videoId": "jNQXAC9IVRw"}, "title": "Second Track", "videoOwnerChannelTitle": "Second Artist"}},
+                {"snippet": {"resourceId": {"videoId": "dQw4w9WgXcQ"}, "title": "Repeated Track", "videoOwnerChannelTitle": "First Artist"}}
+            ]
+        }"#;
+        let result = playlist_response(200, json).unwrap();
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            serde_json::json!({
+                "items": [
+                    {"id": "dQw4w9WgXcQ", "title": "First Track", "channel": "First Artist"},
+                    {"id": "jNQXAC9IVRw", "title": "Deleted video", "channel": "Artist"},
+                    {"id": "jNQXAC9IVRw", "title": "No owner", "channel": ""},
+                    {"id": "jNQXAC9IVRw", "title": "Second Track", "channel": "Second Artist"},
+                    {"id": "dQw4w9WgXcQ", "title": "Repeated Track", "channel": "First Artist"}
+                ],
+                "hasMore": true,
+                "unavailable": 3,
+            })
+        );
+    }
+
+    #[test]
+    fn counts_only_unavailable_items_in_the_first_fifty_rows() {
+        let rows = vec![serde_json::json!({}); 51];
+        let json = serde_json::json!({"items": rows}).to_string();
+        let result = playlist_response(200, json).unwrap();
+        assert!(result.items.is_empty());
+        assert!(result.has_more);
+        assert_eq!(result.unavailable, 50);
+    }
+
+    #[test]
+    fn bounds_playlist_json_and_preserves_safe_api_failures() {
+        let mut json = br#"{"items":[]}"#.to_vec();
+        json.resize(128 * 1024 + 1, b' ');
+        assert_eq!(
+            playlist_response(200, json),
+            Err(LookupError::InvalidResponse)
+        );
+        let quota = br#"{"error":{"errors":[{"reason":"quotaExceeded"}]}}"#;
+        assert_eq!(
+            playlist_response(403, quota),
+            Err(LookupError::QuotaExceeded)
+        );
+        assert_eq!(playlist_response(429, b""), Err(LookupError::Throttled));
+    }
+
+    #[test]
+    fn playlist_fetch_uses_the_data_api_header_and_never_follows_a_page_token() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let mut public = Client::public_embed();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let requests = Arc::clone(&calls);
+        public.agent = Agent::config_builder()
+            .middleware(
+                move |request: ureq::http::Request<ureq::SendBody>,
+                      _: ureq::middleware::MiddlewareNext<'_>| {
+                    assert_eq!(requests.fetch_add(1, Ordering::Relaxed), 0);
+                    let uri = url::Url::parse(&request.uri().to_string()).unwrap();
+                    assert_eq!(uri.scheme(), "https");
+                    assert_eq!(uri.host_str(), Some("www.googleapis.com"));
+                    assert_eq!(uri.path(), "/youtube/v3/playlistItems");
+                    let params: std::collections::HashMap<_, _> = uri.query_pairs().collect();
+                    assert_eq!(params.get("playlistId").unwrap(), PLAYLIST_ID);
+                    assert_eq!(params.get("maxResults").unwrap(), "50");
+                    assert!(params.get("fields").unwrap().contains("nextPageToken"));
+                    assert!(
+                        params
+                            .get("fields")
+                            .unwrap()
+                            .contains("videoOwnerChannelTitle")
+                    );
+                    assert!(!params.contains_key("pageToken"));
+                    assert!(!params.contains_key("key"));
+                    assert_eq!(request.headers()["x-goog-api-key"], "synthetic-key");
+                    assert!(request.headers()["x-goog-api-key"].is_sensitive());
+                    Ok(ureq::http::Response::new(
+                        Body::builder()
+                            .mime_type("application/json")
+                            .data(br#"{"items":[],"nextPageToken":"more"}"#),
+                    ))
+                },
+            )
+            .build()
+            .new_agent();
+
+        assert_eq!(
+            public.playlist_items(VIDEO_ID),
+            Err(LookupError::InvalidPlaylist)
+        );
+        assert_eq!(
+            public.playlist_items(PLAYLIST_ID),
+            Err(LookupError::InvalidKeyConfiguration)
+        );
+        let api = Client {
+            agent: public.agent,
+            source: Source::DataApi(key_header(&b"synthetic-key"[..])),
+        };
+        assert!(api.playlist_items(PLAYLIST_ID).unwrap().has_more);
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 }

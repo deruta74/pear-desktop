@@ -54,6 +54,9 @@ pub enum Command {
     OpenMusicSearch {
         query: String,
     },
+    OpenPlaylistVideo {
+        id: String,
+    },
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     FindLyrics {
         title: String,
@@ -214,6 +217,7 @@ impl Library {
             | Command::OpenBrowser {}
             | Command::Search { .. }
             | Command::OpenMusicSearch { .. }
+            | Command::OpenPlaylistVideo { .. }
             | Command::Playlist(_) => {
                 return Ok(false);
             }
