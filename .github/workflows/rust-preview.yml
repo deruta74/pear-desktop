@@ -14,6 +14,7 @@ on:
       - 'pnpm-workspace.yaml'
       - 'patches/**'
       - 'assets/generated/icons/png/**'
+      - 'license'
 
 permissions:
   contents: read
@@ -45,7 +46,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev libasound2-dev
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev libasound2-dev xvfb x11-utils
       - name: Install stable Rust and Clippy
         run: rustup toolchain install stable --profile minimal --component clippy
       - name: Run workspace tests
@@ -90,6 +91,61 @@ jobs:
           Copy-Item README.md $package
           Copy-Item ../../license (Join-Path $package 'LICENSE')
           Compress-Archive -Path "$package/*" -DestinationPath "$package.zip"
+      - name: Verify the packaged Linux preview opens
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          profile="$(mktemp -d "$RUNNER_TEMP/pear-linux-profile.XXXXXX")"
+          timeout 45s dbus-run-session -- xvfb-run -a bash -s -- \
+            "$RUNNER_TEMP/pear-rust-preview/pear-desktop-preview" "$profile" <<'SMOKE'
+          set -euo pipefail
+          export PEAR_PREVIEW_QUEUE_DIR="$2" XDG_CACHE_HOME="$2/cache" GDK_BACKEND=x11
+          "$1" &
+          preview=$!
+          trap 'kill "$preview" 2>/dev/null || true; wait "$preview" 2>/dev/null || true' EXIT
+          for _ in {1..120}; do
+            kill -0 "$preview"
+            xwininfo -root -tree > "$2/windows.txt"
+            if test -f "$2/queue.lock" && grep -Fq '"Pear Desktop Rust Preview"' "$2/windows.txt"; then
+              test ! -e "$2/consent.json"
+              exit 0
+            fi
+            sleep 0.25
+          done
+          echo 'The Linux package did not open its window and queue.' >&2
+          exit 1
+          SMOKE
+      - name: Verify the packaged Windows preview opens
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $profile = Join-Path $env:RUNNER_TEMP "pear-win-profile-$([guid]::NewGuid())"
+          $env:PEAR_PREVIEW_QUEUE_DIR = $profile
+          $exe = Join-Path $env:RUNNER_TEMP 'pear-rust-preview/pear-desktop-preview.exe'
+          $preview = Start-Process -FilePath $exe -PassThru
+          try {
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $ready = $false
+            while ($clock.Elapsed.TotalSeconds -lt 30) {
+              $preview.Refresh()
+              if ($preview.HasExited) { throw "Pear exited with code $($preview.ExitCode)." }
+              if ($preview.MainWindowHandle -ne [IntPtr]::Zero -and
+                  $preview.MainWindowTitle -ceq 'Pear Desktop Rust Preview' -and
+                  $preview.Responding -and (Test-Path (Join-Path $profile 'queue.lock'))) {
+                $ready = $true
+                break
+              }
+              Start-Sleep -Milliseconds 250
+            }
+            if (!$ready) { throw 'The Windows package did not open its window and queue.' }
+            if (Test-Path (Join-Path $profile 'consent.json')) { throw 'Unexpected consent file.' }
+          } finally {
+            if (!$preview.HasExited -and (!$preview.CloseMainWindow() -or !$preview.WaitForExit(3000))) {
+              Stop-Process -Id $preview.Id -ErrorAction SilentlyContinue
+            }
+            $preview.Dispose()
+          }
       - name: Upload preview package
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
