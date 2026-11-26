@@ -5,17 +5,87 @@ const { setTimeout: delay } = require('node:timers/promises');
 const wrapper = 'https://com.pear-desktop.rust-preview/iframe-player.html';
 const controls = 'https://pear-queue.app.local/';
 const embed = new URL('https://www.youtube.com/embed/M7lc1UVf-VE');
-embed.search = new URLSearchParams({
+const requiredQuery = new URLSearchParams({
     enablejsapi: '1',
     origin: new URL(wrapper).origin,
     autoplay: '0',
 });
+embed.search = requiredQuery;
+
+function frameUrlStatus(value) {
+    if (!value) return 'missing';
+    if (value === 'about:blank') return 'blank';
+    const url = URL.parse(value);
+    if (!url) return 'invalid';
+    if (url.origin !== embed.origin) return 'origin';
+    if (url.username || url.password || value.includes('#')) return 'decorated';
+    if (url.pathname !== embed.pathname) return 'path';
+    for (const key of url.searchParams.keys()) {
+        if (!requiredQuery.has(key) || url.searchParams.getAll(key).length !== 1) return 'extra-query';
+    }
+    for (const [key, expected] of requiredQuery) {
+        if (url.searchParams.get(key) !== expected) return 'required-query';
+    }
+    return value === embed.href ? 'exact' : 'normalized';
+}
+
+const acceptedUrl = (status) => status === 'exact' || status === 'normalized';
+
+function formatFrameEvidence({ owner, source, attachment, document, wrapperReady }) {
+    return `PEAR_WINDOWS_IFRAME_FRAME owner=${owner} src=${source} attachment=${attachment} document=${document} wrapper_ready=${wrapperReady}`;
+}
+
+async function waitForOfficialFrame(video, milliseconds = 8_000) {
+    const owner = video.locator('iframe#player');
+    const frame = owner.contentFrame();
+    let evidence;
+    let reason;
+    const found = await until(milliseconds, async () => {
+        const wrapperReady = await video.evaluate(
+            () => window.pearIframePlayer?.snapshot()?.ready === true,
+        ).catch(() => false);
+        evidence = { owner: 'unavailable', source: 'unchecked', attachment: 'unchecked', document: 'unchecked', wrapperReady };
+        const count = await owner.count().catch(() => null);
+        evidence.owner = count === null ? 'unavailable' : count === 0 ? 'missing' : count === 1 ? 'one' : 'ambiguous';
+        if (evidence.owner !== 'one') {
+            reason = `iframe-owner-${evidence.owner}`;
+            return null;
+        }
+        evidence.source = await owner.getAttribute('src', { timeout: 650 })
+            .then(frameUrlStatus, () => 'unavailable');
+        evidence.document = await frame.locator('html').evaluate(
+            () => location.href, undefined, { timeout: 650 },
+        ).then(frameUrlStatus, () => 'unavailable');
+        if (evidence.document === 'unavailable') {
+            let element;
+            try {
+                element = await owner.elementHandle({ timeout: 650 });
+                evidence.attachment = await element.contentFrame() ? 'attached' : 'unattached';
+            } catch {
+                evidence.attachment = 'unavailable';
+            } finally {
+                if (element) await element.dispose().catch(() => {});
+            }
+        } else {
+            evidence.attachment = 'attached';
+        }
+        if (!acceptedUrl(evidence.source)) reason = 'iframe-src-mismatch';
+        else if (evidence.attachment !== 'attached') reason = 'iframe-attachment-unavailable';
+        else if (evidence.document === 'unavailable') reason = 'iframe-document-unavailable';
+        else if (!acceptedUrl(evidence.document)) reason = 'iframe-document-mismatch';
+        else if (!wrapperReady) reason = 'iframe-wrapper-not-ready';
+        else return frame;
+        return null;
+    });
+    return { frame: found, evidence, reason: found ? null : reason };
+}
 
 async function until(milliseconds, sample) {
     const deadline = performance.now() + milliseconds;
     do {
         const result = await sample();
         if (result) return result;
+        if (performance.now() >= deadline) break;
         await delay(250);
     } while (performance.now() < deadline);
     return null;
@@ -28,14 +98,14 @@ async function officialPlay(frame) {
             const button = frame.locator(`#movie_player button${selector}`).and(role);
             if (await button.count() !== 1) continue;
             try {
-                const painted = await button.evaluate(
-                    (element) => element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
-                    undefined,
-                    { timeout: 500 },
-                );
-                if (!painted) continue;
-                await button.click({ trial: true, timeout: 700 });
-                return button;
+                const candidate = await button.elementHandle({ timeout: 500 });
+                const { documentUrl, painted } = await candidate.evaluate((element) => ({
+                    documentUrl: location.href,
+                    painted: element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+                }));
+                if (!painted || !acceptedUrl(frameUrlStatus(documentUrl))) continue;
+                await candidate.click({ trial: true, timeout: 700 });
+                return candidate;
             } catch {
                 // A rerender may replace a button during the actionability check.
             }
@@ -56,9 +126,10 @@ function playerState(panel) {
     });
 }
 
-function mediaState(media) {
-    return media.evaluate((element, fixture) => ({
-        available: element.isConnected && location.href === fixture &&
+async function mediaState(media) {
+    const { documentUrl, ...sample } = await media.evaluate((element) => ({
+        documentUrl: location.href,
+        available: element.isConnected &&
             !element.closest('#movie_player.ad-showing, #movie_player.ad-interrupting') &&
             element.readyState >= 2 && !element.seeking && !element.error,
         time: element.currentTime,
@@ -66,7 +137,8 @@ function mediaState(media) {
         source: element.currentSrc,
         paused: element.paused,
         ended: element.ended,
-    }), embed.href);
+    }));
+    return { ...sample, available: sample.available && acceptedUrl(frameUrlStatus(documentUrl)) };
 }
 
 function healthyMedia(sample) {
@@ -146,17 +218,17 @@ async function run(port) {
         const { video, panel } = panes;
         video.setDefaultTimeout(2_500);
         panel.setDefaultTimeout(2_500);
-        stage = 'exact-official-frame';
-        const frame = video.locator('iframe#player').contentFrame();
-        const source = await video.locator('iframe#player').getAttribute('src');
-        if (source !== embed.href || !video.frames().some((child) => child.url() === embed.href)) {
-            return ['inconclusive', stage];
-        }
+        stage = 'iframe-discovery';
+        const { frame, evidence, reason } = await waitForOfficialFrame(video);
+        console.log(formatFrameEvidence(evidence));
+        if (!frame) return ['inconclusive', reason];
         stage = 'official-play-not-actionable';
         if (!await video.evaluate(() => document.visibilityState === 'visible')) return ['inconclusive', 'video-not-visible'];
         const play = await officialPlay(frame);
         if (!play) return ['inconclusive', stage];
         stage = 'official-play-click';
+        const playDocument = await play.evaluate(() => location.href);
+        if (!acceptedUrl(frameUrlStatus(playDocument))) return ['inconclusive', 'iframe-document-changed'];
         await play.click({ timeout: 2_500 });
 
         stage = 'timeline-did-not-advance';
@@ -192,7 +264,7 @@ async function main() {
     const watchdog = setTimeout(() => {
         report('inconclusive', 'probe-deadline');
         process.exit(2);
-    }, 65_000);
+    }, 75_000);
     try {
         report(...await run(port));
     } catch {
@@ -202,4 +274,5 @@ async function main() {
     }
 }
 
-void main();
+if (require.main === module) void main();
+module.exports = { frameUrlStatus, waitForOfficialFrame, formatFrameEvidence };

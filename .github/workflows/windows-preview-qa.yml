@@ -26,6 +26,8 @@ jobs:
           package-manager-cache: false
       - name: Build preview and run Rust tests on MSVC
         id: build
+        env:
+          PEAR_IFRAME_PROBE_ONLY: ${{ contains(github.event.head_commit.message, '[webview2-iframe-probe-only]') }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
           $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
@@ -45,12 +47,14 @@ jobs:
 
           Invoke-Rustup toolchain install $toolchain --profile minimal
           Invoke-Rustup run $toolchain rustc --version
+          if ($env:PEAR_IFRAME_PROBE_ONLY -ceq 'true') { exit 0 }
           Invoke-Rustup run $toolchain cargo build --locked --target $target --release -p pear-desktop-preview
           Copy-Item (Join-Path $env:CARGO_TARGET_DIR "$target/release/pear-desktop-preview.exe") $artifactDir
           'portable=true' >> $env:GITHUB_OUTPUT
           Invoke-Rustup run $toolchain cargo test --locked --target $target --workspace --all-features
           Invoke-Rustup run $toolchain cargo build --locked --target $target --features benchmark -p pear-desktop-preview
       - name: Run the native WebView2 queue smoke
+        if: ${{ !contains(github.event.head_commit.message, '[webview2-iframe-probe-only]') }}
         timeout-minutes: 3
         run: |
           $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
@@ -138,6 +142,7 @@ jobs:
             }
           }
       - name: Verify the packaged preview first launch without arguments
+        if: ${{ !contains(github.event.head_commit.message, '[webview2-iframe-probe-only]') }}
         timeout-minutes: 2
         run: |
           $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
@@ -208,6 +213,7 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $options.FileName -Algorithm SHA256).Hash.ToLowerInvariant()
           "PEAR_WINDOWS_PACKAGE_SHA256 $hash" | Tee-Object -FilePath $log -Append
       - name: Run the native WebView2 IFrame smoke
+        if: ${{ !contains(github.event.head_commit.message, '[webview2-iframe-probe-only]') }}
         timeout-minutes: 3
         run: |
           $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
@@ -312,9 +318,12 @@ jobs:
             }
           }
       - name: Probe visible IFrame playback with a diagnostic build
-        if: ${{ contains(github.event.head_commit.message, '[webview2-iframe-playback]') }}
+        if: ${{ contains(github.event.head_commit.message, '[webview2-iframe-playback]') || contains(github.event.head_commit.message, '[webview2-iframe-probe-only]') }}
         timeout-minutes: 10
-        run: ./tools/windows-iframe-playback-qa.ps1
+        run: |
+          & node.exe --test ./tools/windows-iframe-playback-qa.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/windows-iframe-playback-qa.ps1
       - name: Upload Windows QA logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
@@ -335,7 +344,7 @@ jobs:
           if-no-files-found: error
 
   native-preview-linux:
-    if: github.repository == 'deruta74/pear-desktop'
+    if: github.repository == 'deruta74/pear-desktop' && !contains(github.event.head_commit.message, '[webview2-iframe-probe-only]')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:

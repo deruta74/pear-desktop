@@ -145,12 +145,19 @@ public static class PearIframePlaybackWindow {
     $stage = 'probe-output'
     $lines = @(& node.exe $script $port 2>$null)
     $probeExit = $LASTEXITCODE
-    if ($lines.Count -ne 1 -or $lines[0] -cnotmatch '^PEAR_WINDOWS_IFRAME_PLAYBACK status=(pass|fail|inconclusive) reason=[a-z][a-z0-9-]{0,47}$') {
+    if ($lines.Count -lt 1 -or $lines.Count -gt 2) { throw 'output' }
+    if ($lines.Count -eq 2) {
+        $urlStatus = '(exact|normalized|missing|blank|invalid|origin|decorated|path|required-query|extra-query|unavailable|unchecked)'
+        $frameStatus = "^PEAR_WINDOWS_IFRAME_FRAME owner=(one|missing|ambiguous|unavailable) src=$urlStatus attachment=(attached|unattached|unchecked|unavailable) document=$urlStatus wrapper_ready=(true|false)$"
+        if ($lines[0] -cnotmatch $frameStatus) { throw 'frame-output' }
+        $lines[0] | Tee-Object -FilePath $log -Append
+    }
+    if ($lines[-1] -cnotmatch '^PEAR_WINDOWS_IFRAME_PLAYBACK status=(pass|fail|inconclusive) reason=[a-z][a-z0-9-]{0,47}$') {
         throw 'output'
     }
     $expectedExit = @{ pass = 0; fail = 1; inconclusive = 2 }[$Matches[1]]
     if ($probeExit -ne $expectedExit) { throw 'exit-code' }
-    $report = $lines[0]
+    $report = $lines[-1]
     $exitCode = $probeExit
 } catch {
     $status = if ($exitCode -eq 2) { 'inconclusive' } else { 'fail' }
