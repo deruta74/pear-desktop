@@ -44,6 +44,8 @@ const legalHeading = document.getElementById('legal-heading');
 const legalProblemText = document.getElementById('legal-problem');
 const acceptLegal = document.getElementById('accept-legal');
 const declineLegal = document.getElementById('decline-legal');
+const openLocalAudio = document.getElementById('open-local-audio');
+const localAudioNote = document.getElementById('legal-local-audio-note');
 const closeLegal = document.getElementById('close-legal');
 const legalButtons = legalPanel.querySelectorAll('button');
 const encoder = new TextEncoder();
@@ -266,6 +268,7 @@ function send(command, context = 'queue') {
 function updateLegalControls() {
   const accepted = Boolean(renderedLegal?.accepted);
   acceptLegal.hidden = declineLegal.hidden = accepted;
+  openLocalAudio.hidden = localAudioNote.hidden = accepted;
   closeLegal.hidden = !accepted;
   const disabled = String(Boolean(pending));
   for (const button of legalButtons) {
@@ -2063,6 +2066,11 @@ acceptLegal.addEventListener('click', () => {
 declineLegal.addEventListener('click', () => {
   if (renderedLegal && !renderedLegal.accepted)
     send({ type: 'decline_legal' }, 'legal');
+});
+openLocalAudio.addEventListener('click', () => {
+  if (renderedLegal && !renderedLegal.accepted) {
+    send({ type: 'open_local_audio' }, 'legal');
+  }
 });
 closeLegal.addEventListener('click', () => {
   if (renderedLegal?.accepted) send({ type: 'close_legal' }, 'legal');

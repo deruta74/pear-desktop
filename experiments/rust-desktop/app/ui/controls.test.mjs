@@ -199,6 +199,51 @@ test('reopens Terms & Privacy without losing drafts or navigating the panel to e
   await expect(source).toHaveValue('My queue draft');
 });
 
+test('opens local audio from Terms without agreeing or dismissing the disclosure', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 320, height: 520 });
+  const region = page.getByRole('main', { name: 'Terms & Privacy' });
+  const localAudio = region.getByRole('button', { name: 'Open local audio' });
+  const queueForm = page.locator('#add-video');
+  const requests = [];
+  page.on('request', (request) => requests.push(request.url()));
+  const render = (overrides = {}, sequence) =>
+    state(page, [], null, null, null, sequence, {
+      legal: legalState(overrides),
+    });
+
+  await render();
+  await expect(
+    region.getByText(/Play WAV and FLAC files offline/),
+  ).toBeVisible();
+  await localAudio.press('Enter');
+  await expect(localAudio).toBeFocused();
+  await expect(localAudio).toBeDisabled();
+  expect((await messages(page)).map(({ command }) => command)).toEqual([
+    { type: 'ready' },
+    { type: 'open_local_audio' },
+  ]);
+  const problem = 'Could not open the local audio window.';
+  await render({ problem });
+  await expect(region.getByRole('alert')).toHaveText(problem);
+  await expect(localAudio).toBeEnabled();
+  await expect(localAudio).toBeFocused();
+  await localAudio.press('Enter');
+  await render();
+  await expect(region.getByRole('alert')).toBeEmpty();
+  await expect(localAudio).toBeFocused();
+  await expect(region).toBeVisible();
+  await expect(queueForm).toBeHidden();
+
+  // A native menu launch failure can arrive without an IPC acknowledgement.
+  await render({ problem }, null);
+  await expect(region.getByRole('alert')).toHaveText(problem);
+  expect(requests).toEqual([]);
+  await render({ accepted: true });
+  await expect(region).toBeVisible();
+  await expect(localAudio).toBeHidden();
+});
+
 test('offers Quit before agreement without accepting or dismissing the disclosure', async (t) => {
   const page = await panel(t);
   await state(page, [], null, null, null, 1, { legal: legalState() });

@@ -441,6 +441,16 @@ fn show_video(
     Ok(view)
 }
 
+fn launch_local_audio() -> Option<&'static str> {
+    match crate::local_audio::launch() {
+        Ok(()) => None,
+        Err(reason) => {
+            eprintln!("Could not open the local audio window: {reason}");
+            Some("Could not open the local audio window.")
+        }
+    }
+}
+
 fn focus_add(controls: &WebView) -> wry::Result<()> {
     controls.focus()?;
     controls.evaluate_script("window.focusPearAdd?.();")
@@ -849,9 +859,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 true
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *local_audio.id() => {
-                if let Err(reason) = crate::local_audio::launch() {
-                    eprintln!("Could not open the local audio window: {reason}");
-                    error = Some("Could not open the local audio window.".into());
+                let problem = launch_local_audio();
+                if show_legal {
+                    legal_problem = problem;
+                } else {
+                    error = problem.map(str::to_owned);
                 }
                 true
             }
@@ -1163,6 +1175,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         if !approved {
                             *flow = ControlFlow::Exit;
                             return;
+                        }
+                    }
+                    Command::OpenLocalAudio {} => {
+                        if !approved && show_legal {
+                            legal_problem = launch_local_audio();
                         }
                     }
                     _ if !approved => {}
@@ -1647,6 +1664,27 @@ mod tests {
         ] {
             assert!(command(invalid).is_none(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn opens_local_audio_with_a_payload_free_command_from_local_controls_only() {
+        let request = |origin, payload| {
+            Request::builder()
+                .uri(origin)
+                .body(format!(r#"{{"sequence":1,"command":{payload}}}"#))
+                .unwrap()
+        };
+        let payload = r#"{"type":"open_local_audio"}"#;
+        assert!(matches!(
+            controls_command(&request(CONTROLS_URL, payload)),
+            Some(ControlMessage {
+                sequence,
+                command: Command::OpenLocalAudio {},
+            }) if sequence.get() == 1
+        ));
+        assert!(controls_command(&request("https://www.youtube.com/", payload)).is_none());
+        let with_path = r#"{"type":"open_local_audio","path":"track.wav"}"#;
+        assert!(controls_command(&request(CONTROLS_URL, with_path)).is_none());
     }
 
     #[test]

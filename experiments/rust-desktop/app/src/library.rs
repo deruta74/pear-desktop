@@ -48,6 +48,7 @@ pub enum Command {
     },
     CloseLegal {},
     DeclineLegal {},
+    OpenLocalAudio {},
     OpenLegalLink {
         link: LegalLink,
     },
@@ -256,6 +257,7 @@ impl Library {
             | Command::AcceptLegal { .. }
             | Command::CloseLegal {}
             | Command::DeclineLegal {}
+            | Command::OpenLocalAudio {}
             | Command::OpenLegalLink { .. }
             | Command::OpenBrowser {}
             | Command::Search { .. }

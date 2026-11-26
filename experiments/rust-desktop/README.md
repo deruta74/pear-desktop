@@ -14,7 +14,7 @@ The script builds an ad hoc signed local app. The queue accepts YouTube and YouT
 
 To build for an Intel Mac, install the `x86_64-apple-darwin` Rust target and run `experiments/rust-desktop/tools/bundle-macos.sh preview x86_64-apple-darwin`. For Apple silicon, use `aarch64-apple-darwin`.
 
-On first launch, read the terms and privacy policy and choose **Agree and continue** to enable YouTube playback and lookups. **Help → Terms and Privacy** reopens the policy at any time. The local profile records the accepted policy revision.
+On first launch, choose **Open local audio** to play WAV and FLAC files offline. Read the terms and privacy policy and choose **Agree and continue** to enable YouTube playback and lookups. **Help → Terms and Privacy** reopens the policy at any time. The local profile records the accepted policy revision.
 
 Choose **Add links** and paste one link or ID per line to add several videos together. Enter submits, and Shift+Enter inserts a line. The queue skips duplicates and identifies invalid lines before saving the batch. Use **Filter queue** to find an entry by title or ID. Press Escape in the filter field to show the full queue again. **Play next** moves a queued video or adds a search result immediately after the current video while playback continues.
 
