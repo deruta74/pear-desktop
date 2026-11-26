@@ -185,7 +185,7 @@ impl Engine {
     }
 
     pub(super) fn set_playing(&mut self, playing: bool) {
-        if playing && self.shared.frame() >= self.input.frames {
+        if playing && self.shared.frame() >= self.input.frames && !self.is_playing() {
             self.seek_to(0);
         }
         self.shared.playing.store(playing, Ordering::Release);

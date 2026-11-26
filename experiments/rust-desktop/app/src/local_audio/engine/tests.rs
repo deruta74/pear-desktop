@@ -789,6 +789,12 @@ fn cpal_default_device_plays_synthetic_wav() {
     let during_effect = wait_for_snapshot(&mut engine, |snapshot| {
         snapshot.playing && snapshot.position_ms >= 1_300
     });
+    wait_for_snapshot(&mut engine, |snapshot| {
+        snapshot.playing && snapshot.position_ms == snapshot.duration_ms
+    });
+    engine.set_playing(true);
+    let still_in_tail = engine.snapshot(false);
+    assert_eq!(still_in_tail.position_ms, still_in_tail.duration_ms);
     let ended = wait_for_snapshot(&mut engine, |snapshot| !snapshot.playing);
     assert_eq!(ended.position_ms, ended.duration_ms);
     assert!(ended.finished);
