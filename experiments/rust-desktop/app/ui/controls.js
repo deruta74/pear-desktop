@@ -407,7 +407,8 @@ function updateTransport() {
 }
 
 window.renderPearTransport = (transport) => {
-  if (playingPublicPlaylist || (panel.hidden && !renderedLegal?.accepted)) return;
+  if (playingPublicPlaylist || (panel.hidden && !renderedLegal?.accepted))
+    return;
   const clockChanged =
     transport?.positionMs !== renderedTransport?.positionMs ||
     transport?.clockRunning !== renderedTransport?.clockRunning ||
@@ -1566,9 +1567,10 @@ window.renderPearState = (
     );
   selectionPanel.hidden = !hasSelection && !playingPublicPlaylist;
   panel.toggleAttribute('data-empty', selectionPanel.hidden);
-  position.textContent = hasSelection && !playingPublicPlaylist
-    ? `${index + 1} of ${entries.length}`
-    : '';
+  position.textContent =
+    hasSelection && !playingPublicPlaylist
+      ? `${index + 1} of ${entries.length}`
+      : '';
   previous.disabled = playingPublicPlaylist || index <= 0;
   next.disabled =
     playingPublicPlaylist || !hasSelection || index >= entries.length - 1;
@@ -1678,7 +1680,12 @@ window.renderPearState = (
   if (selectionChanged || playlistChanged) renderedTransport = null;
   lyricsSwitchingActive = Boolean(lyricsSwitching);
   updateShuffleAvailability();
-  if (selectionChanged || playlistChanged || playerProblem || lyricsSwitchingActive)
+  if (
+    selectionChanged ||
+    playlistChanged ||
+    playerProblem ||
+    lyricsSwitchingActive
+  )
     cancelLyricsClock();
   const catalogWasFocused = updateCatalog(catalog, browserSearch === true);
   const lyricsWasFocused = updateLyrics(
@@ -1695,7 +1702,7 @@ window.renderPearState = (
   const problem = playerProblem ?? '';
   const problemChanged = playerProblemText.textContent !== problem;
   if (problemChanged) playerProblemText.textContent = problem;
-  const providerProblem = metadataProblem ?? '';
+  const providerProblem = playingPublicPlaylist ? '' : (metadataProblem ?? '');
   if (metadataProblemText.textContent !== providerProblem) {
     metadataProblemText.textContent = providerProblem;
   }

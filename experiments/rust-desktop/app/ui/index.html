@@ -190,9 +190,15 @@
                 aria-describedby="public-playlist-feedback"
                 required
               />
-              <button class="add-button" type="submit">Play playlist in Pear</button>
+              <button class="add-button" type="submit">
+                Play playlist in Pear
+              </button>
             </div>
-            <p id="public-playlist-feedback" class="feedback error" role="alert"></p>
+            <p
+              id="public-playlist-feedback"
+              class="feedback error"
+              role="alert"
+            ></p>
           </form>
         </details>
       </div>
@@ -495,14 +501,14 @@
             When you select or restore a video, Pear shares its ID with YouTube
             to load the embedded player and fetch details and artwork. Details
             use YouTube oEmbed or the YouTube Data API with a key you configure.
-            When you open a public playlist in Pear, Pear sends its playlist ID
-            to the embedded player for playback or to the YouTube Data API when
-            you ask to browse it. The playback session is temporary. Pear
-            doesn’t access your private YouTube account or save the playlist’s
-            playback items to your local queue. Data API search and browsing use
-            the configured key’s project quota. When you choose Open in browser
-            for a YouTube Music search, Pear passes your search text to your
-            browser to submit to YouTube Music.
+            For public playlists, Pear sends the playlist ID to the embedded
+            player when you request playback or to the YouTube Data API when you
+            request browsing. Playlist playback and browsing results are
+            temporary. The in-app Data API search sends your search text to
+            YouTube. Data API search and browsing use the configured key’s
+            project quota. When you choose Open in browser for a YouTube Music
+            search, Pear passes your search text to your browser to submit to
+            YouTube Music.
           </p>
           <p>
             Pear uses separate private WebViews for the controls and player.

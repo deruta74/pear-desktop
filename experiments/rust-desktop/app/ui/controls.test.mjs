@@ -314,7 +314,10 @@ test('opens a public playlist without catalog access and returns to the saved qu
   const url = 'https://music.youtube.com/playlist?list=PLC77007E23FF423C6';
   const play = page.getByRole('button', { name: 'Play video' });
   const returnToQueue = page.getByRole('button', { name: 'Return to queue' });
-  await state(page, entries, first);
+  const metadataProblem = 'YouTube rejected the configured API key.';
+  const queueMetadataProblem = page.locator('#metadata-problem');
+  await state(page, entries, first, null, null, 1, { metadataProblem });
+  await expect(queueMetadataProblem).toHaveText(metadataProblem);
   await transport(page, readyTransport);
   await expect(play).toBeVisible();
   await page.getByText('Play a YouTube playlist', { exact: true }).click();
@@ -324,8 +327,12 @@ test('opens a public playlist without catalog access and returns to the saved qu
     type: 'play_public_playlist',
     source: url,
   });
-  await state(page, entries, first, null, null, 2, { publicPlaylist: true });
+  await state(page, entries, first, null, null, 2, {
+    publicPlaylist: true,
+    metadataProblem,
+  });
   await expect(returnToQueue).toBeVisible();
+  await expect(queueMetadataProblem).toBeEmpty();
   await expect(play).toBeHidden();
   await transport(page, readyTransport);
   await expect(play).toBeHidden();
@@ -336,8 +343,9 @@ test('opens a public playlist without catalog access and returns to the saved qu
   expect((await messages(page)).at(-1).command).toEqual({
     type: 'return_to_queue',
   });
-  await state(page, entries, first, null, null, 3);
+  await state(page, entries, first, null, null, 3, { metadataProblem });
   await expect(returnToQueue).toBeHidden();
+  await expect(queueMetadataProblem).toHaveText(metadataProblem);
   await expect(play).toBeHidden();
   await transport(page, readyTransport);
   await expect(play).toBeVisible();
