@@ -75,6 +75,14 @@ struct Installed {
 }
 
 impl ClientConfig {
+    #[cfg(test)]
+    pub(super) fn fixture() -> Self {
+        Self {
+            id: "example.apps.googleusercontent.com".into(),
+            secret: None,
+        }
+    }
+
     pub(super) fn from_env() -> Result<Option<Self>, Error> {
         std::env::var_os(CLIENT_FILE)
             .map(|path| Self::read_file(Path::new(&path)))
@@ -130,28 +138,47 @@ impl ClientConfig {
 pub(super) struct Session {
     access_token: Zeroizing<String>,
     revocation_token: Option<Zeroizing<String>>,
+    disconnected: AtomicBool,
     expires_at: Instant,
     expires_wall: SystemTime,
 }
 
 impl Session {
+    #[cfg(test)]
+    pub(super) fn fixture() -> Self {
+        Self {
+            access_token: Zeroizing::new("mock-access".into()),
+            revocation_token: None,
+            disconnected: AtomicBool::new(false),
+            expires_at: Instant::now() + Duration::from_secs(60),
+            expires_wall: SystemTime::now() + Duration::from_secs(60),
+        }
+    }
+
     pub(super) fn bearer(&self) -> Option<&str> {
         self.bearer_at(Instant::now(), SystemTime::now())
     }
 
     fn bearer_at(&self, now: Instant, wall: SystemTime) -> Option<&str> {
-        (now < self.expires_at && wall < self.expires_wall).then_some(self.access_token.as_str())
+        (!self.disconnected.load(Ordering::Acquire)
+            && now < self.expires_at
+            && wall < self.expires_wall)
+            .then_some(self.access_token.as_str())
     }
 
     pub(super) fn expires_at(&self) -> Instant {
         self.expires_at
     }
 
-    pub(super) fn revoke(self) -> Result<(), Error> {
+    pub(super) fn disconnect(&self) {
+        self.disconnected.store(true, Ordering::Release);
+    }
+
+    pub(super) fn revoke(&self) -> Result<(), Error> {
         self.revoke_with(&post)
     }
 
-    fn revoke_with(self, transport: &Post<'_>) -> Result<(), Error> {
+    fn revoke_with(&self, transport: &Post<'_>) -> Result<(), Error> {
         let token = self.revocation_token.as_ref().unwrap_or(&self.access_token);
         let response =
             transport(REVOCATION_ENDPOINT, &[("token", token)]).map_err(|_| Error::Revocation)?;
@@ -334,6 +361,7 @@ fn parse_token(bytes: &[u8], now: Instant, wall: SystemTime) -> Option<Session> 
     Some(Session {
         access_token,
         revocation_token: revocation_token.filter(|token| visible_ascii(token)),
+        disconnected: AtomicBool::new(false),
         expires_at: now.checked_add(duration)?,
         expires_wall: wall.checked_add(duration)?,
     })

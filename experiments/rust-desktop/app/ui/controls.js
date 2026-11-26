@@ -76,6 +76,8 @@ let lyricsSwitchingActive = false;
 let lyricsView = null;
 let lyricsError = '';
 let renderedLibrary = null;
+let renderedAccount = null;
+let accountFeedback = '';
 let libraryView = null;
 let libraryFeedback = null;
 let lyricsClock = null;
@@ -116,6 +118,12 @@ function commandProblem(message, context) {
     updateAudioOutput();
     return;
   }
+  if (context === 'account') {
+    accountFeedback = message;
+    if (libraryView)
+      updateAccount(libraryView.account, Boolean(renderedLibrary?.selected));
+    return;
+  }
   if (context === 'library') {
     libraryFeedback = { message, error: true };
     updateLibrary(renderedLibrary);
@@ -132,6 +140,7 @@ function primaryInput() {
   if (activeView === 'search' && catalogView) return catalogView.query;
   if (activeView === 'lyrics' && lyricsView) return lyricsView.track;
   if (activeView === 'library' && libraryView) {
+    if (libraryView.account.open) return libraryView.account.heading;
     if (renderedLibrary?.selected) return libraryView.title;
     return libraryView.saveName.disabled
       ? libraryView.heading
@@ -196,6 +205,7 @@ function send(command, context = 'queue') {
     catalogAddFeedback = null;
   if (context === 'lyrics') lyricsError = '';
   if (context === 'library') libraryFeedback = null;
+  if (context === 'account') accountFeedback = '';
   if (context === 'audio') audioProblem.textContent = '';
   const sequence = nextSequence;
   const message = JSON.stringify({ sequence, command });
@@ -1066,6 +1076,7 @@ function mountLibrary() {
     empty: get('library-empty'),
     list: get('saved-playlists'),
     tracks: get('playlist-tracks'),
+    account: mountAccount(get),
     mode: null,
     listScroll: 0,
   };
@@ -1150,6 +1161,164 @@ function mountLibrary() {
   return view;
 }
 
+function mountAccount(get) {
+  const view = {
+    show: get('show-youtube-account'),
+    back: get('show-saved-playlists'),
+    panel: get('youtube-account'),
+    heading: get('youtube-account-heading'),
+    status: get('youtube-account-status'),
+    disclosure: get('youtube-account-disclosure'),
+    connect: get('connect-account'),
+    cancel: get('cancel-account'),
+    disconnect: get('disconnect-account'),
+    collections: get('account-collections'),
+    playlists: get('account-playlists'),
+    liked: get('account-liked'),
+    title: get('account-playlist-title'),
+    retry: get('retry-account-page'),
+    next: get('next-account-page'),
+    rows: get('youtube-account-rows'),
+    open: false,
+    page: null,
+  };
+  view.show.addEventListener('click', () => {
+    view.open = true;
+    updateLibrary(renderedLibrary);
+    view.heading.focus();
+  });
+  view.back.addEventListener('click', () => {
+    view.open = false;
+    updateLibrary(renderedLibrary);
+    view.show.focus();
+  });
+  for (const [button, type, fields] of [
+    [view.connect, 'connect_account'],
+    [view.cancel, 'cancel_account'],
+    [view.disconnect, 'disconnect_account'],
+    [
+      view.playlists,
+      'show_account_collection',
+      { collection: 'owned_playlists' },
+    ],
+    [view.liked, 'show_account_collection', { collection: 'liked_videos' }],
+    [view.retry, 'retry_account_page'],
+  ]) {
+    button.addEventListener('click', () => {
+      if (!button.hidden && button.getAttribute('aria-disabled') !== 'true') {
+        send({ type, ...fields }, 'account');
+      }
+    });
+  }
+  view.next.addEventListener('click', () => {
+    if (!view.next.hidden && view.page !== null) {
+      send({ type: 'next_account_page', page: view.page }, 'account');
+    }
+  });
+  view.rows.addEventListener('click', (event) => {
+    const row = event.target.closest('button[data-row]');
+    if (row && view.page !== null) {
+      const type =
+        renderedAccount.collection === 'owned_playlists'
+          ? 'open_account_playlist'
+          : 'open_account_video';
+      send({ type, page: view.page, row: Number(row.dataset.row) }, 'account');
+    }
+  });
+  return view;
+}
+
+function updateAccount(view, selected) {
+  const account = renderedAccount;
+  if (!account) view.open = false;
+  const active = document.activeElement;
+  const hadFocus = view.panel.contains(active) || view.rows.contains(active);
+  view.show.hidden = !account || view.open || selected;
+  view.panel.hidden = !view.open;
+
+  view.connect.hidden = account?.status !== 'disconnected';
+  view.cancel.hidden = account?.status !== 'connecting';
+  view.disconnect.hidden = account?.status !== 'connected';
+  view.collections.hidden = account?.status !== 'connected';
+  view.disclosure.hidden = account?.status !== 'disconnected';
+  view.title.hidden = !account?.title;
+  libraryText(view.title, account?.title ?? '');
+  view.next.hidden = !account?.hasNext;
+  view.retry.hidden = !account?.retry;
+  libraryText(view.status, accountFeedback || account?.message || '');
+  view.playlists.setAttribute(
+    'aria-pressed',
+    String(account?.collection === 'owned_playlists'),
+  );
+  view.liked.setAttribute(
+    'aria-pressed',
+    String(account?.collection === 'liked_videos'),
+  );
+
+  const page = account?.page ?? null;
+  const loading =
+    account?.status === 'connected' && page === null && !account.retry;
+  for (const button of [view.playlists, view.liked]) {
+    if (loading) button.setAttribute('aria-disabled', 'true');
+    else button.removeAttribute('aria-disabled');
+  }
+
+  if (view.page !== page) {
+    view.page = page;
+    view.rows.replaceChildren();
+    for (const [index, entry] of (account?.rows ?? []).entries()) {
+      const row = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'playlist-row-button';
+      button.dataset.row = String(index);
+      const title = document.createElement('span');
+      title.className = 'queue-title';
+      title.dir = 'auto';
+      title.textContent = entry.title;
+      title.title = entry.title;
+      button.append(title);
+      if (account.collection !== 'owned_playlists') {
+        const details = [entry.title, entry.attribution]
+          .filter(Boolean)
+          .join(', ');
+        button.setAttribute('aria-label', `Open ${details} on YouTube`);
+      }
+      if (entry.attribution) {
+        const attribution = document.createElement('span');
+        attribution.className = 'playlist-row-detail';
+        attribution.dir = 'auto';
+        attribution.textContent = entry.attribution;
+        attribution.title = entry.attribution;
+        button.append(attribution);
+      }
+      if (account.collection !== 'owned_playlists') {
+        const external = document.createElement('span');
+        external.className = 'external-icon';
+        external.setAttribute('aria-hidden', 'true');
+        button.append(external);
+      }
+      row.append(button);
+      view.rows.append(row);
+    }
+    view.rows.scrollTop = 0;
+  }
+  view.rows.hidden = !view.open || !view.rows.childElementCount;
+
+  if (
+    view.open &&
+    hadFocus &&
+    (!active.isConnected ||
+      active.closest('[hidden]') ||
+      active === view.status)
+  ) {
+    const fallback = [view.connect, view.cancel].find(
+      (button) => !button.hidden,
+    );
+    (fallback ?? view.status).focus({ preventScroll: true });
+  }
+}
+
 function libraryText(element, text) {
   if (element.textContent !== text) element.textContent = text;
 }
@@ -1231,8 +1400,10 @@ function updateLibrary(library, successfulCommand) {
   if (selectionChanged && !view.list.hidden && !view.element.hidden)
     view.listScroll = view.list.scrollTop;
 
-  view.browser.hidden = Boolean(selected);
-  view.detail.hidden = !selected;
+  updateAccount(view.account, Boolean(selected));
+  const showingAccount = view.account.open;
+  view.browser.hidden = showingAccount || Boolean(selected);
+  view.detail.hidden = showingAccount || !selected;
   view.actions.hidden = view.mode !== null;
   view.renameForm.hidden = view.mode !== 'rename';
   view.confirm.hidden = view.mode !== 'remove';
@@ -1277,16 +1448,22 @@ function updateLibrary(library, successfulCommand) {
     }),
     true,
   );
-  view.list.hidden = Boolean(selected) || !lists.length;
-  view.tracks.hidden = !selected?.entries.length;
+  view.list.hidden = showingAccount || Boolean(selected) || !lists.length;
+  view.tracks.hidden = showingAccount || !selected?.entries.length;
   const empty = selected ? !selected.entries.length : !lists.length && !problem;
-  view.empty.hidden = !empty;
+  view.empty.hidden = showingAccount || !empty;
+  view.problem.hidden = view.feedback.hidden = showingAccount;
   libraryText(
     view.empty,
     selected ? 'No videos in this playlist.' : 'No saved playlists yet.',
   );
 
   for (const button of view.element.querySelectorAll('button')) {
+    if (
+      view.account.panel.contains(button) ||
+      view.account.rows.contains(button)
+    )
+      continue;
     if (pending && !button.disabled) {
       if (!button.hasAttribute('aria-disabled'))
         button.setAttribute('aria-disabled', 'true');
@@ -1629,6 +1806,7 @@ window.renderPearState = (
     lyrics,
     lyricsSwitching,
     savedPlaylists,
+    account,
     preferencesProblem,
     legal,
     publicPlaylist,
@@ -1797,6 +1975,8 @@ window.renderPearState = (
     };
   } else if (context === 'lyrics') {
     lyricsError = acknowledged.current === current ? (error ?? '') : '';
+  } else if (context === 'account') {
+    accountFeedback = error ?? '';
   } else if (context === 'library') {
     libraryFeedback = { message: error || confirmation, error: Boolean(error) };
   } else if (context === 'audio') {
@@ -1832,6 +2012,7 @@ window.renderPearState = (
     playingPublicPlaylist ? null : lyrics,
     selectionChanged || playlistChanged,
   );
+  renderedAccount = account ?? null;
   const libraryWasFocused = updateLibrary(
     savedPlaylists,
     context === 'library' && !error ? command : null,

@@ -1,7 +1,7 @@
 //! A read-only YouTube Data API client for the signed-in account view.
 use std::{fmt, time::Duration};
 
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::Value;
 use ureq::{
     Agent, Body,
@@ -31,9 +31,7 @@ pub(super) struct Page {
     pub(super) next_page_token: Option<String>,
 }
 
-#[derive(Serialize)]
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-#[serde(rename_all = "camelCase")]
 pub(super) struct Item {
     pub(super) id: String,
     pub(super) title: String,
@@ -55,7 +53,13 @@ pub(super) enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
-        output.write_str(match self {
+        output.write_str(self.message())
+    }
+}
+
+impl Error {
+    pub(super) const fn message(&self) -> &'static str {
+        match self {
             Self::InvalidRequest => "That YouTube account page could not be requested.",
             Self::Unauthorized => "Your YouTube session needs a new sign-in.",
             Self::Forbidden => "YouTube denied access to this account collection.",
@@ -65,7 +69,7 @@ impl fmt::Display for Error {
             Self::Network => "Could not connect to the YouTube account service.",
             Self::InvalidResponse => "YouTube returned an invalid account response.",
             Self::Service => "The YouTube account service is unavailable.",
-        })
+        }
     }
 }
 
@@ -110,10 +114,7 @@ impl Client {
                 .get("https://www.googleapis.com/youtube/v3/playlists")
                 .query("mine", "true")
                 .query("part", "snippet")
-                .query(
-                    "fields",
-                    "nextPageToken,items(id,snippet(title,channelTitle))",
-                ),
+                .query("fields", "nextPageToken,items(id,snippet(title))"),
             Collection::LikedVideos => self
                 .agent
                 .get("https://www.googleapis.com/youtube/v3/videos")
@@ -214,10 +215,9 @@ impl RawPage {
 fn account_item(collection: &Collection, row: &Value) -> Option<Item> {
     let snippet = &row["snippet"];
     let (id, attribution) = match collection {
-        Collection::OwnedPlaylists => (
-            row["id"].as_str().filter(|id| valid_playlist_id(id))?,
-            &snippet["channelTitle"],
-        ),
+        Collection::OwnedPlaylists => {
+            (row["id"].as_str().filter(|id| valid_playlist_id(id))?, None)
+        }
         Collection::LikedVideos => {
             if row["status"]["uploadStatus"]
                 .as_str()
@@ -227,14 +227,14 @@ fn account_item(collection: &Collection, row: &Value) -> Option<Item> {
             }
             (
                 row["id"].as_str().filter(|id| valid_id(id))?,
-                &snippet["channelTitle"],
+                snippet["channelTitle"].as_str(),
             )
         }
         Collection::PlaylistItems(_) => (
             snippet["resourceId"]["videoId"]
                 .as_str()
                 .filter(|id| valid_id(id))?,
-            &snippet["videoOwnerChannelTitle"],
+            snippet["videoOwnerChannelTitle"].as_str(),
         ),
     };
     let title = snippet["title"].as_str().and_then(display_field)?;
@@ -248,7 +248,7 @@ fn account_item(collection: &Collection, row: &Value) -> Option<Item> {
     Some(Item {
         id: id.to_owned(),
         title,
-        attribution: attribution.as_str().and_then(display_field),
+        attribution: attribution.and_then(display_field),
     })
 }
 

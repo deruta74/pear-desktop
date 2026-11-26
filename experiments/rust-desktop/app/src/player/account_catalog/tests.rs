@@ -55,7 +55,7 @@ fn sends_only_fixed_get_requests_with_a_sensitive_authorization_header() {
             "/youtube/v3/playlists",
             ("mine", "true"),
             "snippet",
-            "nextPageToken,items(id,snippet(title,channelTitle))",
+            "nextPageToken,items(id,snippet(title))",
             None,
         ),
         (
@@ -159,7 +159,7 @@ fn owned_playlists_keep_valid_private_rows_and_skip_malformed_rows() {
             Item {
                 id: PLAYLIST.into(),
                 title: "My private collection".into(),
-                attribution: Some("Owner".into())
+                attribution: None
             },
             Item {
                 id: "PL00000000000000000000000000000002".into(),

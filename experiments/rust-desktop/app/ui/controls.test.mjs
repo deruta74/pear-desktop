@@ -229,6 +229,7 @@ async function state(
     lyrics,
     lyricsSwitching,
     savedPlaylists,
+    account,
     preferencesProblem,
     legal,
     publicPlaylist,
@@ -257,6 +258,7 @@ async function state(
         lyrics,
         lyricsSwitching,
         savedPlaylists,
+        account,
         preferencesProblem,
         legal,
         publicPlaylist,
@@ -2505,4 +2507,134 @@ test('moves a row by keyboard and click and keeps focus at a queue boundary', as
   await state(page, [first, second, third], second);
   await expect(page.locator('#position')).toHaveText('2 of 3');
   await expect(down).toBeFocused();
+});
+
+test('keeps account browsing opt-in and clears its rows when disconnected', async (t) => {
+  const page = await panel(t);
+  const render = (
+    account,
+    legal = legalState({ accepted: true, show: false }),
+  ) =>
+    state(page, [first], first, null, null, undefined, {
+      account,
+      legal,
+      savedPlaylists: savedPlaylists(),
+    });
+  const section = page.getByRole('button', { name: 'YouTube account' });
+  await render(
+    {
+      status: 'disconnected',
+      message: 'Connect to browse your YouTube account.',
+    },
+    legalState(),
+  );
+  await expect(section).toHaveCount(0);
+  await render(undefined);
+  await page.getByRole('button', { name: 'Library' }).click();
+  await expect(section).toBeHidden();
+  await render({
+    status: 'disconnected',
+    message: 'Connect to browse your YouTube account.',
+  });
+  await section.click();
+  const connect = page.getByRole('button', { name: 'Connect' });
+  const cancel = page.getByRole('button', { name: 'Cancel sign-in' });
+  const status = page.locator('#youtube-account-status');
+  await expect(status).toHaveAttribute('role', 'status');
+  await connect.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'connect_account',
+  });
+  await render({
+    status: 'connecting',
+    message: 'Complete sign-in in your browser.',
+  });
+  await expect(cancel).toBeFocused();
+  await cancel.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'cancel_account',
+  });
+  await render({
+    status: 'cancelling',
+    message: 'Cancelling YouTube sign-in…',
+  });
+  await expect(status).toHaveText('Cancelling YouTube sign-in…');
+  await render({
+    status: 'disconnected',
+    message: 'Google sign-in was cancelled.',
+  });
+  await expect(connect).toBeFocused();
+  await connect.click();
+  await render({
+    status: 'connected',
+    collection: 'owned_playlists',
+    rows: [{ title: '<img src="private">' }],
+    page: 5,
+    hasNext: true,
+    message: '1 playlist on this page.',
+  });
+  const playlist = page.getByRole('button', { name: '<img src="private">' });
+  await expect(playlist).toBeVisible();
+  await expect(playlist.locator('img')).toHaveCount(0);
+  await playlist.click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'open_account_playlist',
+    page: 5,
+    row: 0,
+  });
+  await render({
+    status: 'connected',
+    collection: 'playlist_items',
+    title: '<img src="private">',
+    rows: [{ title: 'Private track', attribution: 'Creator' }],
+    page: 6,
+    hasNext: true,
+    message: '1 video on this page.',
+  });
+  await expect(
+    page.getByRole('heading', { name: '<img src="private">' }),
+  ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Open Private track, Creator on YouTube' })
+    .click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'open_account_video',
+    page: 6,
+    row: 0,
+  });
+  await render({
+    status: 'connected',
+    collection: 'playlist_items',
+    title: '<img src="private">',
+    rows: [{ title: 'Private track', attribution: 'Creator' }],
+    page: 6,
+    hasNext: true,
+    message: '1 video on this page.',
+  });
+  await page.getByRole('button', { name: 'Next page' }).click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'next_account_page',
+    page: 6,
+  });
+  await render({
+    status: 'connected',
+    collection: 'playlist_items',
+    message: 'Loading…',
+  });
+  await expect(page.getByText('Private track')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Disconnect' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'disconnect_account',
+  });
+  await render({ status: 'disconnecting', message: 'Disconnecting…' });
+  await expect(page.getByText('<img src="private">')).toHaveCount(0);
+  await render({
+    status: 'disconnected',
+    message: 'YouTube account disconnected.',
+  });
+  await expect(connect).toBeFocused();
+  await page.getByRole('button', { name: 'Saved playlists' }).click();
+  await expect(
+    page.getByRole('textbox', { name: 'Playlist name' }),
+  ).toBeVisible();
 });

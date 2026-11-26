@@ -86,6 +86,8 @@ pub enum Command {
     },
     #[serde(untagged)]
     Playlist(playlists::Command),
+    #[serde(untagged)]
+    Account(crate::player::account::Command),
 }
 
 #[derive(Deserialize)]
@@ -262,7 +264,8 @@ impl Library {
             | Command::OpenPlaylistVideo { .. }
             | Command::PlayPublicPlaylist { .. }
             | Command::ReturnToQueue {}
-            | Command::Playlist(_) => {
+            | Command::Playlist(_)
+            | Command::Account(_) => {
                 return Ok(false);
             }
             Command::SetPlayback { .. }

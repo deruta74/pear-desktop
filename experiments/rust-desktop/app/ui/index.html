@@ -386,6 +386,85 @@
       <template id="library-template">
         <section id="library-panel" class="library" aria-label="Library" hidden>
           <div class="library-toolbar">
+            <button
+              id="show-youtube-account"
+              class="account-switch"
+              type="button"
+              hidden
+            >
+              YouTube account
+            </button>
+            <section
+              id="youtube-account"
+              aria-labelledby="youtube-account-heading"
+              hidden
+            >
+              <button id="show-saved-playlists" type="button">
+                Saved playlists
+              </button>
+              <h2 id="youtube-account-heading" tabindex="-1">
+                YouTube account
+              </h2>
+              <p
+                id="youtube-account-status"
+                class="feedback"
+                role="status"
+                tabindex="-1"
+              ></p>
+              <p id="youtube-account-disclosure" class="account-disclosure">
+                Connect in your browser to browse playlists you own and videos
+                you liked. Pear keeps read-only access and results in memory
+                during this session.
+              </p>
+              <div class="playlist-actions">
+                <button
+                  id="connect-account"
+                  class="add-button"
+                  type="button"
+                  hidden
+                >
+                  Connect
+                </button>
+                <button id="cancel-account" type="button" hidden>
+                  Cancel sign-in
+                </button>
+                <button id="disconnect-account" type="button" hidden>
+                  Disconnect
+                </button>
+              </div>
+              <div
+                id="account-collections"
+                class="playlist-actions"
+                aria-label="YouTube collections"
+                role="group"
+                hidden
+              >
+                <button
+                  id="account-playlists"
+                  type="button"
+                  aria-pressed="false"
+                >
+                  Your playlists
+                </button>
+                <button id="account-liked" type="button" aria-pressed="false">
+                  Liked videos
+                </button>
+              </div>
+              <h3
+                id="account-playlist-title"
+                class="queue-title"
+                dir="auto"
+                hidden
+              ></h3>
+              <div class="playlist-actions">
+                <button id="retry-account-page" type="button" hidden>
+                  Retry
+                </button>
+                <button id="next-account-page" type="button" hidden>
+                  Next page
+                </button>
+              </div>
+            </section>
             <div id="playlist-browser">
               <h2 id="playlist-heading" tabindex="-1">Saved playlists</h2>
               <form id="save-playlist" class="playlist-form" novalidate>
@@ -494,6 +573,13 @@
             aria-label="Playlist tracks"
             hidden
           ></ol>
+          <ul
+            id="youtube-account-rows"
+            class="queue-items playlist-list"
+            role="list"
+            aria-label="YouTube account results"
+            hidden
+          ></ul>
         </section>
       </template>
     </main>
@@ -537,6 +623,14 @@
             project quota. When you choose Open in browser for a YouTube Music
             search, Pear passes your search text to your browser to submit to
             YouTube Music.
+          </p>
+          <p>
+            The optional YouTube account view opens Google sign-in in your
+            browser when you choose Connect. With your permission, Pear uses the
+            YouTube Data API to read the playlists you own and videos you liked.
+            Pear keeps its access and the results in memory for the session.
+            Disconnect clears the results and asks Google to revoke access. You
+            can also remove access in your Google Account permissions.
           </p>
           <p>
             Pear uses separate private WebViews for the controls and player.

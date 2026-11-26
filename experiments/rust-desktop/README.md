@@ -24,7 +24,7 @@ In **Queue**, choose **Add links**, then open **Play a YouTube playlist** and pa
 
 The local controls and the official player use separate private WebViews. Only the bundled controls can send queue commands to Rust. The player loads the selected embed with the native app's Referer and uses the website's controls and media requests. It can play videos whose owners allow embedding in the current region.
 
-**Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
+**Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The optional YouTube Data API account view uses the separate sign-in described below. Premium behavior and live audio plugins remain separate work.
 
 ### Experimental playback controls
 
@@ -76,6 +76,38 @@ To enable in-app search, store a developer key restricted to YouTube Data API v3
 With a key configured, paste a public YouTube or YouTube Music playlist link into Search. Choose **Load more** to request another page of up to 50 items. Pear keeps the playlist order, including repeated tracks, and opens the video you choose in YouTube Music. The preview can browse up to 500 playlist entries. Results expire in memory one day after the first page loads. [Playlist items API](https://developers.google.com/youtube/v3/docs/playlistItems/list)
 
 Without a key, **Search** opens the submitted query or public playlist link in YouTube Music in the system browser. **File → Open in YouTube Music** opens the currently selected video there.
+
+### Optional YouTube account Library
+
+To enable **Library → YouTube account**, enable YouTube Data API v3 in a
+Google Cloud project, configure its OAuth consent screen, and create an OAuth
+client of type **Desktop app**. If the project is in testing, add the intended
+Google Account as a test user. Download the Desktop client JSON to a private
+location outside the repository. Set `PEAR_YOUTUBE_OAUTH_CLIENT_FILE` to its
+absolute path before launching Pear. The API key used for public search is
+independent of account access. [Google Desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)
+
+On macOS, run the bundled executable directly to pass the environment variable.
+
+```sh
+app="$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
+PEAR_YOUTUBE_OAUTH_CLIENT_FILE="/absolute/path/to/desktop-client.json" \
+  "$app/Contents/MacOS/pear-desktop-preview"
+```
+
+On Linux or Windows, set the same environment variable in the shell that runs
+the preview. In Pear, open **Library → YouTube account** and choose **Connect**.
+Finish sign-in in your system browser to grant the read-only YouTube scope.
+Use **Your playlists**, **Liked videos**, and **Next page** to browse your
+collections. Selecting a playlist shows its videos. Selecting a video opens its
+watch page in your browser.
+
+Pear keeps account access and results in memory for the current session.
+**Cancel sign-in** abandons an outstanding attempt. **Disconnect** clears the
+account view immediately and asks Google to revoke access. If revocation
+fails, remove access under your Google Account permissions. The account view
+clears when access expires or you quit Pear. Connect again for a new session.
+[Google Account permissions](https://myaccount.google.com/permissions)
 
 ## Run the queue on Linux or Windows
 

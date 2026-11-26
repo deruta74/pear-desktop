@@ -1,6 +1,6 @@
 //! The desktop queue separates its local controls from the remote video.
-// The account Library consumes this module in its integration commit.
-#[allow(dead_code)]
+pub(crate) mod account;
+mod account_catalog;
 mod account_oauth;
 mod advance;
 mod catalog;
@@ -82,6 +82,7 @@ enum PlayerEvent {
     TransportCommitted(u64),
     TransportSample(u64, u64, String),
     LyricsResult(u64, lyrics_lookup::Response),
+    Account(u32, account::Outcome),
 }
 
 #[derive(Deserialize)]
@@ -107,6 +108,8 @@ struct QueueView<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     catalog: Option<&'a catalog::View>,
     saved_playlists: playlists::View<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account: Option<account::View<'a>>,
     legal: LegalView<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
     preferences_problem: Option<&'static str>,
@@ -470,7 +473,10 @@ fn render(
             }
         })?;
     } else {
-        controls.evaluate_script(&script)?;
+        // A platform error must not expose the script or the account rows it carries.
+        controls
+            .evaluate_script(&script)
+            .map_err(|_| "Could not evaluate the queue update.")?;
     }
     Ok(())
 }
@@ -481,14 +487,14 @@ fn player_flow(
     catalog: Option<Instant>,
     transport: Option<&transport::Transport>,
     lyrics: Option<Instant>,
-    advance: Option<Instant>,
+    local_deadlines: [Option<Instant>; 2],
     #[cfg(target_os = "linux")] timer: &mut platform::DeadlineTimer,
 ) -> ControlFlow {
     let deadlines = load.into_iter().chain(metadata).chain(catalog);
     let deadlines = deadlines
         .chain(transport.and_then(transport::Transport::deadline))
         .chain(lyrics)
-        .chain(advance);
+        .chain(local_deadlines.into_iter().flatten());
     let deadline = deadlines.min();
     #[cfg(target_os = "linux")]
     let deadline = timer.schedule(deadline);
@@ -558,6 +564,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     }
     let mut library = Library::load(queue_path)?;
     let mut playlists = playlists::Panel::load(data_dir.join("playlists.json"));
+    let mut account = if approved && !mode.smoke {
+        account::Panel::from_env()
+    } else {
+        None
+    };
     let mut event_loop_builder = EventLoopBuilder::<PlayerEvent>::with_user_event();
     platform::configure_event_loop(&mut event_loop_builder)?;
     let event_loop = event_loop_builder.build();
@@ -725,13 +736,14 @@ pub fn run(mode: LaunchMode) -> Result<()> {
 
     event_loop.run(move |event, _, flow| {
         let _keep_alive = (&menu, &queue_lock);
+        let account_expired = account.as_mut().is_some_and(|account| account.expire(Instant::now()));
         *flow = player_flow(
             load_deadline,
             lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
             catalog.as_ref().and_then(catalog::Catalog::deadline),
             transport.as_ref(),
             lyrics.as_ref().and_then(lyrics_lookup::Lookup::deadline),
-            auto_advance.deadline(),
+            [auto_advance.deadline(), account.as_ref().and_then(account::Panel::deadline)],
             #[cfg(target_os = "linux")]
             &mut timer,
         );
@@ -747,7 +759,13 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 window_id, event, ..
             } if window_id == window.id() => {
                 match event {
-                    WindowEvent::CloseRequested => *flow = ControlFlow::Exit,
+                    WindowEvent::CloseRequested => {
+                        if let Some(account) = &account {
+                            account.cancel_sign_in();
+                        }
+                        *flow = ControlFlow::Exit;
+                        return;
+                    }
                     WindowEvent::Focused(false) => auto_advance.disarm(),
                     WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                         if let Err(error) = layout.arrange(
@@ -761,9 +779,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     }
                     _ => {}
                 }
-                return;
+                if !account_expired {
+                    return;
+                }
+                true
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *quit.id() => {
+                if let Some(account) = &account {
+                    account.cancel_sign_in();
+                }
                 *flow = ControlFlow::Exit;
                 return;
             }
@@ -1029,6 +1053,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 };
                 overdue || metadata_changed || catalog_changed
             }
+            Event::UserEvent(PlayerEvent::Account(stamp, outcome)) => {
+                account.as_mut().is_some_and(|account| {
+                    let (follow_up, changed) = account.receive(stamp, outcome);
+                    if let Some(job) = follow_up {
+                        job.spawn(&service_events);
+                    }
+                    changed
+                })
+            }
             Event::UserEvent(PlayerEvent::Command(message)) => {
                 acknowledged_sequence = Some(message.sequence);
                 match message.command {
@@ -1059,6 +1092,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 toggle_iframe.set_enabled(preferences.is_some());
                                 toggle_advance.set_enabled(preferences.is_some() && mode.iframe_player);
                                 (catalog, lookup) = start_youtube_clients(&service_events, library.state().current.as_deref());
+                                account = account::Panel::from_env();
                                 if mode.iframe_player {
                                     lyrics = lyrics_worker();
                                 }
@@ -1079,6 +1113,13 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                     _ if !approved => {}
+                    Command::Account(command) => {
+                        if !show_legal
+                            && let Some(job) = account.as_mut().and_then(|account| account.apply(command))
+                        {
+                            job.spawn(&service_events);
+                        }
+                    }
                     Command::OpenBrowser {} => {
                         let url = playback_target(library.state(), public_playlist.as_ref())
                             .map(|target| match target {
@@ -1225,6 +1266,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 true
             }
+            _ if account_expired => true,
             _ => return,
         };
 
@@ -1280,6 +1322,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
         };
 
+        let update_queue = update_queue || account_expired;
         if reload_player {
             generation += 1;
             load_deadline = None;
@@ -1348,7 +1391,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             catalog.as_ref().and_then(catalog::Catalog::deadline),
             transport.as_ref(),
             lyrics.as_ref().and_then(lyrics_lookup::Lookup::deadline),
-            auto_advance.deadline(),
+            [auto_advance.deadline(), account.as_ref().and_then(account::Panel::deadline)],
             #[cfg(target_os = "linux")]
             &mut timer,
         );
@@ -1380,6 +1423,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     browser_search: approved && !mode.smoke && catalog.is_none(),
                     catalog: catalog.as_ref().map(catalog::Catalog::view),
                     saved_playlists: playlists.view(),
+                    account: account.as_ref().map(account::Panel::view),
                     legal: LegalView {
                         accepted: approved,
                         show: show_legal,
@@ -1520,6 +1564,33 @@ mod tests {
             r#"{"type":"close_playlist","also_remove":true}"#,
             r#"{"type":"select_playlist_track","id":1}"#,
             r#"{"type":"append_playlist","id":-1}"#,
+        ] {
+            assert!(command(invalid).is_none(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn account_ipc_accepts_only_scoped_actions_and_bounded_row_selectors() {
+        let command = |payload: &str| {
+            let request = Request::builder()
+                .uri(CONTROLS_URL)
+                .body(format!(r#"{{"sequence":1,"command":{payload}}}"#))
+                .unwrap();
+            controls_command(&request)
+        };
+        assert!(matches!(
+            command(r#"{"type":"open_account_video","page":3,"row":1}"#),
+            Some(ControlMessage {
+                command: Command::Account(account::Command::OpenAccountVideo { page: 3, row: 1 }),
+                ..
+            })
+        ));
+        for invalid in [
+            r#"{"type":"connect_account","scope":"youtube.force-ssl"}"#,
+            r#"{"type":"open_account_video","url":"https://www.youtube.com"}"#,
+            r#"{"type":"open_account_video","page":3,"row":-1}"#,
+            r#"{"type":"next_account_page","page":3,"token":"opaque"}"#,
+            r#"{"type":"show_account_collection","collection":"subscriptions"}"#,
         ] {
             assert!(command(invalid).is_none(), "{invalid}");
         }
