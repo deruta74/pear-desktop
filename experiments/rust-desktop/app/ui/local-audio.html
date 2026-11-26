@@ -14,11 +14,11 @@
       <header class="local-header">
         <h1>Local audio</h1>
         <button id="open" class="add-button" type="button">
-          Open audio file
+          Open audio files
         </button>
       </header>
       <p id="empty">
-        Open a WAV, FLAC, or MP3 file, or drop it into this window.
+        Open WAV, FLAC, or MP3 files, or drop them into this window.
       </p>
       <p id="opening" role="status" hidden>Opening audio…</p>
       <p id="problem" class="feedback error" role="alert"></p>
@@ -37,14 +37,32 @@
           <span id="duration" aria-hidden="true"></span>
         </div>
         <div class="local-actions">
-          <button
-            id="play"
-            class="add-button"
-            type="button"
-            aria-keyshortcuts="Space"
-          >
-            Play
-          </button>
+          <div class="local-transport">
+            <button
+              id="previous"
+              type="button"
+              aria-label="Previous track"
+              aria-disabled="true"
+            >
+              Previous
+            </button>
+            <button
+              id="play"
+              class="add-button"
+              type="button"
+              aria-keyshortcuts="Space"
+            >
+              Play
+            </button>
+            <button
+              id="next"
+              type="button"
+              aria-label="Next track"
+              aria-disabled="true"
+            >
+              Next
+            </button>
+          </div>
           <div class="local-slider">
             <label for="volume">Volume</label>
             <input
@@ -60,6 +78,10 @@
             >
           </div>
         </div>
+      </section>
+      <section id="local-queue" class="local-queue" hidden>
+        <h2 id="queue-heading">Queue</h2>
+        <ol id="queue-tracks" role="list" aria-labelledby="queue-heading"></ol>
       </section>
       <details id="local-eq" class="local-effects local-eq" hidden>
         <summary>Equalizer</summary>

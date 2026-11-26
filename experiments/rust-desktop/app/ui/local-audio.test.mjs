@@ -2,10 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { chromium, expect } from '@playwright/test';
 
-test('opens local audio files and sends playback and exact reverb settings to Rust', async (t) => {
+async function localAudioPage(t, viewport = { width: 420, height: 475 }) {
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width: 420, height: 475 } });
+  const page = await browser.newPage({ viewport });
   const assets = new Map([
     ['/', ['local-audio.html', 'text/html']],
     ['/style.css', ['style.css', 'text/css']],
@@ -42,7 +42,12 @@ test('opens local audio files and sends playback and exact reverb settings to Ru
   const messages = () => page.evaluate(() => window.commands);
   const render = (state) =>
     page.evaluate((state) => window.renderPearLocal(state), state);
-  const open = page.getByRole('button', { name: 'Open audio file' });
+  return { page, messages, render, blocked };
+}
+
+test('opens local audio files and sends playback and exact reverb settings to Rust', async (t) => {
+  const { page, messages, render, blocked } = await localAudioPage(t);
+  const open = page.getByRole('button', { name: 'Open audio files' });
   await render({ track: null, transport: null, error: null });
   await expect(
     page.getByRole('button', { name: 'Play', exact: true }),
@@ -209,4 +214,132 @@ test('opens local audio files and sends playback and exact reverb settings to Ru
     420,
   );
   expect(blocked).toEqual([]);
+});
+
+test('retains the scrollable queue, filename text, and keyboard focus across renders', async (t) => {
+  const { page, messages, render, blocked } = await localAudioPage(t, {
+    width: 290,
+    height: 475,
+  });
+  const track = 'First.wav';
+  const second = '<em>Wide & bright</em>.flac';
+  const last = `${'Long'.repeat(50)}.mp3`;
+  const transport = { positionMs: 0, durationMs: 48000, playing: false };
+  const queue = {
+    revision: 17,
+    tracks: [
+      track,
+      second,
+      ...Array.from({ length: 10 }, (_, index) => `Track ${index + 3}.wav`),
+      last,
+    ],
+    selected: 0,
+  };
+  await render({ track, transport, queue });
+  const list = page.getByRole('list', { name: 'Queue' });
+  const firstRow = list.getByRole('button', { name: track, exact: true });
+  const secondRow = list.getByRole('button', { name: second, exact: true });
+  const lastRow = list.getByRole('button', { name: last, exact: true });
+  await expect(firstRow).toHaveAttribute('aria-current', 'true', {
+    timeout: 1000,
+  });
+  await expect(secondRow).toHaveText(second);
+  await expect(list.locator('em')).toHaveCount(0);
+
+  await firstRow.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(secondRow).toBeFocused();
+  await page.keyboard.press('Enter');
+  expect((await messages()).at(-1)).toEqual({
+    type: 'select_track',
+    revision: 17,
+    index: 1,
+  });
+
+  await render({ track: second, transport, queue: { ...queue, selected: 1 } });
+  await render({
+    track: second,
+    transport: { ...transport, positionMs: 1200 },
+  });
+  await expect(secondRow).toBeFocused();
+  await expect(secondRow).toHaveAttribute('aria-current', 'true');
+  await expect(list.getByRole('listitem')).toHaveCount(queue.tracks.length);
+  await secondRow.click();
+  expect((await messages()).slice(-2)).toEqual([
+    { type: 'select_track', revision: 17, index: 1 },
+    { type: 'select_track', revision: 17, index: 1 },
+  ]);
+  await page.keyboard.press('End');
+  await expect(lastRow).toBeFocused();
+  expect(await list.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    290,
+  );
+  await render({
+    track,
+    transport,
+    queue: { revision: 18, tracks: [track, second], selected: 0 },
+  });
+  await expect(firstRow).toBeFocused();
+  await secondRow.click();
+  expect((await messages()).at(-1)).toEqual({
+    type: 'select_track',
+    revision: 18,
+    index: 1,
+  });
+  expect(blocked).toEqual([]);
+});
+
+test('blocks transport and queue changes while opening and at the queue bounds', async (t) => {
+  const { page, messages, render } = await localAudioPage(t);
+  const track = 'First.wav';
+  const second = 'Second.mp3';
+  const transport = { positionMs: 0, durationMs: 48000, playing: false };
+  const queue = { revision: 24, tracks: [track, second], selected: 0 };
+  await render({ track, transport, queue });
+  const previous = page.getByRole('button', { name: 'Previous track' });
+  const next = page.getByRole('button', { name: 'Next track' });
+  const play = page.getByRole('button', { name: 'Play', exact: true });
+  const seek = page.getByRole('slider', { name: 'Playback position' });
+  const row = page.getByRole('button', { name: second, exact: true });
+  await expect(previous).toBeDisabled({ timeout: 1000 });
+  await next.click();
+  expect((await messages()).at(-1)).toEqual({
+    type: 'select_track',
+    revision: 24,
+    index: 1,
+  });
+
+  await next.focus();
+  await render({ track, transport, opening: true });
+  await render({ track: null, transport: null, opening: true });
+  await expect(next).toBeFocused({ timeout: 1000 });
+  await render({ track, transport, opening: false });
+  await row.focus();
+  await render({ track, transport, opening: true });
+  await expect(row).toBeFocused();
+  const beforeOpeningCommands = (await messages()).length;
+  for (const button of [previous, next, play, row]) {
+    await expect(button).toBeDisabled();
+    await button.dispatchEvent('click');
+  }
+  await expect(seek).toBeDisabled();
+  await seek.dispatchEvent('change');
+  await page.getByRole('heading', { name: 'Local audio', exact: true }).click();
+  await page.keyboard.press('Space');
+  expect(await messages()).toHaveLength(beforeOpeningCommands);
+  await page.getByRole('slider', { name: 'Speed' }).press('ArrowLeft');
+  expect((await messages()).at(-1)).toEqual({ type: 'set_speed', speed: 0.99 });
+
+  await render({ track: second, transport, queue: { ...queue, selected: 1 } });
+  await expect(next).toBeDisabled();
+  await expect(row).toBeEnabled();
+  await expect(play).toBeEnabled();
+  await expect(seek).toBeEnabled();
+  await previous.click();
+  expect((await messages()).at(-1)).toEqual({
+    type: 'select_track',
+    revision: 24,
+    index: 0,
+  });
 });

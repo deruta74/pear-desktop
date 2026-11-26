@@ -4,7 +4,10 @@ const element = (id) => document.getElementById(id);
 const open = element('open');
 const track = element('track');
 const seek = element('seek');
+const previous = element('previous');
 const play = element('play');
+const next = element('next');
+const queueList = element('queue-tracks');
 const volume = element('volume');
 const speed = element('speed');
 const intensity = element('intensity');
@@ -13,6 +16,8 @@ const lowPass = element('low-pass');
 const defaultHighPass = 180;
 const defaultLowPass = 6500;
 let current = null;
+let queueState = { revision: 0, tracks: [], selected: null };
+let opening = false;
 let scrubbing = false;
 
 function send(type, fields) {
@@ -28,6 +33,91 @@ function setText(node, text) {
   if (node.textContent !== text) node.textContent = text;
 }
 
+function selectTrack(index) {
+  const { revision, tracks } = queueState;
+  if (!opening && index >= 0 && index < tracks.length) {
+    send('select_track', { revision, index });
+  }
+}
+
+function queueButton(index) {
+  return queueList.children[index]?.firstElementChild;
+}
+
+function renderQueue() {
+  const { tracks, selected } = queueState;
+  const focusedRow = queueList.querySelector('button:focus');
+  const focusedIndex = Number(focusedRow?.dataset.index ?? -1);
+  const tabStopIndex =
+    focusedIndex >= 0 && focusedIndex < tracks.length
+      ? focusedIndex
+      : (selected ?? 0);
+  while (queueList.children.length > tracks.length) {
+    queueList.lastElementChild.remove();
+  }
+  for (const [index, filename] of tracks.entries()) {
+    let button = queueButton(index);
+    if (!button) {
+      const row = document.createElement('li');
+      button = document.createElement('button');
+      button.type = 'button';
+      button.dir = 'auto';
+      button.dataset.index = index;
+      button.addEventListener('click', () => selectTrack(index));
+      row.append(button);
+      queueList.append(row);
+    }
+    setText(button, filename);
+    button.title = filename;
+    button.setAttribute('aria-current', String(index === selected));
+    button.setAttribute('aria-disabled', String(opening));
+    button.tabIndex = index === tabStopIndex ? 0 : -1;
+  }
+  element('local-queue').hidden = tracks.length === 0;
+  previous.setAttribute(
+    'aria-disabled',
+    String(opening || selected === null || selected === 0),
+  );
+  next.setAttribute(
+    'aria-disabled',
+    String(opening || selected === null || selected >= tracks.length - 1),
+  );
+  if (focusedIndex >= tracks.length) {
+    (queueButton(tabStopIndex) ?? open).focus();
+  }
+}
+
+queueList.addEventListener('focusin', ({ target }) => {
+  if (!(target instanceof HTMLButtonElement) || target.tabIndex === 0) return;
+  const tabStop = queueList.querySelector('button[tabindex="0"]');
+  if (tabStop) tabStop.tabIndex = -1;
+  target.tabIndex = 0;
+});
+queueList.addEventListener('keydown', (event) => {
+  if (
+    opening ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    !(event.target instanceof HTMLButtonElement)
+  ) {
+    return;
+  }
+  const index = Number(event.target.dataset.index);
+  const last = queueState.tracks.length - 1;
+  const position = {
+    ArrowUp: Math.max(0, index - 1),
+    ArrowDown: Math.min(last, index + 1),
+    Home: 0,
+    End: last,
+  }[event.key];
+  const button = queueButton(position);
+  if (!button) return;
+  event.preventDefault();
+  button.focus();
+});
+
 function renderPosition() {
   const label = time(seek.valueAsNumber);
   setText(element('elapsed'), label);
@@ -40,25 +130,33 @@ window.renderPearLocal = ({
   track: filename,
   transport,
   error,
-  opening = false,
+  opening: isOpening = false,
+  queue,
   settings,
   equalizer,
   presets,
   eqRevision,
 }) => {
-  current = transport;
+  const keepPlayer = isOpening && !transport && Boolean(current);
+  if (!keepPlayer) current = transport;
   const wasHidden = element('player').hidden;
   const openHadFocus = document.activeElement === open;
+  if (queue || opening !== isOpening) {
+    opening = isOpening;
+    queueState = queue ?? queueState;
+    renderQueue();
+  }
   open.setAttribute('aria-disabled', String(opening));
   element('opening').hidden = !opening;
-  element('player').hidden = element('effects').hidden = !transport;
+  element('player').hidden = element('effects').hidden = !current;
   window.renderPearEqualizer?.(
     equalizer,
     presets,
-    Boolean(transport),
+    Boolean(current),
     eqRevision,
   );
-  element('empty').hidden = Boolean(transport) || opening;
+  element('empty').hidden =
+    Boolean(transport) || opening || queueState.tracks.length > 0;
   setText(element('problem'), transport?.error ?? error ?? '');
   if (settings) {
     volume.value = Math.round(settings.volume * 100);
@@ -70,6 +168,7 @@ window.renderPearLocal = ({
     showSpeed();
     showIntensity();
   }
+  play.disabled = seek.disabled = opening || Boolean(current?.error);
   if (!transport) return;
   setText(track, filename);
   const duration = Math.max(1, transport.durationMs);
@@ -80,15 +179,21 @@ window.renderPearLocal = ({
   renderPosition();
   setText(element('duration'), time(transport.durationMs));
   setText(play, transport.playing ? 'Pause' : 'Play');
-  play.disabled = seek.disabled = Boolean(transport.error);
-  if (wasHidden && openHadFocus) play.focus();
+  if (wasHidden && openHadFocus && !play.disabled) play.focus();
 };
 
 open.addEventListener('click', () => {
-  if (open.getAttribute('aria-disabled') !== 'true') send('open');
+  if (!opening) send('open');
+});
+previous.addEventListener('click', () => {
+  if (queueState.selected !== null) selectTrack(queueState.selected - 1);
 });
 play.addEventListener('click', () => {
-  if (current) send('set_playing', { playing: !current.playing });
+  if (current && !play.disabled)
+    send('set_playing', { playing: !current.playing });
+});
+next.addEventListener('click', () => {
+  if (queueState.selected !== null) selectTrack(queueState.selected + 1);
 });
 document.addEventListener('keydown', (event) => {
   if (
@@ -125,9 +230,10 @@ seek.addEventListener('blur', () => {
   scrubbing = false;
 });
 seek.addEventListener('input', renderPosition);
-seek.addEventListener('change', () =>
-  send('seek', { position_ms: seek.valueAsNumber }),
-);
+seek.addEventListener('change', () => {
+  if (current && !seek.disabled)
+    send('seek', { position_ms: seek.valueAsNumber });
+});
 
 const percent = (value) => `${value}%`;
 const rate = (value) => `${(value / 100).toFixed(2)}×`;

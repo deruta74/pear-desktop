@@ -72,6 +72,8 @@ pub(super) struct Snapshot {
     pub(super) duration_ms: u64,
     pub(super) playing: bool,
     pub(super) error: Option<String>,
+    #[serde(skip)]
+    pub(super) finished: bool,
 }
 
 pub(super) struct Engine {
@@ -150,11 +152,12 @@ impl Engine {
         Ok(engine)
     }
 
-    pub(super) fn snapshot(&mut self) -> Snapshot {
+    pub(super) fn snapshot(&mut self, opening: bool) -> Snapshot {
         self.equalizer.flush();
         let (frame, active) = self.shared.status(self.input.frames);
         let duration_ms = self.duration_ms();
-        let error = match self.shared.error.load(Ordering::Acquire) {
+        let failure = self.shared.error.load(Ordering::Acquire);
+        let error = match failure {
             DECODE_ERROR => Some("Could not read the audio samples."),
             OUTPUT_ERROR => Some("The audio output stopped."),
             _ => None,
@@ -167,8 +170,15 @@ impl Engine {
             },
             duration_ms,
             playing: error.is_none() && active,
+            finished: self
+                .shared
+                .take_end(failure, !active && frame >= self.input.frames, opening),
             error: error.map(String::from),
         }
+    }
+
+    pub(super) fn is_playing(&self) -> bool {
+        self.shared.error.load(Ordering::Acquire) == 0 && self.shared.status(self.input.frames).1
     }
 
     pub(super) fn set_playing(&mut self, playing: bool) {
@@ -185,7 +195,9 @@ impl Engine {
         } else {
             (position_ms * u64::from(self.input.sample_rate) / 1000) as u32
         };
-        if frame >= self.input.frames || self.shared.frame() >= self.input.frames {
+        if frame >= self.input.frames
+            || (self.shared.frame() >= self.input.frames && !self.is_playing())
+        {
             self.shared.playing.store(false, Ordering::Release);
         }
         self.seek_to(frame);
@@ -321,6 +333,13 @@ impl Shared {
         let active = self.playing.load(Ordering::Acquire)
             && (frame < total || self.tail.load(Ordering::Acquire) == stamp(generation, 1));
         (frame, active)
+    }
+
+    fn take_end(&self, failure: u8, natural_end: bool, opening: bool) -> bool {
+        // Retain the playing flag if a pending change could still fail.
+        !opening
+            && (failure == DECODE_ERROR || (failure == 0 && natural_end))
+            && self.playing.swap(false, Ordering::AcqRel)
     }
 
     fn publish_frame(&self, generation: u32, frame: u32, tail: bool) {

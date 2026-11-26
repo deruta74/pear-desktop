@@ -53,6 +53,29 @@ const MONO_I16: hound::WavSpec = hound::WavSpec {
 };
 
 #[test]
+fn defers_natural_end_while_another_file_is_opening() {
+    let shared = Shared::new();
+    shared.playing.store(true, Ordering::Release);
+    shared.publish_frame(0, 4, true);
+    assert!(!shared.take_end(0, !shared.status(4).1, false));
+    shared.publish_frame(0, 4, false);
+    assert!(!shared.take_end(0, !shared.status(4).1, true));
+    assert!(shared.take_end(0, !shared.status(4).1, false));
+    assert!(!shared.take_end(0, !shared.status(4).1, false));
+}
+
+#[test]
+fn only_a_decoding_failure_can_advance_a_playing_track() {
+    let shared = Shared::new();
+    assert!(!shared.take_end(DECODE_ERROR, false, false));
+    shared.playing.store(true, Ordering::Release);
+    assert!(!shared.take_end(OUTPUT_ERROR, true, false));
+    assert!(!shared.take_end(DECODE_ERROR, false, true));
+    assert!(shared.take_end(DECODE_ERROR, false, false));
+    assert!(!shared.take_end(DECODE_ERROR, false, false));
+}
+
+#[test]
 fn mp3_uses_gapless_duration_and_seeks_to_the_same_samples() {
     let fixture = Fixture::from_bytes(include_bytes!("fixtures/stereo-gapless.mp3"));
     let mut source = AudioSource::open(&fixture.0).unwrap();
@@ -555,7 +578,7 @@ fn cpal_default_device_plays_synthetic_wav() {
         .collect();
     let fixture = Fixture::from_bytes(&wav_fixture(spec, &samples));
     let mut engine = Engine::open(&fixture.0).unwrap();
-    let initial = engine.snapshot();
+    let initial = engine.snapshot(false);
     assert_eq!(initial.position_ms, 0);
     assert_eq!(initial.duration_ms, 2_000);
     assert!(!initial.playing);
@@ -565,17 +588,26 @@ fn cpal_default_device_plays_synthetic_wav() {
     let first_play = wait_for_snapshot(&mut engine, |snapshot| {
         snapshot.playing && snapshot.position_ms >= 180
     });
+    engine.seek_ms(2_000);
+    let scrubbed_to_end = engine.snapshot(false);
+    assert_eq!(scrubbed_to_end.position_ms, 2_000);
+    assert!(!scrubbed_to_end.playing);
+    assert!(!scrubbed_to_end.finished);
+    engine.set_playing(true);
+    wait_for_snapshot(&mut engine, |snapshot| {
+        snapshot.playing && snapshot.position_ms >= first_play.position_ms
+    });
     engine.set_playing(false);
     std::thread::sleep(Duration::from_millis(120));
-    let paused = engine.snapshot();
+    let paused = engine.snapshot(false);
     std::thread::sleep(Duration::from_millis(120));
-    assert_eq!(engine.snapshot().position_ms, paused.position_ms);
+    assert_eq!(engine.snapshot(false).position_ms, paused.position_ms);
     assert!(!paused.playing);
     assert!(paused.position_ms >= first_play.position_ms);
 
     engine.seek_ms(1_000);
-    assert_eq!(engine.snapshot().position_ms, 1_000);
-    assert!(!engine.snapshot().playing);
+    assert_eq!(engine.snapshot(false).position_ms, 1_000);
+    assert!(!engine.snapshot(false).playing);
     engine.set_speed(2.0);
     engine
         .set_equalizer(pear_preview_dsp::equalizer::EqualizerSettings {
@@ -595,6 +627,8 @@ fn cpal_default_device_plays_synthetic_wav() {
     });
     let ended = wait_for_snapshot(&mut engine, |snapshot| !snapshot.playing);
     assert_eq!(ended.position_ms, ended.duration_ms);
+    assert!(ended.finished);
+    assert!(!engine.snapshot(false).finished);
 
     engine.set_speed(1.0);
     engine.set_playing(true);
@@ -615,7 +649,7 @@ fn cpal_default_device_plays_synthetic_wav() {
 fn wait_for_snapshot(engine: &mut Engine, check: impl Fn(&Snapshot) -> bool) -> Snapshot {
     let deadline = Instant::now() + Duration::from_secs(4);
     loop {
-        let snapshot = engine.snapshot();
+        let snapshot = engine.snapshot(false);
         assert_eq!(snapshot.error, None);
         if check(&snapshot) {
             return snapshot;

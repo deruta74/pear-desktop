@@ -1,6 +1,7 @@
 mod engine;
 mod equalizer;
 mod presets;
+mod queue;
 
 use std::{
     borrow::Cow,
@@ -44,6 +45,10 @@ const IDLE_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 enum AudioCommand {
     Ready {},
     Open {},
+    SelectTrack {
+        revision: u32,
+        index: usize,
+    },
     SetPlaying {
         playing: bool,
     },
@@ -96,6 +101,8 @@ struct View<'a> {
     transport: Option<engine::Snapshot>,
     error: Option<&'a str>,
     opening: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    queue: Option<queue::View<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     settings: Option<Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -184,14 +191,15 @@ fn title(path: &Path) -> String {
     .to_owned()
 }
 
-fn pick_file(window: &Window) -> Option<PathBuf> {
+fn pick_files(window: &Window) -> Vec<PathBuf> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         rfd::FileDialog::new()
             .set_parent(window)
-            .set_title("Open audio file")
+            .set_title("Open audio files")
             .add_filter("Audio files", &["wav", "wave", "flac", "mp3"])
-            .pick_file()
+            .pick_files()
+            .unwrap_or_default()
     }
     #[cfg(target_os = "linux")]
     {
@@ -199,12 +207,13 @@ fn pick_file(window: &Window) -> Option<PathBuf> {
         use tao::platform::unix::WindowExtUnix;
 
         let dialog = gtk::FileChooserNative::new(
-            Some("Open audio file"),
+            Some("Open audio files"),
             Some(window.gtk_window()),
             gtk::FileChooserAction::Open,
             Some("Open"),
             Some("Cancel"),
         );
+        dialog.set_select_multiple(true);
         let filter = gtk::FileFilter::new();
         filter.set_name(Some("Audio files"));
         for pattern in [
@@ -217,7 +226,11 @@ fn pick_file(window: &Window) -> Option<PathBuf> {
         }
         dialog.add_filter(filter);
         let accepted = dialog.run() == gtk::ResponseType::Accept;
-        accepted.then(|| dialog.filename()).flatten()
+        if accepted {
+            dialog.filenames()
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -250,7 +263,7 @@ pub(crate) fn run() -> Result<()> {
 
     use muda::accelerator::{Accelerator, CMD_OR_CTRL, Code};
     let key = |key| (!cfg!(target_os = "windows")).then(|| Accelerator::new(CMD_OR_CTRL, key));
-    let open = MenuItem::new("Open Audio File…", true, key(Code::KeyO));
+    let open = MenuItem::new("Open Audio Files…", true, key(Code::KeyO));
     let quit = MenuItem::new("Quit Pear Local Audio", true, key(Code::KeyQ));
     let menu = Menu::with_items(&[
         &Submenu::with_items("Pear Local Audio", true, &[&quit])?,
@@ -308,14 +321,16 @@ pub(crate) fn run() -> Result<()> {
     let mut speed = 1.0;
     let mut reverb = ReverbSettings::default();
     let mut equalizer = equalizer::Profile::default();
-    let mut opening = false;
+    let mut queue = queue::Queue::default();
     let mut deadline = None;
     #[cfg(target_os = "linux")]
     let mut timer = crate::player::DeadlineTimer::default();
 
     event_loop.run(move |event, _, flow| {
         let _keep_menu_alive = &menu;
-        let mut dropped_path = None;
+        let was_opening = queue.opening();
+        let mut dropped_files = None;
+        let mut requested_path = None;
         let action = match event {
             Event::WindowEvent {
                 window_id,
@@ -335,14 +350,9 @@ pub(crate) fn run() -> Result<()> {
                 Some(AudioCommand::Open {})
             }
             Event::UserEvent(AudioEvent::Command(command)) => Some(command),
-            Event::UserEvent(AudioEvent::DropFiles(mut paths)) if !opening => {
-                if paths.len() == 1 {
-                    dropped_path = paths.pop();
-                    Some(AudioCommand::Open {})
-                } else {
-                    error = Some("Drop one audio file at a time.".into());
-                    Some(AudioCommand::Ready {})
-                }
+            Event::UserEvent(AudioEvent::DropFiles(paths)) if !queue.opening() => {
+                dropped_files = Some(paths);
+                Some(AudioCommand::Open {})
             }
             Event::UserEvent(AudioEvent::Prepared(Ok((name, audio)))) => {
                 // A direct ALSA endpoint can permit only one active stream.
@@ -359,33 +369,42 @@ pub(crate) fn run() -> Result<()> {
                     })
                     .is_err()
                 {
-                    opening = false;
-                    open.set_enabled(true);
+                    queue.output_failed();
                     error = Some("Could not start the default audio output.".into());
                 }
                 Some(AudioCommand::Ready {})
             }
             Event::UserEvent(AudioEvent::Prepared(Err(problem))) => {
-                opening = false;
-                open.set_enabled(true);
-                error = Some(problem.to_string());
+                requested_path = queue.retry_after_read_error();
+                if requested_path.is_none() {
+                    error = Some(problem.to_string());
+                }
                 Some(AudioCommand::Ready {})
             }
             Event::UserEvent(AudioEvent::Opened(result)) => {
-                opening = false;
-                open.set_enabled(true);
                 match result {
                     Ok(mut next) => {
+                        let (play, skipped) = queue.finish();
                         next.engine.set_volume(volume);
                         next.engine.set_speed(speed);
                         next.engine.set_reverb(reverb);
                         error = equalizer.apply(&mut next.engine).err().map(str::to_owned);
                         if error.is_some() {
                             equalizer.disable();
+                        } else if skipped > 0 {
+                            error = Some(if skipped == 1 {
+                                "Skipped one unreadable audio file.".into()
+                            } else {
+                                format!("Skipped {skipped} unreadable audio files.")
+                            });
                         }
+                        next.engine.set_playing(play);
                         track = Some(next);
                     }
-                    Err(problem) => error = Some(problem.to_string()),
+                    Err(problem) => {
+                        queue.output_failed();
+                        error = Some(problem.to_string());
+                    }
                 }
                 Some(AudioCommand::Ready {})
             }
@@ -411,29 +430,29 @@ pub(crate) fn run() -> Result<()> {
             );
         match action {
             Some(AudioCommand::Open {}) => {
-                if !opening && let Some(path) = dropped_path.or_else(|| pick_file(&window)) {
-                    let result_events = result_events.clone();
-                    match std::thread::Builder::new()
-                        .name("pear-audio-open".into())
-                        .spawn(move || {
-                            let result = engine::PreparedAudio::read(&path)
-                                .map(|audio| (title(&path), audio));
-                            let _ = result_events.send_event(AudioEvent::Prepared(result));
-                        }) {
-                        Ok(_) => {
-                            opening = true;
-                            error = None;
-                            open.set_enabled(false);
-                        }
-                        Err(_) => error = Some("Could not open the selected audio file.".into()),
+                if !queue.opening() {
+                    let paths = dropped_files.unwrap_or_else(|| pick_files(&window));
+                    match queue.replace(paths) {
+                        Ok(path) => requested_path = path,
+                        Err(problem) => error = Some(problem.into()),
                     }
                 }
+            }
+            Some(AudioCommand::SelectTrack { revision, index }) => {
+                let play = track
+                    .as_ref()
+                    .is_some_and(|track| track.engine.is_playing());
+                requested_path = queue.select(revision, index, play);
             }
             Some(action) => {
                 if let Some(Track { engine, .. }) = &mut track {
                     match action {
-                        AudioCommand::SetPlaying { playing } => engine.set_playing(playing),
-                        AudioCommand::Seek { position_ms } => engine.seek_ms(position_ms),
+                        AudioCommand::SetPlaying { playing } if !queue.opening() => {
+                            engine.set_playing(playing);
+                        }
+                        AudioCommand::Seek { position_ms } if !queue.opening() => {
+                            engine.seek_ms(position_ms);
+                        }
                         AudioCommand::SetVolume { volume: value }
                             if (0.0..=1.0).contains(&value) =>
                         {
@@ -508,7 +527,32 @@ pub(crate) fn run() -> Result<()> {
             None if !deadline.is_some_and(|when| Instant::now() >= when) => return,
             None => {}
         }
-        let transport = track.as_mut().map(|track| track.engine.snapshot());
+        let transport = track
+            .as_mut()
+            .map(|track| track.engine.snapshot(queue.opening()));
+        if requested_path.is_none() && transport.as_ref().is_some_and(|state| state.finished) {
+            requested_path = queue.advance();
+        }
+        if let Some(path) = requested_path {
+            let result_events = result_events.clone();
+            match std::thread::Builder::new()
+                .name("pear-audio-open".into())
+                .spawn(move || {
+                    let result =
+                        engine::PreparedAudio::read(&path).map(|audio| (title(&path), audio));
+                    let _ = result_events.send_event(AudioEvent::Prepared(result));
+                }) {
+                Ok(_) => error = None,
+                Err(_) => {
+                    queue.cancel();
+                    error = Some("Could not open the selected audio file.".into());
+                }
+            }
+        }
+        let opening = queue.opening();
+        if opening != was_opening {
+            open.set_enabled(!opening);
+        }
         deadline = transport
             .as_ref()
             .filter(|snapshot| snapshot.error.is_none())
@@ -530,6 +574,7 @@ pub(crate) fn run() -> Result<()> {
             transport,
             error: error.as_deref(),
             opening,
+            queue: send_settings.then(|| queue.view()),
             settings: send_settings.then_some(Settings {
                 volume,
                 speed,
@@ -554,6 +599,65 @@ pub(crate) fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_queue_keeps_the_old_selection_until_a_batch_opens() {
+        let mut queue = queue::Queue::default();
+        assert_eq!(
+            queue.replace(vec!["old.wav".into()]).unwrap().unwrap(),
+            Path::new("old.wav")
+        );
+        assert_eq!(queue.finish(), (false, 0));
+        let old_revision = queue.view().revision;
+
+        assert_eq!(
+            queue
+                .replace(vec!["bad.mp3".into(), "new.flac".into()])
+                .unwrap()
+                .unwrap(),
+            Path::new("bad.mp3")
+        );
+        assert_eq!(queue.view().tracks, ["old.wav"]);
+        assert_eq!(
+            queue.retry_after_read_error().unwrap(),
+            Path::new("new.flac")
+        );
+        assert_eq!(queue.finish(), (false, 1));
+        assert_eq!(queue.view().tracks, ["bad.mp3", "new.flac"]);
+        assert_eq!(queue.view().selected, Some(1));
+        assert!(queue.select(old_revision, 0, true).is_none());
+    }
+
+    #[test]
+    fn local_queue_advances_and_skips_only_during_automatic_playback() {
+        let mut queue = queue::Queue::default();
+        queue
+            .replace(vec![
+                "one.wav".into(),
+                "bad.mp3".into(),
+                "three.flac".into(),
+            ])
+            .unwrap();
+        queue.finish();
+        let revision = queue.view().revision;
+        assert_eq!(
+            queue.select(revision, 1, false).unwrap(),
+            Path::new("bad.mp3")
+        );
+        assert!(queue.retry_after_read_error().is_none());
+        assert!(!queue.opening());
+        assert_eq!(queue.view().selected, Some(0));
+
+        assert_eq!(queue.advance().unwrap(), Path::new("bad.mp3"));
+        assert!(queue.select(revision, 2, true).is_none());
+        assert_eq!(
+            queue.retry_after_read_error().unwrap(),
+            Path::new("three.flac")
+        );
+        assert_eq!(queue.finish(), (true, 1));
+        assert_eq!(queue.view().selected, Some(2));
+        assert!(queue.advance().is_none());
+    }
 
     #[test]
     fn rejects_unbundled_navigation_and_ipc_payloads() {
