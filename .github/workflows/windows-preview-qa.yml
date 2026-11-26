@@ -205,6 +205,112 @@ jobs:
           if (Test-Path -LiteralPath $consent) { throw 'Packaged preview recorded consent without acceptance.' }
           'PEAR_WINDOWS_PACKAGE_SMOKE queue_lock=true responsive_window=true consent_created=false' |
             Tee-Object -FilePath $log -Append
+          $hash = (Get-FileHash -LiteralPath $options.FileName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "PEAR_WINDOWS_PACKAGE_SHA256 $hash" | Tee-Object -FilePath $log -Append
+      - name: Run the native WebView2 IFrame smoke
+        timeout-minutes: 3
+        run: |
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
+          $log = Join-Path $artifactDir 'qa.log'
+          $stdout = Join-Path $artifactDir 'iframe.stdout.log'
+          $stderr = Join-Path $artifactDir 'iframe.stderr.log'
+          $queueDir = Join-Path $env:RUNNER_TEMP "pear-iframe-$([guid]::NewGuid().ToString('N'))"
+          $rawOut = Join-Path $queueDir 'stdout.log'
+          $rawErr = Join-Path $queueDir 'stderr.log'
+          $preview = $null
+          $queueReady = $false
+          $transportReady = $false
+          $responsiveWindow = $false
+          try {
+            $null = New-Item -ItemType File -Path $stdout, $stderr -Force
+            $null = New-Item -ItemType Directory -Path $queueDir
+            # Seed the video used in YouTube's IFrame API documentation.
+            '{"entries":["M7lc1UVf-VE"],"current":"M7lc1UVf-VE","titles":{}}' |
+              Set-Content -LiteralPath (Join-Path $queueDir 'queue.json') -Encoding utf8
+
+            $exe = Join-Path $env:RUNNER_TEMP 'pear-rust-target/x86_64-pc-windows-msvc/debug/pear-desktop-preview.exe'
+            $preview = Start-Process -FilePath $exe -ArgumentList '--iframe-player-smoke' -WorkingDirectory $queueDir `
+              -Environment @{ PEAR_PREVIEW_QUEUE_DIR = $queueDir; PEAR_YOUTUBE_API_KEY_FILE = $null } `
+              -RedirectStandardOutput $rawOut -RedirectStandardError $rawErr -PassThru
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $deadline = [TimeSpan]::FromSeconds(45)
+            while ($clock.Elapsed -lt $deadline) {
+              if ($preview.WaitForExit(0)) {
+                throw "IFrame preview exited during smoke with code $($preview.ExitCode)."
+              }
+              $lines = Get-Content -LiteralPath $rawOut -TotalCount 128
+              if (!$queueReady -and $lines -ccontains 'PEAR_QUEUE_READY') {
+                $queueReady = $true
+                $deadline = $clock.Elapsed + [TimeSpan]::FromSeconds(25)
+              }
+              $transportReady = $lines -ccontains 'PEAR_QUEUE_TRANSPORT_READY'
+              $preview.Refresh()
+              $responsiveWindow = $responsiveWindow -or
+                ($preview.MainWindowHandle -ne [IntPtr]::Zero -and $preview.Responding)
+              if ($queueReady -and $transportReady) { break }
+              Start-Sleep -Milliseconds 250
+            }
+            if (!$queueReady) {
+              throw 'The IFrame preview did not emit the exact PEAR_QUEUE_READY line within 45 seconds.'
+            }
+            if (!$transportReady) {
+              Write-Host '::warning title=YouTube IFrame readiness::The exact PEAR_QUEUE_TRANSPORT_READY line was not observed. This check depends on YouTube API availability on the hosted runner.'
+            }
+          } finally {
+            try {
+              if ($null -ne $preview) {
+                try {
+                  $forced = $false
+                  if (!$preview.HasExited -and (!$preview.CloseMainWindow() -or !$preview.WaitForExit(3000))) {
+                    if (!$preview.HasExited) {
+                      $preview.Kill($true)
+                      $forced = $true
+                    }
+                  }
+                  if (!$preview.WaitForExit(5000)) {
+                    throw 'The IFrame preview did not exit after cleanup.'
+                  }
+                  $exitCode = $preview.ExitCode
+                  "IFrame preview exit_code=$exitCode forced_cleanup=$forced" | Tee-Object -FilePath $log -Append
+                  if ($exitCode -ne 0 -and !($forced -and $exitCode -eq -1)) {
+                    throw "The IFrame preview exited with code $exitCode."
+                  }
+                } finally {
+                  $preview.Dispose()
+                }
+              }
+            } finally {
+              # Preserve fixed markers and diagnostic categories without publishing raw process text.
+              $markers = @('PEAR_QUEUE_READY', 'PEAR_QUEUE_TRANSPORT_READY')
+              if (Test-Path -LiteralPath $rawOut -PathType Leaf) {
+                foreach ($line in (Get-Content -LiteralPath $rawOut -TotalCount 128)) {
+                  if ($markers -ccontains $line) {
+                    Add-Content -LiteralPath $stdout -Value $line
+                  } else {
+                    Add-Content -LiteralPath $stdout -Value '[redacted stdout line]'
+                  }
+                }
+              }
+              if (Test-Path -LiteralPath $rawErr -PathType Leaf) {
+                foreach ($line in (Get-Content -LiteralPath $rawErr -TotalCount 128)) {
+                  if ($line -cmatch '^(Could not (?:read player state|update the queue controls|update the playback controls|arrange the player)|Queue smoke check failed|Error):') {
+                    Add-Content -LiteralPath $stderr -Value "$($Matches[1]): [details redacted]"
+                  } else {
+                    Add-Content -LiteralPath $stderr -Value '[redacted stderr line]'
+                  }
+                }
+              }
+              "PEAR_WINDOWS_IFRAME_SMOKE queue_ready=$($queueReady.ToString().ToLowerInvariant()) transport_ready=$($transportReady.ToString().ToLowerInvariant()) responsive_window=$($responsiveWindow.ToString().ToLowerInvariant())" |
+                Tee-Object -FilePath $log -Append
+              if (Test-Path -LiteralPath $queueDir -PathType Container) {
+                try {
+                  Remove-Item -LiteralPath $queueDir -Recurse -Force
+                } catch {
+                  Write-Warning 'The runner will finish cleaning up the disposable IFrame directory.'
+                }
+              }
+            }
+          }
       - name: Upload Windows QA logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
@@ -214,6 +320,8 @@ jobs:
             ${{ runner.temp }}/pear-windows-qa/qa.log
             ${{ runner.temp }}/pear-windows-qa/queue.stdout.log
             ${{ runner.temp }}/pear-windows-qa/queue.stderr.log
+            ${{ runner.temp }}/pear-windows-qa/iframe.stdout.log
+            ${{ runner.temp }}/pear-windows-qa/iframe.stderr.log
       - name: Upload the regular Windows preview executable
         if: ${{ !cancelled() && steps.build.outputs.portable == 'true' }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
