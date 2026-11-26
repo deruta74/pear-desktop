@@ -7,6 +7,7 @@ mod settings;
 
 use std::{
     borrow::Cow,
+    fs,
     path::{Path, PathBuf},
     process::{Command as Process, Stdio},
     sync::Arc,
@@ -43,12 +44,15 @@ const ASSET_SOURCE: &str = "pear-audio:";
 const ASSET_SOURCE: &str = "https://pear-audio.app.local";
 const UPDATE_INTERVAL: Duration = Duration::from_millis(250);
 const IDLE_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
+const AUDIO_EXTENSIONS: &[&str] = &["wav", "wave", "flac", "mp3", "opus", "ogg", "m4a"];
+const MAX_FOLDER_ENTRIES: usize = 4_096;
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum AudioCommand {
     Ready {},
     Open {},
+    OpenFolder {},
     SelectTrack {
         revision: u32,
         index: usize,
@@ -102,6 +106,7 @@ enum AudioEvent {
     Command(AudioCommand),
     Media(media::Request),
     DropFiles(Vec<PathBuf>),
+    FolderScanned(std::result::Result<Vec<PathBuf>, &'static str>),
     Menu(MenuEvent),
     Prepared(std::result::Result<(Arc<Metadata>, engine::PreparedAudio), engine::EngineOpenError>),
     Opened(std::result::Result<(Arc<Metadata>, engine::Engine), engine::EngineOpenError>),
@@ -123,9 +128,13 @@ struct View<'a> {
     album: Option<&'a str>,
     transport: Option<engine::Snapshot>,
     error: Option<&'a str>,
+    #[serde(rename = "folderError", skip_serializing_if = "Option::is_none")]
+    folder_error: Option<&'a str>,
     #[serde(rename = "settingsError", skip_serializing_if = "Option::is_none")]
     settings_error: Option<&'a str>,
     opening: bool,
+    #[serde(rename = "scanningFolder")]
+    scanning_folder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     queue: Option<queue::View<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -241,10 +250,7 @@ fn pick_files(window: &Window) -> Vec<PathBuf> {
         rfd::FileDialog::new()
             .set_parent(window)
             .set_title("Open audio files")
-            .add_filter(
-                "Audio files",
-                &["wav", "wave", "flac", "mp3", "opus", "ogg", "m4a"],
-            )
+            .add_filter("Audio files", AUDIO_EXTENSIONS)
             .pick_files()
             .unwrap_or_default()
     }
@@ -282,6 +288,70 @@ fn pick_files(window: &Window) -> Vec<PathBuf> {
             Vec::new()
         }
     }
+}
+
+fn pick_folder(window: &Window) -> Option<PathBuf> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        rfd::FileDialog::new()
+            .set_parent(window)
+            .set_title("Open audio folder")
+            .pick_folder()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::{FileChooserExt, NativeDialogExt};
+        use tao::platform::unix::WindowExtUnix;
+
+        let dialog = gtk::FileChooserNative::new(
+            Some("Open audio folder"),
+            Some(window.gtk_window()),
+            gtk::FileChooserAction::SelectFolder,
+            Some("Open"),
+            Some("Cancel"),
+        );
+        if dialog.run() == gtk::ResponseType::Accept {
+            dialog.filename()
+        } else {
+            None
+        }
+    }
+}
+
+fn scan_folder(folder: &Path) -> std::result::Result<Vec<PathBuf>, &'static str> {
+    const UNREADABLE: &str = "Could not read the selected folder.";
+    if !fs::symlink_metadata(folder)
+        .map_err(|_| UNREADABLE)?
+        .is_dir()
+    {
+        return Err(UNREADABLE);
+    }
+    let mut paths = Vec::new();
+    for (index, entry) in fs::read_dir(folder).map_err(|_| UNREADABLE)?.enumerate() {
+        if index == MAX_FOLDER_ENTRIES {
+            return Err(
+                "The selected folder has more than 4,096 entries. Choose a smaller folder.",
+            );
+        }
+        let entry = entry.map_err(|_| UNREADABLE)?;
+        let filename = entry.file_name();
+        let supported = Path::new(&filename).extension().is_some_and(|extension| {
+            AUDIO_EXTENSIONS
+                .iter()
+                .any(|format| extension.eq_ignore_ascii_case(format))
+        });
+        if supported && entry.file_type().map_err(|_| UNREADABLE)?.is_file() {
+            if paths.len() == queue::MAX_TRACKS {
+                return Err(queue::FOLDER_CAPACITY_ERROR);
+            }
+            paths.push(folder.join(filename));
+        }
+    }
+    if paths.is_empty() {
+        return Err("The selected folder contains no supported audio files.");
+    }
+    paths.sort_unstable_by(|left, right| left.file_name().cmp(&right.file_name()));
+    Ok(paths)
 }
 
 pub(crate) fn launch() -> std::io::Result<()> {
@@ -324,10 +394,11 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
     use muda::accelerator::{Accelerator, CMD_OR_CTRL, Code};
     let key = |key| (!cfg!(target_os = "windows")).then(|| Accelerator::new(CMD_OR_CTRL, key));
     let open = MenuItem::new("Open Audio Files…", true, key(Code::KeyO));
+    let open_folder = MenuItem::new("Open Folder…", true, None);
     let quit = MenuItem::new("Quit Pear Local Audio", true, key(Code::KeyQ));
     let menu = Menu::with_items(&[
         &Submenu::with_items("Pear Local Audio", true, &[&quit])?,
-        &Submenu::with_items("File", true, &[&open])?,
+        &Submenu::with_items("File", true, &[&open, &open_folder])?,
         &Submenu::with_items(
             "Edit",
             true,
@@ -395,6 +466,9 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
     let mut track_generation = 0_u64;
     let mut equalizer = equalizer::Profile::default();
     let mut queue = queue::Queue::default();
+    let mut scanning_folder = false;
+    let mut folder_files = None;
+    let mut folder_error = None;
     let mut deadline = None;
     #[cfg(target_os = "linux")]
     let mut timer = crate::player::DeadlineTimer::default();
@@ -410,13 +484,16 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             Event::UserEvent(AudioEvent::Menu(event)) => event.id == *quit.id(),
             _ => false,
         };
-        let was_opening = queue.opening();
+        let was_importing = queue.opening() || scanning_folder;
         let mut dropped_files = None;
         let mut requested_path = None;
         let action = match event {
             _ if quit_requested => None,
             Event::UserEvent(AudioEvent::Menu(event)) if event.id == *open.id() => {
                 Some(AudioCommand::Open {})
+            }
+            Event::UserEvent(AudioEvent::Menu(event)) if event.id == *open_folder.id() => {
+                Some(AudioCommand::OpenFolder {})
             }
             Event::UserEvent(AudioEvent::Command(command)) => Some(command),
             Event::UserEvent(AudioEvent::Media(request)) => {
@@ -449,9 +526,19 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                 }
                 Some(AudioCommand::Ready {})
             }
-            Event::UserEvent(AudioEvent::DropFiles(paths)) if !queue.opening() => {
+            Event::UserEvent(AudioEvent::DropFiles(paths)) if !was_importing => {
                 dropped_files = Some(paths);
                 Some(AudioCommand::Open {})
+            }
+            Event::UserEvent(AudioEvent::FolderScanned(result)) => {
+                match result {
+                    Ok(paths) => folder_files = Some(paths),
+                    Err(problem) => {
+                        scanning_folder = false;
+                        folder_error = Some(problem);
+                    }
+                }
+                Some(AudioCommand::Ready {})
             }
             Event::UserEvent(AudioEvent::Prepared(Ok((metadata, audio)))) => {
                 // A direct ALSA endpoint can permit only one active stream.
@@ -558,11 +645,29 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             );
         match action {
             Some(AudioCommand::Open {}) => {
-                if !queue.opening() {
+                if !was_importing {
                     let paths = dropped_files.unwrap_or_else(|| pick_files(&window));
+                    if !paths.is_empty() {
+                        folder_error = None;
+                    }
                     match queue.replace(paths) {
                         Ok(path) => requested_path = path,
                         Err(problem) => error = Some(problem.into()),
+                    }
+                }
+            }
+            Some(AudioCommand::OpenFolder {}) => {
+                if !was_importing && let Some(folder) = pick_folder(&window) {
+                    folder_error = None;
+                    let result_events = result_events.clone();
+                    match std::thread::Builder::new()
+                        .name("pear-audio-folder".into())
+                        .spawn(move || {
+                            let result = scan_folder(&folder);
+                            let _ = result_events.send_event(AudioEvent::FolderScanned(result));
+                        }) {
+                        Ok(_) => scanning_folder = true,
+                        Err(_) => folder_error = Some("Could not scan the selected folder."),
                     }
                 }
             }
@@ -668,6 +773,16 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             *flow = ControlFlow::Exit;
             return;
         }
+        // Playback may have started opening another track while the folder was scanned.
+        if !queue.opening()
+            && let Some(paths) = folder_files.take()
+        {
+            scanning_folder = false;
+            match queue.append(paths) {
+                Ok(path) => requested_path = path,
+                Err(problem) => folder_error = Some(problem),
+            }
+        }
         let settings = preferences.current();
         let transport = track.as_mut().map(|track| {
             let snapshot = track.engine.snapshot(queue.opening());
@@ -709,8 +824,10 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             }
         }
         let opening = queue.opening();
-        if opening != was_opening {
-            open.set_enabled(!opening);
+        let importing = opening || scanning_folder;
+        if importing != was_importing {
+            open.set_enabled(!importing);
+            open_folder.set_enabled(!importing);
         }
         if let Some(media) = &mut media {
             media.update(
@@ -771,8 +888,10 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             album: metadata.and_then(|metadata| metadata.album.as_deref()),
             transport,
             error: error.as_deref(),
+            folder_error,
             settings_error: preferences.problem(),
             opening,
+            scanning_folder,
             queue: send_queue.then(|| queue.view()),
             settings: send_settings.then_some(settings),
             equalizer: (ready || eq_revision.is_some()).then_some(&equalizer),
@@ -792,6 +911,88 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct MusicFolder(PathBuf);
+
+    impl MusicFolder {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "pear-music-folder-{}-{}",
+                std::process::id(),
+                fastrand::u64(..)
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+
+        fn file(&self, filename: &str) -> PathBuf {
+            let path = self.0.join(filename);
+            std::fs::write(&path, []).unwrap();
+            path
+        }
+    }
+
+    impl Drop for MusicFolder {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn folder_scan_sorts_immediate_supported_regular_files_by_filename() {
+        let folder = MusicFolder::new();
+        let z = folder.file("z.MP3");
+        let a = folder.file("A.flac");
+        let middle = folder.file("middle.ogg");
+        let nested = folder.0.join("nested.wav");
+        std::fs::create_dir(&nested).unwrap();
+        std::fs::write(nested.join("song.wav"), []).unwrap();
+        folder.file("song.mp4");
+        folder.file("WAV");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&z, folder.0.join("link.mp3")).unwrap();
+
+        assert_eq!(scan_folder(&folder.0), Ok(vec![a, middle, z]));
+    }
+
+    #[test]
+    fn folder_scan_reports_empty_missing_and_over_capacity_folders() {
+        let folder = MusicFolder::new();
+        assert_eq!(
+            scan_folder(&folder.0),
+            Err("The selected folder contains no supported audio files.")
+        );
+        assert_eq!(
+            scan_folder(&folder.0.join("missing")),
+            Err("Could not read the selected folder.")
+        );
+        let mut songs = Vec::new();
+        for index in 0..200 {
+            songs.push(folder.file(&format!("{index:03}.m4a")));
+        }
+        assert_eq!(scan_folder(&folder.0), Ok(songs));
+        folder.file("extra.wav");
+        assert_eq!(
+            scan_folder(&folder.0),
+            Err("Adding this folder would exceed the 200-track queue limit.")
+        );
+    }
+
+    #[test]
+    fn folder_scan_limits_all_directory_entries_including_unsupported_files() {
+        let folder = MusicFolder::new();
+        let track = folder.file("song.wav");
+        for index in 0..4095 {
+            folder.file(&format!("{index}.txt"));
+        }
+        assert_eq!(scan_folder(&folder.0), Ok(vec![track]));
+
+        folder.file("extra.txt");
+        assert_eq!(
+            scan_folder(&folder.0),
+            Err("The selected folder has more than 4,096 entries. Choose a smaller folder.")
+        );
+    }
 
     #[test]
     fn local_queue_keeps_the_old_selection_until_a_batch_opens() {
@@ -884,6 +1085,24 @@ mod tests {
             command(&message(DOCUMENT, r#"{"type":"open"}"#)),
             Some(AudioCommand::Open {})
         ));
+        assert!(matches!(
+            command(&message(DOCUMENT, r#"{"type":"open_folder"}"#)),
+            Some(AudioCommand::OpenFolder {})
+        ));
+        assert!(
+            command(&message(
+                DOCUMENT,
+                r#"{"type":"open_folder","path":"/tmp/music"}"#
+            ))
+            .is_none()
+        );
+        assert!(
+            command(&message(
+                "https://example.com/",
+                r#"{"type":"open_folder"}"#
+            ))
+            .is_none()
+        );
         let reset = r#"{"type":"reset_effects"}"#;
         assert!(matches!(
             command(&message(DOCUMENT, reset)),

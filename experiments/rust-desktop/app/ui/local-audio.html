@@ -13,15 +13,18 @@
     <main class="local-player">
       <header class="local-header">
         <h1>Local audio</h1>
-        <button id="open" class="add-button" type="button">
-          Open audio files
-        </button>
+        <div class="local-import">
+          <button id="open" class="add-button" type="button">
+            Open audio files
+          </button>
+          <button id="open-folder" type="button">Open folder</button>
+        </div>
       </header>
       <p id="empty">
         Open WAV, FLAC, MP3, Ogg Opus, or AAC-LC M4A files, or drop them into
         this window.
       </p>
-      <p id="opening" role="status" hidden>Opening audio…</p>
+      <p id="opening" role="status" hidden></p>
       <p id="problem" class="feedback error" role="alert"></p>
       <section id="player" class="local-track" aria-label="Playback" hidden>
         <h2 id="track" class="queue-title" dir="auto"></h2>

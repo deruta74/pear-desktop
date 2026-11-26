@@ -45,6 +45,58 @@ async function localAudioPage(t, viewport = { width: 420, height: 475 }) {
   return { page, messages, render, blocked };
 }
 
+test('requests a native folder picker and keeps playback controls active during the scan', async (t) => {
+  const { page, messages, render } = await localAudioPage(t, {
+    width: 290,
+    height: 475,
+  });
+  const folder = page.getByRole('button', { name: 'Open folder' });
+  const files = page.getByRole('button', { name: 'Open audio files' });
+  const track = 'Current.wav';
+  const transport = { positionMs: 1500, durationMs: 48000, playing: true };
+  await render({ track, transport });
+  await folder.click({ timeout: 1000 });
+  expect((await messages()).at(-1)).toEqual({ type: 'open_folder' });
+  await render({ track, transport, scanningFolder: true });
+  await expect(page.getByRole('status')).toHaveText('Scanning audio folder…');
+  await expect(folder).toBeFocused();
+  const count = (await messages()).length;
+  for (const button of [files, folder]) {
+    await expect(button).toBeDisabled();
+    await button.dispatchEvent('click');
+  }
+  expect(await messages()).toHaveLength(count);
+  const pause = page.getByRole('button', { name: 'Pause', exact: true });
+  await expect(pause).toBeEnabled();
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toHaveValue('1500');
+  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+  const folderError = 'The selected folder contains no supported audio files.';
+  await render({ track, transport, folderError });
+  await expect(folder).toBeEnabled();
+  await expect(page.getByRole('status')).toBeHidden();
+  await expect(page.getByRole('alert')).toHaveText(folderError, {
+    timeout: 1000,
+  });
+  const decodeError = 'Could not continue decoding the audio file.';
+  await render({
+    track,
+    transport: { ...transport, error: decodeError },
+    opening: true,
+    folderError,
+  });
+  await expect(page.getByRole('alert')).toHaveText(
+    `${decodeError} ${folderError}`,
+  );
+  await render({ track: 'Next.wav', transport, folderError });
+  await expect(page.getByRole('alert')).toHaveText(folderError);
+});
+
 test('opens local audio files and sends playback and exact reverb settings to Rust', async (t) => {
   const { page, messages, render, blocked } = await localAudioPage(t);
   const open = page.getByRole('button', { name: 'Open audio files' });

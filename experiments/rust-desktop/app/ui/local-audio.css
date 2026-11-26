@@ -62,11 +62,15 @@
   font-size: 1.0625rem;
 }
 
+.local-import,
 .local-queue-tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem;
+}
+
+.local-queue-tools {
   font-size: 0.875rem;
 }
 

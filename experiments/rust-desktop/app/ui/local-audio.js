@@ -2,6 +2,7 @@
 
 const element = (id) => document.getElementById(id);
 const open = element('open');
+const openFolder = element('open-folder');
 const track = element('track');
 const trackDetails = element('track-details');
 const seek = element('seek');
@@ -22,6 +23,7 @@ const defaultLowPass = 6500;
 let current = null;
 let queueState = { revision: 0, tracks: [], selected: null };
 let opening = false;
+let importing = false;
 let scrubbing = false;
 
 function send(type, fields) {
@@ -150,8 +152,10 @@ window.renderPearLocal = ({
   album,
   transport,
   error,
+  folderError,
   settingsError,
   opening: isOpening = false,
+  scanningFolder = false,
   queue,
   settings,
   equalizer,
@@ -161,14 +165,19 @@ window.renderPearLocal = ({
   const keepPlayer = isOpening && !transport && Boolean(current);
   if (!keepPlayer) current = transport;
   const wasHidden = element('player').hidden;
-  const openHadFocus = document.activeElement === open;
+  const openHadFocus =
+    document.activeElement === open || document.activeElement === openFolder;
   if (queue || opening !== isOpening) {
     opening = isOpening;
     queueState = queue ?? queueState;
     renderQueue();
   }
-  open.setAttribute('aria-disabled', String(opening));
-  element('opening').hidden = !opening;
+  importing = opening || scanningFolder;
+  open.setAttribute('aria-disabled', String(importing));
+  openFolder.setAttribute('aria-disabled', String(importing));
+  const status = element('opening');
+  setText(status, scanningFolder ? 'Scanning audio folder…' : 'Opening audio…');
+  status.hidden = !importing;
   element('player').hidden = element('effects').hidden = !current;
   window.renderPearEqualizer?.(
     equalizer,
@@ -177,8 +186,12 @@ window.renderPearLocal = ({
     eqRevision,
   );
   element('empty').hidden =
-    Boolean(transport) || opening || queueState.tracks.length > 0;
-  const problems = [transport?.error ?? error, settingsError].filter(Boolean);
+    Boolean(transport) || importing || queueState.tracks.length > 0;
+  const problems = [
+    transport?.error ?? error,
+    folderError,
+    settingsError,
+  ].filter(Boolean);
   setText(element('problem'), problems.join(' '));
   if (settings) {
     volume.value = Math.round(settings.volume * 100);
@@ -208,7 +221,10 @@ window.renderPearLocal = ({
 };
 
 open.addEventListener('click', () => {
-  if (!opening) send('open');
+  if (!importing) send('open');
+});
+openFolder.addEventListener('click', () => {
+  if (!importing) send('open_folder');
 });
 previous.addEventListener('click', () => {
   if (queueState.selected !== null) selectTrack(queueState.selected - 1);

@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-const MAX_TRACKS: usize = 200;
+pub(super) const MAX_TRACKS: usize = 200;
+pub(super) const FOLDER_CAPACITY_ERROR: &str =
+    "Adding this folder would exceed the 200-track queue limit.";
 
 #[derive(Default)]
 pub(super) struct Queue {
@@ -18,6 +20,15 @@ pub(super) struct Queue {
 struct Entry {
     path: PathBuf,
     title: String,
+}
+
+impl Entry {
+    fn from_path(path: PathBuf) -> Self {
+        Self {
+            title: super::metadata::filename(&path),
+            path,
+        }
+    }
 }
 
 struct Pending {
@@ -90,21 +101,39 @@ impl Queue {
         if paths.len() > MAX_TRACKS {
             return Err("Choose up to 200 audio files at a time.");
         }
-        let entries: Vec<_> = paths
-            .into_iter()
-            .map(|path| Entry {
-                title: super::metadata::filename(&path),
-                path,
-            })
-            .collect();
-        let first_path = entries[0].path.clone();
+        let entries = paths.into_iter().map(Entry::from_path).collect();
+        Ok(Some(self.prepare_replacement(entries, 0)))
+    }
+
+    pub(super) fn append(&mut self, paths: Vec<PathBuf>) -> Result<Option<PathBuf>, &'static str> {
+        if self.opening() || paths.is_empty() {
+            return Ok(None);
+        }
+        let first_added = self.entries.len();
+        if paths.len() > MAX_TRACKS - first_added {
+            return Err(FOLDER_CAPACITY_ERROR);
+        }
+        let added = paths.into_iter().map(Entry::from_path);
+        if self.selected.is_none() {
+            let mut entries = self.entries.clone();
+            entries.extend(added);
+            return Ok(Some(self.prepare_replacement(entries, first_added)));
+        }
+        self.entries.extend(added);
+        self.revision = self.revision.wrapping_add(1);
+        self.consecutive_failures = 0;
+        Ok(None)
+    }
+
+    fn prepare_replacement(&mut self, entries: Vec<Entry>, index: usize) -> PathBuf {
+        let path = entries[index].path.clone();
         self.pending = Some(Pending {
-            remaining: entries.len(),
+            remaining: entries.len() - index,
             request: OpenRequest::Replace(entries),
-            index: 0,
+            index,
             skipped: 0,
         });
-        Ok(Some(first_path))
+        path
     }
 
     pub(super) fn select(&mut self, revision: u32, index: usize, play: bool) -> Option<PathBuf> {
@@ -295,6 +324,59 @@ mod tests {
             assert_eq!(queue.finish(), (false, 0));
         }
         queue
+    }
+
+    #[test]
+    fn folder_append_preserves_the_selected_track_and_duplicates() {
+        let mut queue = queue_with(&["first.wav", "current.mp3", "next.wav"], 1);
+        let previous_revision = queue.view().revision;
+        assert_eq!(
+            queue.append(vec!["current.mp3".into(), "last.flac".into()]),
+            Ok(None)
+        );
+        let view = queue.view();
+        assert_eq!(view.selected, Some(1));
+        assert_eq!(
+            view.tracks,
+            [
+                "first.wav",
+                "current.mp3",
+                "next.wav",
+                "current.mp3",
+                "last.flac"
+            ]
+        );
+        assert_ne!(view.revision, previous_revision);
+        assert!(!queue.opening());
+    }
+
+    #[test]
+    fn folder_append_checks_capacity_before_changing_the_queue() {
+        let mut queue = queue_with(&["first.wav"], 0);
+        let revision = queue.view().revision;
+        assert!(queue.append(vec!["folder.wav".into(); MAX_TRACKS]).is_err());
+        assert_eq!(queue.view().tracks, ["first.wav"]);
+        assert_eq!(queue.view().revision, revision);
+        assert!(!queue.opening());
+
+        assert_eq!(
+            queue.append(vec!["folder.wav".into(); MAX_TRACKS - 1]),
+            Ok(None)
+        );
+        assert_eq!(queue.view().tracks.len(), MAX_TRACKS);
+    }
+
+    #[test]
+    fn folder_append_into_an_empty_queue_uses_the_existing_open_pipeline() {
+        let mut queue = Queue::default();
+        assert_eq!(
+            queue.append(vec!["bad.mp3".into(), "second.wav".into()]),
+            Ok(Some("bad.mp3".into()))
+        );
+        assert!(queue.view().tracks.is_empty());
+        assert_eq!(queue.retry_after_read_error(), Some("second.wav".into()));
+        assert_eq!(queue.finish(), (false, 1));
+        assert_eq!(queue.view().selected, Some(1));
     }
 
     #[test]
