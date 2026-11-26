@@ -1,6 +1,6 @@
 use std::{
     io,
-    sync::mpsc::{self, SyncSender},
+    sync::mpsc::{self, SyncSender, TrySendError},
     thread,
     time::{Duration, Instant},
 };
@@ -10,11 +10,13 @@ use tao::event_loop::EventLoopProxy;
 
 use super::{
     PlayerEvent,
-    lyrics::{Client, Document, LookupError, normalize_query},
+    lyrics::{Client, Document, LookupError, MAX_DURATION_SECONDS, normalize_query},
     metadata_lookup::Retention,
 };
 
 pub(super) type Response = Result<Option<Document>, LookupError>;
+
+const LOOKUP_FAILED: &str = "Could not load lyrics from LRCLIB. Try again.";
 
 struct Request {
     revision: u64,
@@ -34,7 +36,8 @@ pub(super) struct View {
 }
 
 pub(super) struct Lookup {
-    sender: SyncSender<Request>,
+    start_worker: Box<dyn Fn() -> io::Result<SyncSender<Request>>>,
+    sender: Option<SyncSender<Request>>,
     selected: Option<String>,
     view: View,
     revision: u64,
@@ -46,28 +49,35 @@ pub(super) struct Lookup {
 }
 
 impl Lookup {
-    pub(super) fn new(events: EventLoopProxy<PlayerEvent>) -> io::Result<Self> {
-        let (sender, receiver) = mpsc::sync_channel::<Request>(1);
-        thread::Builder::new()
-            .name("lrclib".into())
-            .spawn(move || {
-                let client = Client::new();
-                while let Ok(request) = receiver.recv() {
-                    let response = client.lookup(&request.title, &request.artist, request.duration);
-                    if events
-                        .send_event(PlayerEvent::LyricsResult(request.revision, response))
-                        .is_err()
-                    {
-                        break;
+    pub(super) fn new(events: EventLoopProxy<PlayerEvent>) -> Self {
+        Self::with_start_worker(move || {
+            let events = events.clone();
+            let (sender, receiver) = mpsc::sync_channel::<Request>(1);
+            thread::Builder::new()
+                .name("lrclib".into())
+                .spawn(move || {
+                    let client = Client::new();
+                    while let Ok(request) = receiver.recv() {
+                        let response =
+                            client.lookup(&request.title, &request.artist, request.duration);
+                        if events
+                            .send_event(PlayerEvent::LyricsResult(request.revision, response))
+                            .is_err()
+                        {
+                            break;
+                        }
                     }
-                }
-            })?;
-        Ok(Self::with_sender(sender))
+                })?;
+            Ok(sender)
+        })
     }
 
-    fn with_sender(sender: SyncSender<Request>) -> Self {
+    fn with_start_worker(
+        start_worker: impl Fn() -> io::Result<SyncSender<Request>> + 'static,
+    ) -> Self {
         Self {
-            sender,
+            start_worker: Box::new(start_worker),
+            sender: None,
             selected: None,
             view: View::default(),
             revision: 0,
@@ -132,6 +142,10 @@ impl Lookup {
             self.view.problem = Some("Start the video before looking up lyrics.");
             return;
         };
+        if duration > MAX_DURATION_SECONDS {
+            self.view.problem = Some(LOOKUP_FAILED);
+            return;
+        }
         self.waiting = Some(Request {
             revision: self.revision,
             title,
@@ -152,11 +166,19 @@ impl Lookup {
         let revision = request.revision;
         if self.throttled_until.is_some_and(|until| until > time) {
             self.view.problem = Some("LRCLIB is limiting requests. Try again shortly.");
-        } else if self.sender.try_send(request).is_ok() {
-            self.in_flight = Some(revision);
-            return;
         } else {
-            self.view.problem = Some("Could not start lyrics lookup. Restart Pear to retry.");
+            if self.sender.is_none() {
+                self.sender = (self.start_worker)().ok();
+            }
+            match self.sender.as_ref().map(|sender| sender.try_send(request)) {
+                Some(Ok(())) => {
+                    self.in_flight = Some(revision);
+                    return;
+                }
+                Some(Err(TrySendError::Disconnected(_))) => self.sender = None,
+                Some(Err(TrySendError::Full(_))) | None => {}
+            }
+            self.view.problem = Some("Could not start lyrics lookup. Try again.");
         }
         self.view.pending = false;
     }
@@ -181,7 +203,7 @@ impl Lookup {
                 Err(LookupError::Throttled) => {
                     self.view.problem = Some("LRCLIB is limiting requests. Try again shortly.");
                 }
-                Err(_) => self.view.problem = Some("Could not load lyrics from LRCLIB. Try again."),
+                Err(_) => self.view.problem = Some(LOOKUP_FAILED),
             }
         }
         let was_pending = self.view.pending;
@@ -214,11 +236,75 @@ impl Lookup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn starts_worker_only_after_a_valid_request_and_reuses_it() {
+        let starts = std::rc::Rc::new(Cell::new(0));
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut lookup = Lookup::with_start_worker({
+            let starts = starts.clone();
+            move || {
+                starts.set(starts.get() + 1);
+                Ok(sender.clone())
+            }
+        });
+        let now = Instant::now();
+
+        lookup.submit("Track", "Artist", now);
+        lookup.select(Some("first"), Some("Artist - Track"), None);
+        assert_eq!(lookup.view().unwrap().track, "Track");
+        lookup.submit("Track", "Artist", now);
+        assert!(lookup.set_duration(Some(24 * 60 * 60 + 1)));
+        lookup.submit("Track", "Artist", now);
+        assert_eq!(
+            lookup.view().unwrap().problem,
+            Some("Could not load lyrics from LRCLIB. Try again.")
+        );
+        assert!(lookup.set_duration(Some(200)));
+        lookup.submit("", "Artist", now);
+        assert_eq!(starts.get(), 0);
+
+        lookup.submit("Track", "Artist", now);
+        let first = receiver.try_recv().unwrap();
+        assert!(lookup.receive(first.revision, Ok(None), now));
+        lookup.submit("Track", "Artist", now);
+        assert!(receiver.try_recv().is_ok());
+        assert_eq!(starts.get(), 1);
+    }
+
+    #[test]
+    fn retries_starting_worker_on_the_next_valid_submission() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let first_attempt = Cell::new(true);
+        let mut lookup = Lookup::with_start_worker(move || {
+            if first_attempt.replace(false) {
+                Err(io::Error::other("worker could not start"))
+            } else {
+                Ok(sender.clone())
+            }
+        });
+        let now = Instant::now();
+        lookup.select(Some("first"), Some("Artist - Track"), None);
+        assert!(lookup.set_duration(Some(200)));
+
+        lookup.submit("Track", "Artist", now);
+        let view = lookup.view().unwrap();
+        assert!(!view.pending);
+        assert!(view.problem.is_some());
+        assert!(receiver.try_recv().is_err());
+
+        lookup.submit("Track", "Artist", now);
+        let request = receiver.try_recv().unwrap();
+        assert!(lookup.view().unwrap().pending);
+        assert!(lookup.receive(request.revision, Ok(Some(Document::Instrumental)), now));
+        assert!(lookup.view().unwrap().result.is_some());
+    }
 
     #[test]
     fn lyrics_lookup_requires_duration_and_ignores_a_previous_video_result() {
         let (sender, receiver) = mpsc::sync_channel(1);
-        let mut lookup = Lookup::with_sender(sender);
+        let mut lookup = Lookup::with_start_worker(move || Ok(sender.clone()));
         let now = Instant::now();
         lookup.select(Some("first"), Some("Artist - Track"), None);
         lookup.submit("Track", "Artist", now);

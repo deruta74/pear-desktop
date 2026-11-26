@@ -809,18 +809,12 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     };
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     let mut auto_advance = advance::Advance::default();
-    let lyrics_worker = {
+    let make_lyrics_lookup = {
         let events = event_loop.create_proxy();
-        move || match lyrics_lookup::Lookup::new(events.clone()) {
-            Ok(lyrics) => Some(lyrics),
-            Err(_) => {
-                eprintln!("Could not start LRCLIB lyrics lookup.");
-                None
-            }
-        }
+        move || lyrics_lookup::Lookup::new(events.clone())
     };
     let mut lyrics = if approved && mode.iframe_player && !mode.smoke {
-        lyrics_worker()
+        Some(make_lyrics_lookup())
     } else {
         None
     };
@@ -988,7 +982,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     transport = (enabled && public_playlist.is_none()).then(transport::Transport::default);
                     if enabled {
                         if lyrics.is_none() {
-                            lyrics = lyrics_worker();
+                            lyrics = Some(make_lyrics_lookup());
                         }
                     } else {
                         if let Some(lyrics) = &mut lyrics {
@@ -1245,7 +1239,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                     preferences.as_ref().and_then(preferences::Preferences::youtube_oauth_client_file),
                                 );
                                 if mode.iframe_player {
-                                    lyrics = lyrics_worker();
+                                    lyrics = Some(make_lyrics_lookup());
                                 }
                                 reload_player = true;
                             }
@@ -1623,7 +1617,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 eprintln!("Could not update the playback speed menu: {reason}");
             }
         }
-        if approved && controls_ready && let Some(transport) = &mut transport
+        if approved && controls_ready && queue_visible && let Some(transport) = &mut transport
             && let Err(reason) = transport.render(&controls, !switching && library.state().current.is_some())
         {
             eprintln!("Could not update the playback controls: {reason}");

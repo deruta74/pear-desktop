@@ -19,6 +19,7 @@ pub(super) struct Transport {
     pending: Option<u64>,
     sequence: u64,
     refresh_controls: bool,
+    playing: bool,
     rendered: Option<Option<Controls>>,
     requested_volume: Option<(u8, Instant)>,
     requested_muted: Option<(bool, Instant)>,
@@ -47,6 +48,7 @@ impl Transport {
         self.deadline = has_video.then(Instant::now);
         self.pending = None;
         self.refresh_controls = false;
+        self.playing = false;
         self.rendered = None;
         self.requested_volume = None;
         self.requested_muted = None;
@@ -62,9 +64,14 @@ impl Transport {
     }
 
     pub(super) fn expire(&mut self, time: Instant) -> bool {
-        self.sampled_at
+        let expired = self
+            .sampled_at
             .is_some_and(|sample| time.duration_since(sample) >= POLL_TIMEOUT)
-            && self.snapshot.take().is_some()
+            && self.snapshot.take().is_some();
+        if expired {
+            self.playing = false;
+        }
+        expired
     }
 
     pub(super) fn is_stale(&self) -> bool {
@@ -88,6 +95,8 @@ impl Transport {
         self.pending = None;
         self.deadline = Some(time + POLL_INTERVAL);
         if let Some(snapshot) = Snapshot::parse(response) {
+            let buffering = snapshot.state == Some(3) && !snapshot.ended;
+            self.playing = snapshot.state == Some(1) || (buffering && self.playing);
             self.snapshot = Some(snapshot);
             self.sampled_at = Some(time);
             if std::mem::take(&mut self.refresh_controls) {
@@ -191,21 +200,12 @@ impl Transport {
         self.rendered = None;
     }
 
-    pub(super) fn render(&mut self, view: &WebView, has_video: bool) -> Result<()> {
+    fn controls(&self, has_video: bool) -> Option<Controls> {
         let snapshot = self.snapshot.as_ref();
-        let controls = has_video.then(|| Controls {
+        has_video.then(|| Controls {
             ready: self.ready(),
             has_played: snapshot.is_some_and(|state| state.has_played),
-            playing: snapshot.is_some_and(|state| {
-                state.state == Some(1)
-                    || (state.state == Some(3)
-                        && !state.ended
-                        && self
-                            .rendered
-                            .as_ref()
-                            .and_then(Option::as_ref)
-                            .is_some_and(|view| view.playing))
-            }),
+            playing: self.playing,
             position: snapshot.and_then(|state| state.position),
             position_ms: snapshot.and_then(|state| state.position_ms),
             playback_rate: snapshot.and_then(|state| state.playback_rate),
@@ -216,7 +216,11 @@ impl Transport {
             clock_running: snapshot.is_some_and(|state| {
                 state.state == Some(1) && !state.blocked && state.error.is_none()
             }),
-        });
+        })
+    }
+
+    pub(super) fn render(&mut self, view: &WebView, has_video: bool) -> Result<()> {
+        let controls = self.controls(has_video);
         if self.rendered.as_ref() != Some(&controls) {
             let value = serde_json::to_string(&controls)?;
             view.evaluate_script(&format!("window.renderPearTransport({value});"))?;
@@ -246,6 +250,32 @@ mod tests {
     use super::*;
 
     const PAUSED: &str = r#"{"ready":true,"hasPlayed":true,"state":2,"position":10,"duration":20,"ended":false,"error":null,"blocked":false}"#;
+
+    #[test]
+    fn transport_tracks_buffering_after_playback_without_a_visible_panel() {
+        let mut transport = Transport::default();
+        transport.reset(true);
+        let started = Instant::now();
+        let sequence = transport.begin(started).unwrap();
+        let playing = PAUSED.replace("\"state\":2", "\"state\":1");
+        assert!(transport.receive(sequence, &playing, started));
+
+        let later = started + POLL_INTERVAL;
+        let sequence = transport.begin(later).unwrap();
+        let sample = PAUSED
+            .replace("\"state\":2", "\"state\":3")
+            .replace("\"position\":10", "\"position\":17");
+        assert!(transport.receive(sequence, &sample, later));
+        let controls = transport.controls(true).unwrap();
+        assert!(controls.playing);
+        assert_eq!(controls.position, Some(17));
+        assert!(!controls.clock_running);
+
+        assert!(transport.expire(later + POLL_TIMEOUT));
+        let sequence = transport.begin(later + POLL_TIMEOUT).unwrap();
+        assert!(transport.receive(sequence, &sample, later + POLL_TIMEOUT));
+        assert!(!transport.controls(true).unwrap().playing);
+    }
 
     #[test]
     fn remembers_only_confirmed_output_changes_from_fresh_samples() {
