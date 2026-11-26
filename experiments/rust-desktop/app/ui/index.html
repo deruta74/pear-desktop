@@ -318,7 +318,19 @@
             />
             <button class="add-button" type="submit">Search</button>
           </div>
-          <p id="catalog-feedback" class="feedback" aria-live="polite"></p>
+          <div class="catalog-summary">
+            <p id="catalog-feedback" class="feedback" aria-live="polite"></p>
+            <button
+              id="catalog-load-more"
+              type="button"
+              aria-controls="catalog-results"
+              aria-describedby="catalog-page-feedback"
+              hidden
+            >
+              Load more
+            </button>
+          </div>
+          <p id="catalog-page-feedback" class="feedback" aria-live="polite"></p>
           <p id="catalog-add-feedback" class="feedback" aria-live="polite"></p>
         </form>
         <ul
@@ -326,6 +338,7 @@
           class="queue-items catalog-results"
           role="list"
           aria-label="YouTube results"
+          tabindex="-1"
           hidden
         ></ul>
       </template>

@@ -1105,6 +1105,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             catalog.submit(&query, Instant::now());
                         }
                     }
+                    Command::LoadMorePlaylist { revision } => {
+                        if let Some(catalog) = &mut catalog {
+                            catalog.load_more(revision, Instant::now());
+                        }
+                    }
                     Command::OpenMusicSearch { query } => {
                         match music_search_url(&query) {
                             Ok(url) => {

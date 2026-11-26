@@ -55,6 +55,9 @@ pub enum Command {
     Search {
         query: String,
     },
+    LoadMorePlaylist {
+        revision: u64,
+    },
     OpenMusicSearch {
         query: String,
     },
@@ -254,6 +257,7 @@ impl Library {
             | Command::OpenLegalLink { .. }
             | Command::OpenBrowser {}
             | Command::Search { .. }
+            | Command::LoadMorePlaylist { .. }
             | Command::OpenMusicSearch { .. }
             | Command::OpenPlaylistVideo { .. }
             | Command::PlayPublicPlaylist { .. }

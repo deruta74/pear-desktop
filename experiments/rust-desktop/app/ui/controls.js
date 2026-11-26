@@ -68,6 +68,7 @@ let renderedCatalog = null;
 let renderedBrowserSearch = false;
 let catalogView = null;
 let catalogSearchError = '';
+let catalogPageError = '';
 let browserSearchError = '';
 let catalogAddFeedback = null;
 let renderedLyrics = null;
@@ -122,6 +123,7 @@ function commandProblem(message, context) {
   }
   if (context === 'browser-search') browserSearchError = message;
   else if (context === 'search') catalogSearchError = message;
+  else if (context === 'playlist-page') catalogPageError = message;
   else catalogAddFeedback = { message, error: true };
   updateCatalog(renderedCatalog);
 }
@@ -188,6 +190,8 @@ function send(command, context = 'queue') {
   if (context === 'legal') legalCommandProblem = '';
   if (context === 'browser-search') browserSearchError = '';
   if (context === 'search') catalogSearchError = '';
+  if (context === 'search' || context === 'playlist-page')
+    catalogPageError = '';
   if (context === 'search' || context === 'result-add')
     catalogAddFeedback = null;
   if (context === 'lyrics') lyricsError = '';
@@ -756,6 +760,8 @@ function mountCatalog(query) {
   const label = searchForm.querySelector('#catalog-query-label');
   const submit = searchForm.querySelector('button');
   const feedback = searchForm.querySelector('#catalog-feedback');
+  const loadMore = searchForm.querySelector('#catalog-load-more');
+  const pageFeedback = searchForm.querySelector('#catalog-page-feedback');
   const addFeedback = searchForm.querySelector('#catalog-add-feedback');
   input.value = query;
   searchForm.addEventListener('submit', (event) => {
@@ -781,6 +787,19 @@ function mountCatalog(query) {
     input.value = query;
     send({ type: 'search', query }, 'search');
   });
+  loadMore.addEventListener('click', () => {
+    const playlist = renderedCatalog?.playlist;
+    if (
+      loadMore.hidden ||
+      loadMore.getAttribute('aria-disabled') === 'true' ||
+      !Number.isSafeInteger(playlist?.revision)
+    )
+      return;
+    send(
+      { type: 'load_more_playlist', revision: playlist.revision },
+      'playlist-page',
+    );
+  });
   catalogTemplate.before(searchForm, results);
   return {
     form: searchForm,
@@ -788,10 +807,13 @@ function mountCatalog(query) {
     label,
     submit,
     feedback,
+    loadMore,
+    pageFeedback,
     addFeedback,
     results,
     renderedResults: [],
     renderedAsPlaylist: false,
+    playlistRevision: undefined,
   };
 }
 
@@ -852,6 +874,8 @@ function createCatalogResult({ id, title, channel }, playlist) {
 function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   if (renderedCatalog?.playlist && !catalog?.playlist)
     catalogAddFeedback = null;
+  if (renderedCatalog?.playlist?.revision !== catalog?.playlist?.revision)
+    catalogPageError = '';
   renderedCatalog = catalog ?? null;
   renderedBrowserSearch = !catalog && browserSearch === true;
   if (!renderedBrowserSearch) browserSearchError = '';
@@ -888,32 +912,72 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   const results = searching ? [] : (catalog?.results ?? []);
   const playlist = catalog?.playlist;
   const asPlaylist = Boolean(playlist);
-  if (
-    asPlaylist !== view.renderedAsPlaylist ||
-    results.length !== view.renderedResults.length ||
-    results.some((result, index) => {
-      const previous = view.renderedResults[index];
+  const previousResults = view.renderedResults;
+  const samePlaylist = view.playlistRevision === playlist?.revision;
+  const preservesRows =
+    asPlaylist === view.renderedAsPlaylist &&
+    samePlaylist &&
+    previousResults.every((previous, index) => {
+      const result = results[index];
       return (
-        result.id !== previous.id ||
-        result.title !== previous.title ||
-        result.channel !== previous.channel
+        result &&
+        result.id === previous.id &&
+        result.title === previous.title &&
+        result.channel === previous.channel
       );
-    })
-  ) {
-    if (view.results.contains(document.activeElement)) view.query.focus();
-    view.results.replaceChildren(
-      ...results.map((result) => createCatalogResult(result, asPlaylist)),
-    );
+    });
+  if (!preservesRows || results.length !== previousResults.length) {
+    if (asPlaylist && preservesRows) {
+      view.results.append(
+        ...results
+          .slice(previousResults.length)
+          .map((result) => createCatalogResult(result, true)),
+      );
+    } else {
+      if (view.results.contains(document.activeElement)) view.query.focus();
+      view.results.replaceChildren(
+        ...results.map((result) => createCatalogResult(result, asPlaylist)),
+      );
+    }
     view.results.setAttribute(
       'aria-label',
       asPlaylist ? 'YouTube playlist videos' : 'YouTube results',
     );
     view.renderedResults = results;
     view.renderedAsPlaylist = asPlaylist;
+    view.playlistRevision = playlist?.revision;
   }
   view.results.hidden = view.form.hidden || !results.length;
   const controlsBusy = Boolean(pending);
   view.submit.setAttribute('aria-disabled', String(controlsBusy));
+  const loadingPage = playlist?.pending || pending?.context === 'playlist-page';
+  const canLoadMore = !searching && playlist?.hasMore;
+  const loadMoreHadFocus = document.activeElement === view.loadMore;
+  view.loadMore.hidden = !canLoadMore;
+  view.loadMore.setAttribute(
+    'aria-disabled',
+    String(controlsBusy || loadingPage),
+  );
+  if (!canLoadMore && loadMoreHadFocus)
+    (results.length && !searching ? view.results : view.query).focus({
+      preventScroll: true,
+    });
+
+  const pageProblem = !searching && (catalogPageError || playlist?.problem);
+  let pageMessage = '';
+  if (!searching && playlist) {
+    if (loadingPage) pageMessage = 'Loading more videos…';
+    else if (pageProblem) pageMessage = pageProblem;
+    else if (playlist.truncated)
+      pageMessage = 'Reached the playlist preview limit.';
+  }
+  view.pageFeedback.classList.toggle(
+    'error',
+    !loadingPage && Boolean(pageProblem),
+  );
+  if (view.pageFeedback.textContent !== pageMessage)
+    view.pageFeedback.textContent = pageMessage;
+
   for (const button of view.results.querySelectorAll('button')) {
     const id = button.dataset.playNext;
     const disabled = id ? playNextUnavailable(id) : controlsBusy;
@@ -941,8 +1005,7 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
     const videos =
       results.length === 1 ? '1 video' : `${results.length} videos`;
     message = [
-      playlist.hasMore ? 'First page' : null,
-      videos,
+      `${videos} loaded`,
       playlist.unavailable ? `${playlist.unavailable} unavailable` : null,
     ]
       .filter(Boolean)
@@ -1722,6 +1785,9 @@ window.renderPearState = (
     }
   } else if (context === 'search') {
     catalogSearchError = error ?? '';
+  } else if (context === 'playlist-page') {
+    catalogPageError =
+      command.revision === catalog?.playlist?.revision ? (error ?? '') : '';
   } else if (context === 'browser-search') {
     browserSearchError = error ?? '';
   } else if (context === 'result-add') {
@@ -1739,9 +1805,11 @@ window.renderPearState = (
     errorText.textContent = error ?? '';
   }
   if (
-    (context !== 'legal' &&
+    (acknowledged &&
+      context !== 'legal' &&
       context !== 'audio' &&
-      context !== 'browser-search') ||
+      context !== 'browser-search' &&
+      context !== 'playlist-page') ||
     command?.type === 'accept_legal' ||
     notice
   ) {
@@ -1893,7 +1961,7 @@ document.addEventListener('keydown', (event) => {
   if (
     target instanceof Element &&
     target.closest(
-      'input, textarea, button, select, a, summary, [contenteditable], [tabindex]:not([tabindex="-1"])',
+      'input, textarea, button, select, a, summary, #catalog-results, [contenteditable], [tabindex]:not([tabindex="-1"])',
     )
   )
     return;

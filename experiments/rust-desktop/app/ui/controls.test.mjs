@@ -1229,6 +1229,18 @@ function searchState(overrides = {}) {
   };
 }
 
+function publicPlaylistState(overrides = {}) {
+  return {
+    hasMore: true,
+    unavailable: 0,
+    revision: 7,
+    pending: false,
+    truncated: false,
+    problem: null,
+    ...overrides,
+  };
+}
+
 const pianoResult = {
   id: second,
   title: '<b>Studio piano & strings</b>',
@@ -1250,7 +1262,7 @@ test('shows public playlist limitations and hands off a selected row without add
     type: 'search',
     query: link,
   });
-  const playlist = { hasMore: true, unavailable: 2 };
+  const playlist = publicPlaylistState({ unavailable: 2 });
   await render(
     searchState({ query: 'PL_1234567890', playlist, pending: true }),
     null,
@@ -1263,9 +1275,7 @@ test('shows public playlist limitations and hands off a selected row without add
     results: [pianoResult, pianoResult],
   });
   await render(loaded, null, null);
-  await expect(
-    page.getByText('First page · 2 videos · 2 unavailable'),
-  ).toBeVisible();
+  await expect(page.getByText('2 videos loaded · 2 unavailable')).toBeVisible();
   const rows = page.getByRole('list', { name: 'YouTube playlist videos' });
   const actions = rows.getByRole('button', {
     name: /Open .* in YouTube Music/,
@@ -1279,6 +1289,7 @@ test('shows public playlist limitations and hands off a selected row without add
     type: 'open_playlist_video',
     id: second,
   });
+  await expect(page.getByRole('button', { name: 'Load more' })).toBeDisabled();
   await render(loaded, 'Could not open YouTube Music.', 3);
   await expect(page.getByText('Could not open YouTube Music.')).toBeVisible();
   await expect(page.getByText('1 of 1')).toBeVisible();
@@ -1286,6 +1297,126 @@ test('shows public playlist limitations and hands off a selected row without add
   await expect(input).toHaveValue(link);
   await expect(rows).toBeHidden();
   await expect(page.getByText('Could not open YouTube Music.')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Load more' })).toBeHidden();
+});
+
+test('loads more playlist rows explicitly and preserves repeated rows, scroll, and focus through a retry', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const initial = Array.from({ length: 12 }, (_, index) => ({
+    id: second,
+    title: `Track ${index + 1}`,
+    channel: 'Artist',
+  }));
+  const render = (playlist, results = initial, sequence = null, error = null) =>
+    state(page, [first], first, error, null, sequence, {
+      catalog: searchState({ query: 'PL_1234567890', results, playlist }),
+    });
+  await render(publicPlaylistState(), initial, 1);
+  await transport(page, readyTransport);
+  await page.getByRole('button', { name: 'Search' }).press('Enter');
+  const more = page.getByRole('button', { name: 'Load more' });
+  const rows = page.getByRole('list', { name: 'YouTube playlist videos' });
+  const items = rows.getByRole('listitem');
+  await expect(more).toBeInViewport();
+  await expect(items).toHaveCount(initial.length);
+  expect(await messages(page)).toHaveLength(1);
+  const scroll = await rows.evaluate((list) => {
+    list.scrollTop = 180;
+    window.originalPlaylistRows = Array.from(list.children);
+    return list.scrollTop;
+  });
+  expect(scroll).toBeGreaterThan(0);
+
+  await more.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'load_more_playlist', revision: 7 },
+  });
+  await expect(more).toBeDisabled();
+  await more.press('Enter');
+  expect(await messages(page)).toHaveLength(2);
+  await render(publicPlaylistState({ pending: true }), initial, 2);
+  await expect(page.getByText('Loading more videos…')).toBeVisible();
+  await expect(more).toBeFocused();
+  await expect(more).toBeDisabled();
+  await expect(items).toHaveCount(initial.length);
+  expect(await rows.evaluate((list) => list.scrollTop)).toBe(scroll);
+
+  const problem = 'YouTube did not respond. Try again.';
+  await render(publicPlaylistState({ problem }));
+  await expect(page.getByText(problem)).toBeVisible();
+  await expect(more).toBeEnabled();
+  await expect(more).toBeFocused();
+  expect(await rows.evaluate((list) => list.scrollTop)).toBe(scroll);
+
+  await more.press('Enter');
+  await render(
+    publicPlaylistState(),
+    initial,
+    3,
+    'Could not request the next page.',
+  );
+  await expect(
+    page.getByText('Could not request the next page.'),
+  ).toBeVisible();
+  await expect(more).toBeFocused();
+  await expect(more).toBeEnabled();
+
+  await more.press('Enter');
+  await render(publicPlaylistState({ pending: true }), initial, 4);
+  const additional = [initial[0], { ...pianoResult, id: third }];
+  await render(publicPlaylistState({ unavailable: 3 }), [
+    ...initial,
+    ...additional,
+  ]);
+  await expect(items).toHaveCount(initial.length + additional.length);
+  await expect(items.nth(initial.length)).toContainText('Track 1');
+  await expect(items.last()).toContainText(pianoResult.title);
+  await expect(
+    page.getByText('14 videos loaded · 3 unavailable'),
+  ).toBeVisible();
+  await expect(page.getByText(problem)).toBeHidden();
+  await expect(more).toBeFocused();
+  expect(await rows.evaluate((list) => list.scrollTop)).toBe(scroll);
+  expect(
+    await rows.evaluate((list) =>
+      window.originalPlaylistRows.every(
+        (row, index) => list.children[index] === row,
+      ),
+    ),
+  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+
+  await more.press('Enter');
+  await render(
+    publicPlaylistState({ hasMore: false, truncated: true }),
+    [...initial, ...additional],
+    5,
+  );
+  await expect(more).toBeHidden();
+  await expect(rows).toBeFocused();
+  await expect(
+    page.getByText('Reached the playlist preview limit.'),
+  ).toBeVisible();
+  expect(await rows.evaluate((list) => list.scrollTop)).toBe(scroll);
+  await page.keyboard.press('Space');
+  expect(await messages(page)).toHaveLength(5);
+
+  await render(publicPlaylistState({ revision: 8 }), [initial[0]]);
+  await expect(items).toHaveCount(1);
+  expect(
+    await items
+      .first()
+      .evaluate((row) => row === window.originalPlaylistRows[0]),
+  ).toBe(false);
+  await more.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'load_more_playlist',
+    revision: 8,
+  });
 });
 
 test('opens browser search only when submitted and keeps its draft and acknowledgement in Search', async (t) => {
@@ -1362,6 +1493,41 @@ test('opens browser search only when submitted and keeps its draft and acknowled
   ).toHaveValue(draft);
   await expect(form.getByRole('button', { name: 'Search' })).toBeVisible();
   expect(await messages(page)).toHaveLength(3);
+});
+
+test('keeps queue confirmations when a playlist page finishes loading', async (t) => {
+  const page = await panel(t);
+  const render = (entries, playlist, results, sequence) =>
+    state(page, entries, first, null, null, sequence, {
+      catalog: searchState({ query: 'PL_1234567890', playlist, results }),
+    });
+  const initial = [{ ...pianoResult, id: second }];
+  await render([first], publicPlaylistState(), initial, 1);
+  await page.getByRole('button', { name: 'Search' }).click();
+  await page.getByRole('button', { name: 'Load more' }).click();
+  await render([first], publicPlaylistState({ pending: true }), initial, 2);
+
+  await page.getByRole('button', { name: 'Queue' }).click();
+  await page.getByRole('button', { name: 'Add links' }).click();
+  const input = page.getByRole('textbox', { name: 'YouTube link or video ID' });
+  await input.fill(third);
+  await input.press('Enter');
+  await render(
+    [first, third],
+    publicPlaylistState({ pending: true }),
+    initial,
+    3,
+  );
+  const status = page.locator('#queue-status');
+  await expect(status).toHaveText('Added to the queue.');
+
+  await render(
+    [first, third],
+    publicPlaylistState(),
+    [...initial, ...initial],
+    null,
+  );
+  await expect(status).toHaveText('Added to the queue.');
 });
 
 test('makes the Search view available only with an active catalog and keeps playback accessible', async (t) => {

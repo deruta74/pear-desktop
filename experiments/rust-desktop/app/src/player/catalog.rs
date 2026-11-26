@@ -15,9 +15,22 @@ use super::{
 };
 
 const THROTTLE_DELAY: Duration = Duration::from_secs(60);
+const MAX_PLAYLIST_PAGES: usize = 10;
+const MAX_CONTINUATION_REQUESTS: usize = 12;
 
 pub(super) type Response = Result<Results, LookupError>;
-type Request = (u64, Query);
+type Request = (u64, Work);
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+enum Work {
+    Initial(Query),
+    MorePlaylist {
+        id: String,
+        token: String,
+        revision: u64,
+    },
+}
 
 pub(super) enum Results {
     Search(Vec<SearchResult>),
@@ -60,6 +73,10 @@ impl Query {
 struct PlaylistSummary {
     has_more: bool,
     unavailable: usize,
+    revision: u64,
+    pending: bool,
+    problem: Option<&'static str>,
+    truncated: bool,
 }
 
 #[derive(Default, Serialize)]
@@ -79,6 +96,9 @@ pub(super) struct Catalog {
     in_flight: Option<Request>,
     waiting: Option<Request>,
     expires: Option<Retention>,
+    // Tokens are retained only for the active playlist. The last is the next cursor.
+    page_tokens: Vec<String>,
+    page_requests: usize,
     throttled_until: Option<Instant>,
     unavailable: Option<&'static str>,
 }
@@ -89,10 +109,17 @@ impl Catalog {
         thread::Builder::new()
             .name("youtube-search".into())
             .spawn(move || {
-                while let Ok((revision, query)) = receiver.recv() {
-                    let results = match &query {
-                        Query::Search(query) => client.search(query).map(Results::Search),
-                        Query::Playlist(id) => client.playlist_items(id).map(Results::Playlist),
+                while let Ok((revision, work)) = receiver.recv() {
+                    let results = match &work {
+                        Work::Initial(Query::Search(query)) => {
+                            client.search(query).map(Results::Search)
+                        }
+                        Work::Initial(Query::Playlist(id)) => {
+                            client.playlist_items(id, None).map(Results::Playlist)
+                        }
+                        Work::MorePlaylist { id, token, .. } => client
+                            .playlist_items(id, Some(token))
+                            .map(Results::Playlist),
                     };
                     if events
                         .send_event(PlayerEvent::SearchResults(revision, results))
@@ -113,6 +140,8 @@ impl Catalog {
             in_flight: None,
             waiting: None,
             expires: None,
+            page_tokens: Vec::new(),
+            page_requests: 0,
             throttled_until: None,
             unavailable: None,
         }
@@ -124,7 +153,9 @@ impl Catalog {
 
     pub(super) fn submit(&mut self, input: &str, time: Instant) {
         let query = Query::parse(input);
-        if query.as_ref().map(Query::value) == Ok(self.view.query.as_str())
+        if query
+            .as_ref()
+            .is_ok_and(|query| self.matches_view_query(query))
             && (self.view.pending
                 || self
                     .expires
@@ -136,8 +167,7 @@ impl Catalog {
 
         self.revision += 1;
         self.waiting = None;
-        self.expires = None;
-        self.view = View::default();
+        self.clear_view();
         let query = match query {
             Ok(query) => query,
             Err(problem) => {
@@ -147,79 +177,164 @@ impl Catalog {
         };
         self.view.query = query.value().to_owned();
         if matches!(query, Query::Playlist(_)) {
-            self.view.playlist = Some(PlaylistSummary::default());
+            self.view.playlist = Some(PlaylistSummary {
+                revision: self.revision,
+                ..PlaylistSummary::default()
+            });
         }
         self.view.pending = true;
         if self
             .in_flight
             .as_ref()
-            .is_some_and(|(_, active)| active == &query)
+            .is_some_and(|(_, active)| matches!(active, Work::Initial(active) if active == &query))
         {
             return;
         }
-        self.waiting = Some((self.revision, query));
+        self.waiting = Some((self.revision, Work::Initial(query)));
         self.send_next(time);
+    }
+
+    pub(super) fn load_more(&mut self, revision: u64, time: Instant) {
+        self.tick(time);
+        let Some(playlist) = &mut self.view.playlist else {
+            return;
+        };
+        if playlist.revision != revision || !playlist.has_more || playlist.pending {
+            return;
+        }
+        let Some(token) = self.page_tokens.last() else {
+            return;
+        };
+        playlist.pending = true;
+        playlist.problem = None;
+        self.revision += 1;
+        self.waiting = Some((
+            self.revision,
+            Work::MorePlaylist {
+                id: self.view.query.clone(),
+                token: token.clone(),
+                revision,
+            },
+        ));
+        self.send_next(time);
+    }
+
+    fn matches_view_query(&self, query: &Query) -> bool {
+        self.view.query == query.value()
+            && self.view.playlist.is_some() == matches!(query, Query::Playlist(_))
     }
 
     fn send_next(&mut self, time: Instant) {
         if self.in_flight.is_some() {
             return;
         }
-        let Some((revision, query)) = self.waiting.take() else {
+        let Some((revision, work)) = self.waiting.take() else {
             return;
         };
+        let more = matches!(work, Work::MorePlaylist { .. });
         if let Some(reason) = self.unavailable {
-            self.view.problem = Some(reason);
+            self.set_work_problem(more, reason, true);
         } else if self.throttled_until.is_some_and(|until| until > time) {
-            self.view.problem = Some("YouTube is limiting searches. Try again shortly.");
-        } else if self.sender.try_send((revision, query.clone())).is_ok() {
-            self.in_flight = Some((revision, query));
-            return;
+            self.set_work_problem(more, throttle_problem(more), false);
+        } else if self.sender.try_send((revision, work.clone())).is_ok() {
+            self.in_flight = Some((revision, work));
+            if more {
+                self.page_requests += 1;
+            }
         } else {
-            self.view.problem = Some("Could not start search. Restart Pear to retry.");
+            let problem = if more {
+                "Could not load more playlist items. Restart Pear to retry."
+            } else {
+                "Could not start search. Restart Pear to retry."
+            };
+            self.set_work_problem(more, problem, true);
         }
-        self.view.pending = false;
     }
 
     pub(super) fn receive(&mut self, revision: u64, response: Response, time: Instant) -> bool {
-        let Some((_, query)) = self.in_flight.take_if(|(active, _)| *active == revision) else {
+        let Some((_, work)) = self.in_flight.take_if(|(active, _)| *active == revision) else {
             return false;
         };
-        let is_current = self.view.pending && self.view.query == query.value();
+        let expired = self.tick(time);
+        let more = matches!(work, Work::MorePlaylist { .. });
+        let is_current = match &work {
+            Work::Initial(query) => self.view.pending && self.matches_view_query(query),
+            Work::MorePlaylist { revision, .. } => self
+                .view
+                .playlist
+                .as_ref()
+                .is_some_and(|playlist| playlist.revision == *revision && playlist.pending),
+        };
         match response {
             Ok(results) if is_current => {
-                self.expires = Some(Retention::new(time));
-                self.view.results = match results {
-                    Results::Search(items) => items,
-                    Results::Playlist(PlaylistItems {
-                        items,
-                        has_more,
-                        unavailable,
-                    }) => {
-                        self.view.playlist = Some(PlaylistSummary {
-                            has_more,
-                            unavailable,
-                        });
-                        items
+                if !more {
+                    // All pages expire together at the first page's retention deadline.
+                    self.expires = Some(Retention::new(time));
+                    self.view.pending = false;
+                }
+                match results {
+                    Results::Search(items) => self.view.results = items,
+                    Results::Playlist(page) => {
+                        self.append_playlist_page(page);
                     }
-                };
-                self.view.pending = false;
+                }
             }
             Ok(_) => {}
             Err(reason) => {
-                let message = self.error_message(reason, time);
+                let message = self.error_message(reason, time, more);
                 if is_current {
-                    self.view.problem = Some(message);
-                    self.view.pending = false;
+                    self.set_work_problem(more, message, self.unavailable.is_some());
                 }
             }
         }
         let was_pending = self.view.pending;
         self.send_next(time);
-        is_current || was_pending != self.view.pending
+        expired || is_current || was_pending != self.view.pending
     }
 
-    fn error_message(&mut self, error: LookupError, time: Instant) -> &'static str {
+    fn append_playlist_page(&mut self, page: PlaylistItems) {
+        let Some(playlist) = &mut self.view.playlist else {
+            return;
+        };
+        self.view.results.extend(page.items);
+        playlist.unavailable += page.unavailable;
+        playlist.pending = false;
+        playlist.has_more = false;
+        playlist.truncated = page.truncated;
+        if let Some(token) = page.next_page_token {
+            if self.page_tokens.len() >= MAX_PLAYLIST_PAGES - 1
+                || self.page_requests >= MAX_CONTINUATION_REQUESTS
+                || self.page_tokens.contains(&token)
+            {
+                playlist.truncated = true;
+            } else {
+                self.page_tokens.push(token);
+                playlist.has_more = true;
+            }
+        }
+    }
+
+    fn set_work_problem(&mut self, more: bool, problem: &'static str, terminal: bool) {
+        if more {
+            if let Some(playlist) = &mut self.view.playlist {
+                playlist.pending = false;
+                playlist.truncated = self.page_requests >= MAX_CONTINUATION_REQUESTS;
+                playlist.problem = Some(if playlist.truncated && !terminal {
+                    "Pear reached the request limit for this playlist."
+                } else {
+                    problem
+                });
+                if terminal || playlist.truncated {
+                    playlist.has_more = false;
+                }
+            }
+        } else {
+            self.view.problem = Some(problem);
+            self.view.pending = false;
+        }
+    }
+
+    fn error_message(&mut self, error: LookupError, time: Instant, more: bool) -> &'static str {
         let unavailable = match error {
             LookupError::InvalidKey => "YouTube rejected the configured API key.",
             LookupError::InvalidKeyConfiguration => {
@@ -228,8 +343,9 @@ impl Catalog {
             LookupError::QuotaExceeded => "The configured YouTube API key has reached its quota.",
             LookupError::Throttled => {
                 self.throttled_until = Some(time + THROTTLE_DELAY);
-                return "YouTube is limiting searches. Try again shortly.";
+                return throttle_problem(more);
             }
+            _ if more => return "Could not load more playlist items. Try again.",
             _ if self.view.playlist.is_some() => {
                 return "Could not load this public YouTube playlist. Check the link and try again.";
             }
@@ -266,11 +382,24 @@ impl Catalog {
         {
             return false;
         }
-        self.view.results.clear();
-        self.view.query.clear();
-        self.view.playlist = None;
-        self.expires = None;
+        self.waiting = None;
+        self.clear_view();
         true
+    }
+
+    fn clear_view(&mut self) {
+        self.view = View::default();
+        self.expires = None;
+        self.page_tokens.clear();
+        self.page_requests = 0;
+    }
+}
+
+fn throttle_problem(more: bool) -> &'static str {
+    if more {
+        "YouTube is limiting playlist requests. Try again shortly."
+    } else {
+        "YouTube is limiting searches. Try again shortly."
     }
 }
 
@@ -299,7 +428,7 @@ mod tests {
         assert_eq!(receiver.try_recv(), Err(TryRecvError::Empty));
         assert!(!catalog.receive(first, Ok(Results::Search(vec![result("Old")])), now));
         let (third, query) = receiver.try_recv().unwrap();
-        assert_eq!(query, Query::Search("third".into()));
+        assert_eq!(query, Work::Initial(Query::Search("third".into())));
         assert!(catalog.view().results.is_empty());
         assert!(catalog.receive(third, Ok(Results::Search(vec![result("Newest")])), now));
         assert_eq!(catalog.view().results[0].title, "Newest");
@@ -346,7 +475,8 @@ mod tests {
             revision,
             Ok(Results::Playlist(PlaylistItems {
                 items: vec![result("Example")],
-                has_more: false,
+                next_page_token: None,
+                truncated: false,
                 unavailable: 0,
             })),
             now,
@@ -382,13 +512,14 @@ mod tests {
             now,
         );
         let (revision, query) = receiver.try_recv().unwrap();
-        assert_eq!(query, Query::Playlist(id.into()));
+        assert_eq!(query, Work::Initial(Query::Playlist(id.into())));
         assert!(!catalog.can_open_playlist_video("M7lc1UVf-VE", now));
         assert!(catalog.receive(
             revision,
             Ok(Results::Playlist(PlaylistItems {
                 items: vec![result("Available")],
-                has_more: true,
+                next_page_token: Some("later".into()),
+                truncated: false,
                 unavailable: 1,
             })),
             now,
@@ -403,6 +534,206 @@ mod tests {
         assert!(!catalog.can_open_playlist_video("M7lc1UVf-VE", expired));
         assert!(catalog.tick(expired));
         assert!(catalog.view().playlist.is_none());
+    }
+
+    #[test]
+    fn playlist_continuation_appends_ordered_occurrences_and_keeps_the_token_private() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let token = "opaque+cursor&1";
+        let revision = open_playlist(&mut catalog, &receiver, now, token);
+        assert!(receiver.try_recv().is_err());
+        catalog.load_more(revision + 1, now);
+        assert!(receiver.try_recv().is_err());
+
+        catalog.load_more(revision, now);
+        let (request, _) = receiver.try_recv().unwrap();
+        catalog.load_more(revision, now);
+        assert!(receiver.try_recv().is_err());
+        let wire = serde_json::to_value(catalog.view()).unwrap();
+        assert_eq!(wire["pending"], false);
+        assert_eq!(wire["playlist"]["pending"], true);
+        assert!(!wire.to_string().contains(token));
+
+        let mut later = result("Last");
+        later.id = "dQw4w9WgXcQ".into();
+        assert!(catalog.receive(
+            request,
+            playlist_page(vec![result("Repeated"), later], None, 2),
+            now
+        ));
+        assert_eq!(
+            catalog
+                .view()
+                .results
+                .iter()
+                .map(|item| item.title.as_str())
+                .collect::<Vec<_>>(),
+            ["First", "Repeated", "Last"]
+        );
+        assert_eq!(catalog.view().results[0].id, catalog.view().results[1].id);
+        let playlist = catalog.view().playlist.as_ref().unwrap();
+        assert_eq!(playlist.unavailable, 3);
+        assert!(!playlist.has_more);
+        assert!(catalog.can_open_playlist_video("dQw4w9WgXcQ", now));
+    }
+
+    #[test]
+    fn playlist_continuation_retries_only_on_request_and_preserves_previous_rows() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let revision = open_playlist(&mut catalog, &receiver, now, "later");
+        catalog.load_more(revision, now);
+        let (failed, page) = receiver.try_recv().unwrap();
+        assert!(catalog.receive(failed, Err(LookupError::Throttled), now));
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(catalog.view().results[0].title, "First");
+        assert!(catalog.view().problem.is_none());
+        let playlist = catalog.view().playlist.as_ref().unwrap();
+        assert!(playlist.has_more && !playlist.pending && playlist.problem.is_some());
+
+        catalog.load_more(revision, now);
+        assert!(receiver.try_recv().is_err());
+        catalog.load_more(revision, now + THROTTLE_DELAY);
+        let (retry, requested_page) = receiver.try_recv().unwrap();
+        assert_ne!(failed, retry);
+        assert_eq!(requested_page, page);
+        assert!(!catalog.receive(
+            failed,
+            playlist_page(vec![result("Stale retry")], None, 0),
+            now
+        ));
+        assert!(catalog.receive(
+            retry,
+            playlist_page(vec![result("New")], None, 0),
+            now + THROTTLE_DELAY
+        ));
+        assert!(catalog.view().playlist.as_ref().unwrap().problem.is_none());
+        assert_eq!(catalog.view().results[1].title, "New");
+    }
+
+    #[test]
+    fn playlist_continuation_cannot_revive_an_expired_or_replaced_catalog() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let revision = open_playlist(&mut catalog, &receiver, now, "later");
+        catalog.load_more(revision, now);
+        let (stale, _) = receiver.try_recv().unwrap();
+        catalog.submit("replacement", now);
+        assert!(!catalog.receive(stale, playlist_page(vec![result("Stale")], None, 0), now));
+        let (current, _) = receiver.try_recv().unwrap();
+        assert!(catalog.receive(current, Ok(Results::Search(vec![result("Search")])), now));
+        assert!(catalog.view().playlist.is_none());
+        assert_eq!(catalog.view().results[0].title, "Search");
+
+        let revision = open_playlist(&mut catalog, &receiver, now, "later");
+        let expired = now + Duration::from_secs(24 * 60 * 60);
+        catalog.load_more(revision, expired - Duration::from_secs(1));
+        let (stale, _) = receiver.try_recv().unwrap();
+        assert!(catalog.receive(
+            stale,
+            playlist_page(vec![result("Expired")], None, 0),
+            expired
+        ));
+        assert!(catalog.view().playlist.is_none());
+        assert!(catalog.view().results.is_empty());
+        catalog.load_more(revision, expired);
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn playlist_continuation_stops_when_a_cursor_repeats() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let revision = open_playlist(&mut catalog, &receiver, now, "same");
+        catalog.load_more(revision, now);
+        let (request, _) = receiver.try_recv().unwrap();
+        assert!(catalog.receive(
+            request,
+            playlist_page(vec![result("Second")], Some("same"), 0),
+            now
+        ));
+        let playlist = catalog.view().playlist.as_ref().unwrap();
+        assert!(!playlist.has_more);
+        assert!(playlist.truncated);
+        assert_eq!(catalog.view().results[1].title, "Second");
+        catalog.load_more(revision, now);
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn playlist_continuation_bounds_rows_and_dispatched_retries() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let id = "https://www.youtube.com/playlist?list=PL_1234567890";
+        catalog.submit(id, now);
+        let (first, _) = receiver.try_recv().unwrap();
+        let full_page = |page: usize| {
+            playlist_page(
+                (0..50).map(|_| result("Track")).collect(),
+                Some(&format!("cursor-{page}")),
+                0,
+            )
+        };
+        assert!(catalog.receive(first, full_page(1), now));
+        let revision = catalog.view().playlist.as_ref().unwrap().revision;
+        for page in 2..=10 {
+            catalog.load_more(revision, now);
+            let (request, _) = receiver.try_recv().unwrap();
+            assert!(catalog.receive(request, full_page(page), now));
+        }
+        assert_eq!(catalog.view().results.len(), 500);
+        assert!(catalog.view().playlist.as_ref().unwrap().truncated);
+        catalog.load_more(revision, now);
+        assert!(receiver.try_recv().is_err());
+
+        catalog.submit("replacement.invalid/", now);
+        let revision = open_playlist(&mut catalog, &receiver, now, "retry");
+        for _ in 0..12 {
+            catalog.load_more(revision, now);
+            let (request, _) = receiver.try_recv().unwrap();
+            assert!(catalog.receive(request, Err(LookupError::Network), now));
+        }
+        let playlist = catalog.view().playlist.as_ref().unwrap();
+        assert!(playlist.truncated);
+        assert!(!playlist.has_more);
+        assert_eq!(catalog.view().results[0].title, "First");
+        catalog.load_more(revision, now);
+        assert!(receiver.try_recv().is_err());
+    }
+
+    fn open_playlist(
+        catalog: &mut Catalog,
+        receiver: &mpsc::Receiver<Request>,
+        time: Instant,
+        token: &str,
+    ) -> u64 {
+        catalog.submit("https://www.youtube.com/playlist?list=PL_1234567890", time);
+        let (request, _) = receiver.try_recv().unwrap();
+        assert!(catalog.receive(
+            request,
+            playlist_page(vec![result("First")], Some(token), 1),
+            time
+        ));
+        catalog.view().playlist.as_ref().unwrap().revision
+    }
+
+    fn playlist_page(
+        items: Vec<SearchResult>,
+        token: Option<&str>,
+        unavailable: usize,
+    ) -> Response {
+        Ok(Results::Playlist(PlaylistItems {
+            items,
+            next_page_token: token.map(str::to_owned),
+            truncated: false,
+            unavailable,
+        }))
     }
 
     #[test]

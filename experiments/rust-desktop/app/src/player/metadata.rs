@@ -20,6 +20,7 @@ const MAX_PLAYLIST_BODY_BYTES: u64 = 128 * 1024;
 const MAX_SEARCH_QUERY_CHARS: usize = 160;
 const MAX_SEARCH_RESULTS: usize = 12;
 const MAX_PLAYLIST_ITEMS: usize = 50;
+const MAX_PLAYLIST_TOKEN_BYTES: usize = 1024;
 const MAX_FIELD_CHARS: usize = 180;
 const MAX_KEY_FILE_BYTES: u64 = 512;
 
@@ -50,11 +51,11 @@ pub(super) struct SearchResult {
     pub(super) channel: String,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq, Eq)]
 pub(super) struct PlaylistItems {
     pub(super) items: Vec<SearchResult>,
-    pub(super) has_more: bool,
+    pub(super) next_page_token: Option<String>,
+    pub(super) truncated: bool,
     pub(super) unavailable: usize,
 }
 
@@ -148,23 +149,31 @@ impl Client {
         interpret_search_response(response.status().as_u16(), response.body_mut())
     }
 
-    pub(super) fn playlist_items(&self, id: &str) -> Result<PlaylistItems, LookupError> {
+    pub(super) fn playlist_items(
+        &self,
+        id: &str,
+        page_token: Option<&str>,
+    ) -> Result<PlaylistItems, LookupError> {
         if !valid_playlist_id(id) {
             return Err(LookupError::InvalidPlaylist);
         }
         let max_results = MAX_PLAYLIST_ITEMS.to_string();
-        let mut response = self.data_api_get(
-            PLAYLIST_ITEMS_ENDPOINT,
-            &[
-                ("part", "snippet,status"),
-                ("playlistId", id),
-                ("maxResults", &max_results),
-                (
-                    "fields",
-                    "nextPageToken,items(snippet(resourceId(videoId),title,videoOwnerChannelTitle),status(privacyStatus))",
-                ),
-            ],
-        )?;
+        let mut params = vec![
+            ("part", "snippet,status"),
+            ("playlistId", id),
+            ("maxResults", &max_results),
+            (
+                "fields",
+                "nextPageToken,items(snippet(resourceId(videoId),title,videoOwnerChannelTitle),status(privacyStatus))",
+            ),
+        ];
+        if let Some(token) = page_token {
+            if !valid_page_token(token) {
+                return Err(LookupError::InvalidResponse);
+            }
+            params.push(("pageToken", token));
+        }
+        let mut response = self.data_api_get(PLAYLIST_ITEMS_ENDPOINT, &params)?;
         interpret_playlist_response(response.status().as_u16(), response.body_mut())
     }
 
@@ -456,8 +465,11 @@ fn interpret_playlist_response(status: u16, body: &mut Body) -> Result<PlaylistI
     let page: PlaylistPage =
         serde_json::from_slice(&bytes).map_err(|_| LookupError::InvalidResponse)?;
     let row_count = page.items.len().min(MAX_PLAYLIST_ITEMS);
-    let has_more = page.items.len() > MAX_PLAYLIST_ITEMS
-        || page.next_page_token.is_some_and(|token| !token.is_empty());
+    let token = page.next_page_token.filter(|token| !token.is_empty());
+    let truncated = page.items.len() > MAX_PLAYLIST_ITEMS
+        || token
+            .as_deref()
+            .is_some_and(|token| !valid_page_token(token));
     let items: Vec<_> = page
         .items
         .into_iter()
@@ -467,8 +479,15 @@ fn interpret_playlist_response(status: u16, body: &mut Body) -> Result<PlaylistI
     Ok(PlaylistItems {
         unavailable: row_count - items.len(),
         items,
-        has_more,
+        next_page_token: token.filter(|_| !truncated),
+        truncated,
     })
+}
+
+fn valid_page_token(token: &str) -> bool {
+    !token.is_empty()
+        && token.len() <= MAX_PLAYLIST_TOKEN_BYTES
+        && !token.chars().any(char::is_control)
 }
 
 fn playlist_video(item: PlaylistItem) -> Option<SearchResult> {
@@ -1004,19 +1023,18 @@ mod tests {
             ]
         }"#;
         let result = playlist_response(200, json).unwrap();
+        assert_eq!(result.next_page_token.as_deref(), Some("later"));
+        assert!(!result.truncated);
+        assert_eq!(result.unavailable, 3);
         assert_eq!(
-            serde_json::to_value(result).unwrap(),
-            serde_json::json!({
-                "items": [
-                    {"id": "dQw4w9WgXcQ", "title": "First Track", "channel": "First Artist"},
-                    {"id": "jNQXAC9IVRw", "title": "Deleted video", "channel": "Artist"},
-                    {"id": "jNQXAC9IVRw", "title": "No owner", "channel": ""},
-                    {"id": "jNQXAC9IVRw", "title": "Second Track", "channel": "Second Artist"},
-                    {"id": "dQw4w9WgXcQ", "title": "Repeated Track", "channel": "First Artist"}
-                ],
-                "hasMore": true,
-                "unavailable": 3,
-            })
+            serde_json::to_value(result.items).unwrap(),
+            serde_json::json!([
+                {"id": "dQw4w9WgXcQ", "title": "First Track", "channel": "First Artist"},
+                {"id": "jNQXAC9IVRw", "title": "Deleted video", "channel": "Artist"},
+                {"id": "jNQXAC9IVRw", "title": "No owner", "channel": ""},
+                {"id": "jNQXAC9IVRw", "title": "Second Track", "channel": "Second Artist"},
+                {"id": "dQw4w9WgXcQ", "title": "Repeated Track", "channel": "First Artist"}
+            ])
         );
     }
 
@@ -1026,8 +1044,23 @@ mod tests {
         let json = serde_json::json!({"items": rows}).to_string();
         let result = playlist_response(200, json).unwrap();
         assert!(result.items.is_empty());
-        assert!(result.has_more);
+        assert!(result.truncated);
+        assert!(result.next_page_token.is_none());
         assert_eq!(result.unavailable, 50);
+    }
+
+    #[test]
+    fn drops_unsafe_playlist_cursors_while_preserving_the_page() {
+        for cursor in ["x".repeat(1025), "cursor\nvalue".into()] {
+            let page = serde_json::json!({
+                "items": [{}],
+                "nextPageToken": cursor,
+            });
+            let result = playlist_response(200, page.to_string()).unwrap();
+            assert!(result.truncated);
+            assert!(result.next_page_token.is_none());
+            assert_eq!(result.unavailable, 1);
+        }
     }
 
     #[test]
@@ -1047,7 +1080,7 @@ mod tests {
     }
 
     #[test]
-    fn playlist_fetch_uses_the_data_api_header_and_never_follows_a_page_token() {
+    fn playlist_fetch_only_sends_an_opaque_cursor_for_an_explicit_next_page() {
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering},
@@ -1060,7 +1093,7 @@ mod tests {
             .middleware(
                 move |request: ureq::http::Request<ureq::SendBody>,
                       _: ureq::middleware::MiddlewareNext<'_>| {
-                    assert_eq!(requests.fetch_add(1, Ordering::Relaxed), 0);
+                    let request_number = requests.fetch_add(1, Ordering::Relaxed);
                     let uri = url::Url::parse(&request.uri().to_string()).unwrap();
                     assert_eq!(uri.scheme(), "https");
                     assert_eq!(uri.host_str(), Some("www.googleapis.com"));
@@ -1075,14 +1108,18 @@ mod tests {
                             .unwrap()
                             .contains("videoOwnerChannelTitle")
                     );
-                    assert!(!params.contains_key("pageToken"));
+                    match request_number {
+                        0 => assert!(!params.contains_key("pageToken")),
+                        1 => assert_eq!(params.get("pageToken").unwrap(), "next+cursor&=/?"),
+                        _ => panic!("Unexpected playlist request"),
+                    }
                     assert!(!params.contains_key("key"));
                     assert_eq!(request.headers()["x-goog-api-key"], "synthetic-key");
                     assert!(request.headers()["x-goog-api-key"].is_sensitive());
                     Ok(ureq::http::Response::new(
                         Body::builder()
                             .mime_type("application/json")
-                            .data(br#"{"items":[],"nextPageToken":"more"}"#),
+                            .data(br#"{"items":[],"nextPageToken":"next+cursor&=/?"}"#),
                     ))
                 },
             )
@@ -1090,18 +1127,22 @@ mod tests {
             .new_agent();
 
         assert_eq!(
-            public.playlist_items(VIDEO_ID),
+            public.playlist_items(VIDEO_ID, None),
             Err(LookupError::InvalidPlaylist)
         );
         assert_eq!(
-            public.playlist_items(PLAYLIST_ID),
+            public.playlist_items(PLAYLIST_ID, None),
             Err(LookupError::InvalidKeyConfiguration)
         );
         let api = Client {
             agent: public.agent,
             source: Source::DataApi(key_header(&b"synthetic-key"[..])),
         };
-        assert!(api.playlist_items(PLAYLIST_ID).unwrap().has_more);
+        let first = api.playlist_items(PLAYLIST_ID, None).unwrap();
+        assert_eq!(first.next_page_token.as_deref(), Some("next+cursor&=/?"));
         assert_eq!(calls.load(Ordering::Relaxed), 1);
+        api.playlist_items(PLAYLIST_ID, first.next_page_token.as_deref())
+            .unwrap();
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
     }
 }

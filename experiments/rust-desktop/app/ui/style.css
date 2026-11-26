@@ -699,6 +699,23 @@ button.play-toggle:enabled:active {
   border-block-start: 1px solid var(--line);
 }
 
+.catalog-results:focus-visible {
+  outline-offset: -2px;
+}
+
+.catalog-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.catalog-summary button {
+  flex: none;
+  margin-block-start: 0.5rem;
+  font-size: 0.875rem;
+}
+
 #catalog-form[data-browser-search] .add-button {
   flex-shrink: 0;
 }
