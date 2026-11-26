@@ -553,7 +553,7 @@ button.play-toggle:enabled:active {
 
 .view-switcher {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(3.25rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(3rem, 1fr));
   gap: 0.25rem;
   padding: 0.25rem;
   border-radius: 0.875rem;
@@ -633,7 +633,7 @@ button.play-toggle:enabled:active {
 
 .queue {
   display: grid;
-  grid-template-rows: auto minmax(7.25rem, 1fr);
+  grid-template-rows: auto minmax(3.75rem, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: auto;
