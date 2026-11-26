@@ -1563,7 +1563,7 @@ dependencies = [
 
 [[package]]
 name = "pear-desktop-preview"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "muda",
  "objc2-foundation",

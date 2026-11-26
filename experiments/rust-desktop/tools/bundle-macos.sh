@@ -13,8 +13,8 @@ case "${1:-preview}" in
     name='Pear Desktop Rust Preview'
     identifier='com.pear-desktop.rust-preview'
     executable='pear-desktop-preview'
-    version='0.2.0'
-    build_number='2'
+    version='0.3.0'
+    build_number='3'
     source="$root/target/release/$executable"
     ;;
   embed)

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
     path::{Path, PathBuf},
@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 use url::form_urlencoded;
 
 const MAX_ENTRIES: usize = 500;
-const MAX_FILE_BYTES: u64 = 64 * 1024;
+const MAX_TITLE_CHARS: usize = 180;
+const MAX_TITLE_INPUT_BYTES: usize = 4096;
+// Allow 500 titles at four bytes per character plus IDs and JSON structure.
+const MAX_FILE_BYTES: u64 = 512 * 1024;
 const MAX_SOURCE_BYTES: usize = 4096;
 
 #[derive(Deserialize)]
@@ -19,6 +22,8 @@ pub enum Command {
     Add { source: String },
     Select { id: String },
     Remove { id: String },
+    MoveUp { id: String },
+    MoveDown { id: String },
     Previous {},
     Next {},
     Ready {},
@@ -29,6 +34,8 @@ pub enum Command {
 pub struct QueueState {
     pub entries: Vec<String>,
     pub current: Option<String>,
+    #[serde(default)]
+    pub titles: BTreeMap<String, String>,
 }
 
 pub struct Library {
@@ -46,6 +53,23 @@ impl Library {
 
     pub fn state(&self) -> &QueueState {
         &self.state
+    }
+
+    pub fn remember_title(&mut self, id: &str, title: &str) -> io::Result<bool> {
+        if !self.state.entries.iter().any(|entry| entry == id) {
+            return Ok(false);
+        }
+        let Some(title) = normalized_title(title) else {
+            return Ok(false);
+        };
+        if self.state.titles.get(id).map(String::as_str) == Some(title) {
+            return Ok(false);
+        }
+
+        let mut state = self.state.clone();
+        state.titles.insert(id.to_owned(), title.to_owned());
+        self.store_state(state)?;
+        Ok(true)
     }
 
     pub fn apply(&mut self, command: Command) -> io::Result<bool> {
@@ -79,6 +103,7 @@ impl Library {
             Command::Remove { id } => {
                 let index = entry_index(&state.entries, &id)?;
                 state.entries.remove(index);
+                state.titles.remove(&id);
                 if state.current.as_ref() == Some(&id) {
                     state.current = state
                         .entries
@@ -86,6 +111,18 @@ impl Library {
                         .or_else(|| state.entries.last())
                         .cloned();
                 }
+            }
+            Command::MoveUp { ref id } | Command::MoveDown { ref id } => {
+                let index = entry_index(&state.entries, id)?;
+                let neighbor = if matches!(command, Command::MoveUp { .. }) {
+                    index.checked_sub(1)
+                } else {
+                    Some(index + 1).filter(|&next| next < state.entries.len())
+                };
+                let Some(neighbor) = neighbor else {
+                    return Ok(false);
+                };
+                state.entries.swap(index, neighbor);
             }
             Command::Previous {} | Command::Next {} => {
                 let Some(current) = &state.current else {
@@ -108,12 +145,17 @@ impl Library {
         if state == self.state {
             return Ok(false);
         }
+        let reload = state.current != self.state.current;
+        self.store_state(state)?;
+        Ok(reload)
+    }
+
+    fn store_state(&mut self, state: QueueState) -> io::Result<()> {
         save_state(&self.path, &state).map_err(|error| {
             io::Error::new(error.kind(), format!("Could not save the queue: {error}"))
         })?;
-        let reload = state.current != self.state.current;
         self.state = state;
-        Ok(reload)
+        Ok(())
     }
 }
 
@@ -131,6 +173,19 @@ fn valid_id(id: &str) -> bool {
         && id
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn normalized_title(title: &str) -> Option<&str> {
+    if title.len() > MAX_TITLE_INPUT_BYTES || title.chars().any(char::is_control) {
+        return None;
+    }
+    let title = title.trim();
+    let end = title
+        .char_indices()
+        .nth(MAX_TITLE_CHARS)
+        .map_or(title.len(), |(index, _)| index);
+    let title = title[..end].trim_end();
+    (!title.is_empty()).then_some(title)
 }
 
 fn video_id(source: &str) -> Option<String> {
@@ -198,13 +253,19 @@ fn read_state(path: &Path) -> io::Result<QueueState> {
             "The queue file is too large.",
         ));
     }
-    let invalid = || {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "The queue file contains invalid data.",
-        )
-    };
-    let state: QueueState = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+    let state: QueueState = serde_json::from_slice(&bytes).map_err(|_| invalid_state())?;
+    validate_state(&state)?;
+    Ok(state)
+}
+
+fn invalid_state() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "The queue file contains invalid data.",
+    )
+}
+
+fn validate_state(state: &QueueState) -> io::Result<()> {
     let mut unique_ids = HashSet::with_capacity(state.entries.len().min(MAX_ENTRIES));
     if state.entries.len() > MAX_ENTRIES
         || state
@@ -215,13 +276,18 @@ fn read_state(path: &Path) -> io::Result<QueueState> {
             Some(id) => !unique_ids.contains(id),
             None => !unique_ids.is_empty(),
         }
+        || state
+            .titles
+            .iter()
+            .any(|(id, title)| !unique_ids.contains(id) || normalized_title(title) != Some(title))
     {
-        return Err(invalid());
+        return Err(invalid_state());
     }
-    Ok(state)
+    Ok(())
 }
 
 fn save_state(path: &Path, state: &QueueState) -> io::Result<()> {
+    validate_state(state)?;
     let bytes = serde_json::to_vec(state).map_err(io::Error::other)?;
     let directory = path
         .parent()
@@ -425,6 +491,97 @@ mod tests {
     }
 
     #[test]
+    fn restores_titles_without_losing_legacy_queue_order_or_selection() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let legacy = format!(r#"{{"entries":["{SECOND}","{FIRST}"],"current":"{FIRST}"}}"#);
+        fs::write(&path, legacy).unwrap();
+        let mut library = Library::load(path.clone()).unwrap();
+        assert_eq!(library.state().entries, [SECOND, FIRST]);
+        assert_eq!(library.state().current.as_deref(), Some(FIRST));
+        assert!(library.state().titles.is_empty());
+        assert!(library.remember_title(FIRST, "\u{2003}A < B & C ").unwrap());
+        assert!(!library.remember_title(FIRST, "A < B & C").unwrap());
+
+        let mut restored = Library::load(path.clone()).unwrap();
+        assert_eq!(restored.state().entries, [SECOND, FIRST]);
+        assert_eq!(restored.state().current.as_deref(), Some(FIRST));
+        assert_eq!(restored.state().titles[FIRST], "A < B & C");
+        assert!(!restored.apply(remove(SECOND)).unwrap());
+        assert_eq!(restored.state().titles[FIRST], "A < B & C");
+        assert!(restored.apply(remove(FIRST)).unwrap());
+        assert!(Library::load(path).unwrap().state().titles.is_empty());
+    }
+
+    #[test]
+    fn remembers_only_usable_titles_for_existing_entries() {
+        let directory = TestDirectory::new();
+        let mut library = Library::load(directory.queue_path()).unwrap();
+        library.apply(add(FIRST)).unwrap();
+        assert!(!library.remember_title(SECOND, "Out of queue").unwrap());
+        for title in [" \u{2003} ", "Song\nName", "\0", &"x".repeat(8192)] {
+            assert!(!library.remember_title(FIRST, title).unwrap());
+        }
+        assert!(library.state().titles.is_empty());
+
+        let title = "🎶".repeat(200);
+        assert!(library.remember_title(FIRST, &title).unwrap());
+        assert_eq!(library.state().titles[FIRST], "🎶".repeat(180));
+        assert!(!library.remember_title(FIRST, &title).unwrap());
+    }
+
+    #[test]
+    fn reorders_the_selected_video_without_reloading_and_updates_navigation() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let mut library = Library::load(path.clone()).unwrap();
+        for id in [FIRST, SECOND, THIRD] {
+            library.apply(add(id)).unwrap();
+        }
+        library.apply(select(SECOND)).unwrap();
+        let move_up = format!(r#"{{"type":"move_up","id":"{SECOND}"}}"#);
+        let move_down = format!(r#"{{"type":"move_down","id":"{SECOND}"}}"#);
+        let decode = |command: &str| serde_json::from_str::<Command>(command).unwrap();
+
+        assert!(!library.apply(decode(&move_up)).unwrap());
+        assert_eq!(library.state().entries, [SECOND, FIRST, THIRD]);
+        assert_eq!(library.state().current.as_deref(), Some(SECOND));
+        assert!(!library.apply(decode(&move_up)).unwrap());
+        assert!(!library.apply(Command::Previous {}).unwrap());
+        assert!(library.apply(Command::Next {}).unwrap());
+        assert_eq!(library.state().current.as_deref(), Some(FIRST));
+
+        assert!(!library.apply(decode(&move_down)).unwrap());
+        assert!(!library.apply(decode(&move_down)).unwrap());
+        assert!(!library.apply(decode(&move_down)).unwrap());
+        let restored = Library::load(path).unwrap();
+        assert_eq!(restored.state().entries, [FIRST, THIRD, SECOND]);
+        assert_eq!(restored.state().current.as_deref(), Some(FIRST));
+    }
+
+    #[test]
+    fn restores_worst_case_utf8_titles_for_a_full_queue() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let entries: Vec<String> = (0..MAX_ENTRIES)
+            .map(|index| format!("video{index:06}"))
+            .collect();
+        let title = "🎶".repeat(180);
+        let titles: serde_json::Map<String, serde_json::Value> = entries
+            .iter()
+            .map(|id| (id.clone(), serde_json::Value::String(title.clone())))
+            .collect();
+        let saved =
+            serde_json::json!({"entries": entries, "current": entries[0], "titles": titles});
+        fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+
+        let mut library = Library::load(path.clone()).unwrap();
+        library.apply(select(&entries[1])).unwrap();
+        let updated: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(updated["titles"], saved["titles"]);
+    }
+
+    #[test]
     fn rejects_invalid_commands_without_changing_state_or_disk() {
         let directory = TestDirectory::new();
         let path = directory.queue_path();
@@ -435,6 +592,11 @@ mod tests {
         assert!(library.apply(add("invalid")).is_err());
         assert!(library.apply(select(SECOND)).is_err());
         assert!(library.apply(remove(SECOND)).is_err());
+        assert!(
+            library
+                .apply(Command::MoveDown { id: SECOND.into() })
+                .is_err()
+        );
         assert_eq!(library.state().entries, [FIRST]);
         assert_eq!(library.state().current.as_deref(), Some(FIRST));
         assert_eq!(fs::read(path).unwrap(), saved);
@@ -446,15 +608,25 @@ mod tests {
         let path = directory.queue_path();
         let mut library = Library::load(path.clone()).unwrap();
         library.apply(add(FIRST)).unwrap();
+        library.apply(add(SECOND)).unwrap();
+        assert!(library.remember_title(FIRST, "Original title").unwrap());
         let backup = directory.0.join("backup.json");
         fs::rename(&path, &backup).unwrap();
         fs::create_dir(&path).unwrap();
 
-        assert!(library.apply(add(SECOND)).is_err());
-        assert_eq!(library.state().entries, [FIRST]);
+        assert!(library.apply(add(THIRD)).is_err());
+        assert!(
+            library
+                .apply(Command::MoveUp { id: SECOND.into() })
+                .is_err()
+        );
+        assert!(!library.apply(Command::MoveUp { id: FIRST.into() }).unwrap());
+        assert!(library.remember_title(FIRST, "Changed title").is_err());
+        assert_eq!(library.state().entries, [FIRST, SECOND]);
         assert_eq!(library.state().current.as_deref(), Some(FIRST));
+        assert_eq!(library.state().titles[FIRST], "Original title");
         assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 2);
-        assert_eq!(Library::load(backup).unwrap().state().entries, [FIRST]);
+        assert!(Library::load(backup).unwrap().state() == library.state());
     }
 
     #[test]
@@ -467,6 +639,17 @@ mod tests {
             format!(r#"{{"entries":["{FIRST}","{FIRST}"],"current":"{FIRST}"}}"#),
             format!(r#"{{"entries":["{FIRST}"],"current":null}}"#),
             r#"{"entries":["invalid"],"current":"invalid"}"#.to_string(),
+            format!(
+                r#"{{"entries":["{FIRST}"],"current":"{FIRST}","titles":{{"{SECOND}":"Orphan"}}}}"#
+            ),
+            format!(r#"{{"entries":["{FIRST}"],"current":"{FIRST}","titles":{{"{FIRST}":"  "}}}}"#),
+            format!(
+                r#"{{"entries":["{FIRST}"],"current":"{FIRST}","titles":{{"{FIRST}":"Track\nTitle"}}}}"#
+            ),
+            format!(
+                r#"{{"entries":["{FIRST}"],"current":"{FIRST}","titles":{{"{FIRST}":"{}"}}}}"#,
+                "🎶".repeat(181)
+            ),
         ] {
             fs::write(&path, &saved).unwrap();
             assert!(Library::load(path.clone()).is_err(), "{saved}");

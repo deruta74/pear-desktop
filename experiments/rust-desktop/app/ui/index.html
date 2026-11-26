@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pear Video Queue</title>
+    <title>Pear Queue</title>
     <link rel="stylesheet" href="/style.css" />
     <script src="/controls.js" defer></script>
   </head>
@@ -13,35 +13,19 @@
         <h1>Pear</h1>
       </header>
 
-      <form id="add-video">
-        <label for="video-source">YouTube link or video ID</label>
-        <div class="add-controls">
-          <input
-            id="video-source"
-            type="text"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-            placeholder="Paste a link or ID"
-            aria-describedby="queue-error"
-            maxlength="2048"
-            required
-            disabled
-          />
-          <button id="add-button" class="add-button" type="submit" disabled>
-            Add
-          </button>
-        </div>
-        <p id="queue-error" class="feedback error" role="alert"></p>
-        <p id="queue-status" class="feedback" role="status">Loading queue…</p>
-      </form>
-
       <section class="selection" aria-labelledby="selection-heading">
         <div class="selection-heading">
-          <h2 id="selection-heading">Selected video</h2>
+          <h2 id="selection-heading">Current video</h2>
           <span id="position" class="position"></span>
         </div>
-        <p id="selection-id" class="selection-id">No video selected</p>
+        <p
+          id="selection-id"
+          class="selection-title"
+          dir="auto"
+          aria-live="polite"
+        >
+          No video selected
+        </p>
         <div class="playback-actions">
           <button
             id="previous"
@@ -73,17 +57,40 @@
             <span class="external-icon" aria-hidden="true"></span>
           </button>
         </div>
-        <p class="playback-hint">
-          You may need to press Play in the player after selecting a video.
-        </p>
+        <p id="player-problem" class="feedback error" role="alert"></p>
       </section>
+
+      <form id="add-video">
+        <label for="video-source">YouTube link or video ID</label>
+        <div class="add-controls">
+          <input
+            id="video-source"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="Paste a link or ID"
+            aria-describedby="queue-error"
+            maxlength="2048"
+            required
+            disabled
+          />
+          <button id="add-button" class="add-button" type="submit" disabled>
+            Add
+          </button>
+        </div>
+        <p id="queue-error" class="feedback error" role="alert"></p>
+        <p id="queue-status" class="feedback" role="status">Loading queue…</p>
+      </form>
 
       <section class="queue" aria-labelledby="queue-heading">
         <div class="queue-heading">
-          <h2 id="queue-heading">Video queue</h2>
+          <h2 id="queue-heading">Queue</h2>
           <span id="queue-count" class="queue-count"></span>
         </div>
-        <p id="queue-empty" class="queue-empty" hidden>Your queue is empty.</p>
+        <p id="queue-empty" class="queue-empty" hidden>
+          Add a YouTube video to start your queue.
+        </p>
         <ol
           id="queue-items"
           class="queue-items"

@@ -1,6 +1,6 @@
 # Pear Desktop Rust preview
 
-Pear Desktop Rust Preview 0.2.0 is a macOS player for individual YouTube videos. It accepts a video link or ID, keeps a local queue across launches, and opens the selected video in the official YouTube player. Playback starts from the player's own Play button.
+Pear Desktop Rust Preview 0.3.0 is a macOS player for individual YouTube videos. It accepts a video link or ID, keeps a local queue across launches, and opens the selected video in the official YouTube player. Playback starts from the player's own Play button.
 
 ## Run the macOS app
 
@@ -10,11 +10,11 @@ From the repository root, with Rust and the Xcode command-line tools available:
 open "$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
 ```
 
-The script builds an ad hoc signed local app. The queue accepts YouTube and YouTube Music watch links, short links, Shorts, embed links and raw video IDs. Select a row or use the previous and next controls to switch videos. **Open in browser** opens the selected video's YouTube watch page. Use **Reload Player** from the app menu to retry when a video takes too long to open. The queue stores video IDs and the selected entry in `~/Library/Application Support/com.pear-desktop.rust-preview/queue.json`.
+The script builds an ad hoc signed local app. The queue accepts YouTube and YouTube Music watch links, short links, Shorts, embed links and raw video IDs. Select a row or use the previous and next controls to switch videos. Move a row up or down to change playback order without restarting the current video. The queue saves video titles as it encounters them in the player and uses IDs until their titles are known. **Open in browser** opens the selected video's YouTube watch page. Use **View → Reload Player** to retry a slow or stopped player. **⌘L** focuses the link field and reveals the queue when hidden. **⇧⌘L** shows or hides the queue without interrupting the current video. The queue stores video IDs, known titles, and the selected entry in `~/Library/Application Support/com.pear-desktop.rust-preview/queue.json`.
 
 The local controls and the official player use separate ephemeral WebViews. Only the bundled controls can send queue commands to Rust. The player loads the selected embed with the native app's Referer and uses the website's default controls and media requests. It can play videos whose owners allow embedding in the current region.
 
-**Verified on macOS 27.2.1:** added two videos by URL, rejected an unsupported link, started playback in each video, switched during playback, restored both queue entries and the selection after reopening, and removed both entries. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
+**Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
 
 The unbundled `cargo run` path remains the original system WebView compatibility experiment. The built macOS app uses the queue. The other desktop targets still use the existing experiment.
 
@@ -59,4 +59,4 @@ Eight matched runs per host on Apple M5 Pro, macOS 27.2.1. Startup is measured t
 | Rust and WKWebView | 275 ms | 166 MiB |
 | Electron 42.10.0 | 257 ms | 375 MiB |
 
-The Rust RSS estimate includes the three WebKit services that appeared during each Rust trial. Attribution is based on process timing and user ID. Shared pages can count toward several processes. These results cover the original lightweight hosts rendering a fixture. The 0.2.0 app uses two WebViews for controls and video, so it needs its own playback memory measurement.
+The Rust RSS estimate includes the three WebKit services that appeared during each Rust trial. Attribution is based on process timing and user ID. Shared pages can count toward several processes. These results cover the original lightweight hosts rendering a fixture. The queue app uses two WebViews for controls and video, so it needs its own playback memory measurement.
