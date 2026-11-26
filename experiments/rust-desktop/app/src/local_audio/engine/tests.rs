@@ -156,6 +156,16 @@ fn ogg_opus_honors_the_initial_granule_of_a_single_audio_page() {
     );
 }
 
+#[test]
+fn ogg_opus_accepts_comment_headers_that_span_two_pages() {
+    // The OpusTags header begins on a page with granule -1 and completes at granule 0.
+    check_short_ogg_opus(
+        include_bytes!("fixtures/split-opus-tags.opus"),
+        1_087,
+        [0.075_286_865, -0.006_500_244],
+    );
+}
+
 fn check_short_ogg_opus(media: &[u8], frames: u32, [first, last]: [f32; 2]) {
     let fixture = Fixture::with_extension(media, "opus");
     let mut source = AudioSource::open(&fixture.0).unwrap();

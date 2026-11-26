@@ -67,17 +67,21 @@ impl OggOpus {
         };
         loop {
             let page = source.push_next_page()?;
-            if page.granule != 0 || page.flags & 4 != 0 {
+            if page.flags & 4 != 0 {
                 return Err(invalid());
             }
-            if let Some(tags) = source.parser.read_packet() {
-                if !tags.last_in_page()
-                    || page.ends_continued
-                    || !tags.data.starts_with(b"OpusTags")
+            // RFC 7845 §4 assigns granule zero to the page completing OpusTags.
+            match source.parser.read_packet() {
+                None if page.granule == NO_GRANULE => continue,
+                Some(tags)
+                    if page.granule == 0
+                        && tags.last_in_page()
+                        && !page.ends_continued
+                        && tags.data.starts_with(b"OpusTags") =>
                 {
-                    return Err(invalid());
+                    break;
                 }
-                break;
+                _ => return Err(invalid()),
             }
         }
         source.audio_offset = source.next_offset;
