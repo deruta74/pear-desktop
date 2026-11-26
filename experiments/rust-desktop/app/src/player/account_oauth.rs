@@ -8,6 +8,7 @@ use std::{
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::Deserialize;
+use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 use url::Url;
@@ -65,7 +66,7 @@ pub(super) struct ClientConfig {
 #[derive(Deserialize)]
 struct DesktopClientFile<'a> {
     #[serde(borrow)]
-    installed: &'a serde_json::value::RawValue,
+    installed: &'a RawValue,
 }
 
 #[derive(Deserialize)]
@@ -195,12 +196,16 @@ impl Session {
 
     fn revoke_with(&self, transport: &Post<'_>) -> Result<(), Error> {
         let token = self.revocation_token.as_ref().unwrap_or(&self.access_token);
-        let response =
-            transport(REVOCATION_ENDPOINT, &[("token", token)]).map_err(|_| Error::Revocation)?;
-        (response.status == 200)
-            .then_some(())
-            .ok_or(Error::Revocation)
+        revoke_token(token, transport)
     }
+}
+
+fn revoke_token(token: &str, transport: &Post<'_>) -> Result<(), Error> {
+    let response =
+        transport(REVOCATION_ENDPOINT, &[("token", token)]).map_err(|_| Error::Revocation)?;
+    (response.status == 200)
+        .then_some(())
+        .ok_or(Error::Revocation)
 }
 
 /// Call on a worker in response to Connect. The caller owns the cancellation flag.
@@ -251,18 +256,24 @@ fn authorize_with(
     check_cancelled(cancelled)?;
     let requested_at = Instant::now();
     let requested_wall = SystemTime::now();
-    let response = transport(TOKEN_ENDPOINT, &form);
-    let session = response
+    let grant = transport(TOKEN_ENDPOINT, &form)
         .ok()
         .filter(|response| response.status == 200)
-        .and_then(|response| parse_token(&response.body, requested_at, requested_wall));
-    if check_cancelled(cancelled).is_err() {
-        if let Some(session) = session {
+        .and_then(|response| IssuedGrant::parse(&response.body));
+    if let Some(mut grant) = grant {
+        if let Some(session) = grant.take_session(requested_at, requested_wall) {
+            if check_cancelled(cancelled).is_ok() {
+                return Ok(session);
+            }
             session.revoke_with(transport)?;
+        } else {
+            // Credentials from the trusted token endpoint may still be revocable when
+            // scope, expiry, or other session metadata does not meet Pear's requirements.
+            grant.revoke(transport)?;
         }
-        return Err(Error::Cancelled);
     }
-    session.ok_or(Error::Exchange)
+    check_cancelled(cancelled)?;
+    Err(Error::Exchange)
 }
 
 fn check_cancelled(cancelled: &AtomicBool) -> Result<(), Error> {
@@ -348,38 +359,72 @@ fn post(endpoint: &str, form: &[(&str, &str)]) -> Result<HttpResponse, Error> {
 }
 
 #[derive(Deserialize)]
-struct TokenResponse {
-    access_token: String,
-    refresh_token: Option<String>,
+struct TokenCredentials<'a> {
+    #[serde(borrow)]
+    access_token: Option<&'a RawValue>,
+    #[serde(borrow)]
+    refresh_token: Option<&'a RawValue>,
+}
+
+#[derive(Deserialize)]
+struct SessionMetadata {
     scope: String,
     token_type: String,
     expires_in: u64,
 }
 
-fn parse_token(bytes: &[u8], now: Instant, wall: SystemTime) -> Option<Session> {
-    if bytes.iter().find(|byte| !byte.is_ascii_whitespace()) != Some(&b'{') {
-        return None;
+struct IssuedGrant {
+    access_token: Option<Zeroizing<String>>,
+    refresh_token: Option<Zeroizing<String>>,
+    metadata: Option<SessionMetadata>,
+}
+
+impl IssuedGrant {
+    fn parse(bytes: &[u8]) -> Option<Self> {
+        if bytes.iter().find(|byte| !byte.is_ascii_whitespace()) != Some(&b'{') {
+            return None;
+        }
+        let credentials: TokenCredentials<'_> = serde_json::from_slice(bytes).ok()?;
+        let read = |value: Option<&RawValue>| {
+            serde_json::from_str::<String>(value?.get())
+                .ok()
+                .map(Zeroizing::new)
+        };
+        Some(Self {
+            access_token: read(credentials.access_token).filter(|token| bearer_ascii(token)),
+            refresh_token: read(credentials.refresh_token).filter(|token| visible_ascii(token)),
+            metadata: serde_json::from_slice(bytes).ok(),
+        })
     }
-    let token: TokenResponse = serde_json::from_slice(bytes).ok()?;
-    let access_token = Zeroizing::new(token.access_token);
-    let revocation_token = token.refresh_token.map(Zeroizing::new);
-    let mut scope = token.scope.split_ascii_whitespace();
-    if scope.next() != Some(SCOPE)
-        || scope.next().is_some()
-        || !token.token_type.eq_ignore_ascii_case("bearer")
-        || token.expires_in == 0
-        || !bearer_ascii(&access_token)
-    {
-        return None;
+
+    fn take_session(&mut self, now: Instant, wall: SystemTime) -> Option<Session> {
+        let metadata = self.metadata.as_ref()?;
+        let mut scope = metadata.scope.split_ascii_whitespace();
+        if scope.next() != Some(SCOPE)
+            || scope.next().is_some()
+            || !metadata.token_type.eq_ignore_ascii_case("bearer")
+            || metadata.expires_in == 0
+        {
+            return None;
+        }
+        let duration = Duration::from_secs(metadata.expires_in);
+        let expires_at = now.checked_add(duration)?;
+        let expires_wall = wall.checked_add(duration)?;
+        Some(Session {
+            access_token: self.access_token.take()?,
+            revocation_token: self.refresh_token.take(),
+            disconnected: AtomicBool::new(false),
+            expires_at,
+            expires_wall,
+        })
     }
-    let duration = Duration::from_secs(token.expires_in);
-    Some(Session {
-        access_token,
-        revocation_token: revocation_token.filter(|token| visible_ascii(token)),
-        disconnected: AtomicBool::new(false),
-        expires_at: now.checked_add(duration)?,
-        expires_wall: wall.checked_add(duration)?,
-    })
+
+    fn revoke(&self, transport: &Post<'_>) -> Result<(), Error> {
+        if let Some(token) = self.refresh_token.as_ref().or(self.access_token.as_ref()) {
+            revoke_token(token, transport)?;
+        }
+        Ok(())
+    }
 }
 
 fn bearer_ascii(value: &str) -> bool {

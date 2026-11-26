@@ -95,6 +95,10 @@ fn only_a_single_matching_state_and_one_callback_result_are_valid() {
     assert!(request("GET", "/?state=expected&code=1", "localhost:12345").is_none());
 }
 
+fn parse_session(bytes: &[u8], now: Instant, wall: SystemTime) -> Option<Session> {
+    IssuedGrant::parse(bytes)?.take_session(now, wall)
+}
+
 #[test]
 fn session_requires_readonly_bearer_scope_and_expires_at_the_service_deadline() {
     let now = Instant::now();
@@ -105,7 +109,7 @@ fn session_requires_readonly_bearer_scope_and_expires_at_the_service_deadline() 
         )
     };
     let bytes = response(SCOPE, "Bearer", 60);
-    let session = parse_token(bytes.as_bytes(), now, wall).expect("valid token");
+    let session = parse_session(bytes.as_bytes(), now, wall).expect("valid token");
     assert_eq!(session.bearer_at(now, wall), Some("example-token"));
     assert_eq!(session.bearer_at(now + Duration::from_secs(60), wall), None);
     assert_eq!(session.bearer_at(now, wall + Duration::from_secs(60)), None);
@@ -114,7 +118,7 @@ fn session_requires_readonly_bearer_scope_and_expires_at_the_service_deadline() 
         response(SCOPE, "invalid", 60),
         response(SCOPE, "Bearer", 0),
     ] {
-        assert!(parse_token(bytes.as_bytes(), now, wall).is_none());
+        assert!(parse_session(bytes.as_bytes(), now, wall).is_none());
     }
 }
 
@@ -257,7 +261,7 @@ fn cancelling_during_exchange_revokes_the_returned_grant_without_reusing_it() {
 
 #[test]
 fn disconnect_uses_the_access_token_if_no_refresh_token_was_returned() {
-    let mut session = parse_token(&mock_token().body, Instant::now(), SystemTime::now()).unwrap();
+    let mut session = parse_session(&mock_token().body, Instant::now(), SystemTime::now()).unwrap();
     session.revocation_token = None;
     let transport = |endpoint: &str, form: &[(&str, &str)]| {
         assert_eq!(endpoint, REVOCATION_ENDPOINT);
@@ -365,4 +369,75 @@ fn config_opener_uses_a_nonblocking_descriptor_and_rejects_nonregular_files() {
         ClientConfig::open_file(&fixture.0),
         Err(Error::Config)
     ));
+}
+
+fn reject_mock_grant(
+    body: &[u8],
+    cancel_during_exchange: bool,
+    revocation_status: u16,
+    expected_candidate: &str,
+) -> Error {
+    let cancelled = AtomicBool::new(false);
+    let revoked = Cell::new(0);
+    let result = authorize_with(
+        &config(),
+        &cancelled,
+        Duration::from_secs(3),
+        |url| {
+            let params: HashMap<_, _> = url.query_pairs().into_owned().collect();
+            browser_callback(url, &[("state", &params["state"]), ("code", "synthetic")]);
+            Ok(())
+        },
+        &|endpoint, form| {
+            if endpoint == TOKEN_ENDPOINT {
+                cancelled.store(cancel_during_exchange, Ordering::Release);
+                Ok(HttpResponse {
+                    status: 200,
+                    body: Zeroizing::new(body.to_vec()),
+                })
+            } else {
+                assert_eq!(endpoint, REVOCATION_ENDPOINT);
+                assert_eq!(form, &[("token", expected_candidate)]);
+                revoked.set(revoked.get() + 1);
+                Ok(HttpResponse {
+                    status: revocation_status,
+                    body: Zeroizing::new(b"untrusted provider response".to_vec()),
+                })
+            }
+        },
+    );
+    assert_eq!(revoked.get(), 1);
+    result.err().expect("the grant must not open a session")
+}
+
+#[test]
+fn rejecting_an_unexpected_scope_revokes_the_issued_grant() {
+    let body = format!(
+        r#"{{"access_token":"mock-access","refresh_token":"mock-revoke","scope":"{SCOPE} https://www.googleapis.com/auth/youtube","token_type":"Bearer","expires_in":60}}"#,
+    );
+    for (cancelled, error) in [(false, Error::Exchange), (true, Error::Cancelled)] {
+        assert_eq!(
+            reject_mock_grant(body.as_bytes(), cancelled, 200, "mock-revoke"),
+            error,
+        );
+    }
+}
+
+#[test]
+fn cancellation_revokes_an_issued_grant_with_invalid_session_metadata() {
+    let body = br#"{"access_token":"mock-access","refresh_token":"invalid token","scope":[],"token_type":"Bearer","expires_in":60}"#;
+    assert_eq!(
+        reject_mock_grant(body, true, 200, "mock-access"),
+        Error::Cancelled,
+    );
+}
+
+#[test]
+fn revocation_failure_for_a_rejected_grant_requests_manual_removal() {
+    let body = br#"{"refresh_token":"mock-revoke","access_token":42}"#;
+    for cancelled in [false, true] {
+        let error = reject_mock_grant(body, cancelled, 503, "mock-revoke");
+        assert_eq!(error, Error::Revocation);
+        assert!(error.message().contains("Google Account permissions"));
+    }
 }

@@ -359,6 +359,7 @@ impl Panel {
                         return (Some(first), true);
                     }
                     Ok(_) => self.disconnected("Your YouTube session expired. Connect again."),
+                    Err(oauth::Error::Revocation) => self.revocation_failed(),
                     Err(error) => self.disconnected(error.message()),
                 }
             }
