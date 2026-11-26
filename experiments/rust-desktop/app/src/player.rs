@@ -11,7 +11,7 @@ mod lyrics;
 mod lyrics_lookup;
 mod metadata;
 mod metadata_lookup;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 mod native_media;
 mod platform;
 #[cfg(target_os = "linux")]
@@ -86,7 +86,7 @@ enum PlayerEvent {
     SearchResults(u64, catalog::Response),
     TransportCommitted(u64),
     TransportSample(u64, u64, String),
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     SystemMedia(crate::media::Request),
     LyricsResult(u64, lyrics_lookup::Response),
     Account(u32, account::Outcome),
@@ -833,7 +833,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         (None, None, None)
     };
     let mut transport = mode.iframe_player.then(transport::Transport::default);
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     let mut native_media = native_media::Session::new(event_loop.create_proxy());
     let mut auto_advance = advance::Advance::default();
     auto_advance.set_repeat_queue(repeat_queue);
@@ -886,8 +886,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             _ => false,
         };
         if quit_requested {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
-            native_media.update(None);
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+            native_media.update(&window, None);
             account_shutdown_deadline = account.as_mut().and_then(|panel| panel.begin_shutdown(Instant::now()));
             *flow = if let Some(deadline) = account_shutdown_deadline {
                 window.set_visible(false);
@@ -1233,7 +1233,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     receive_account_outcome(panel, stamp, outcome, &service_events)
                 })
             }
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
             Event::UserEvent(PlayerEvent::SystemMedia(request)) => {
                 if approved && mode.iframe_player && !mode.smoke
                     && public_playlist.is_none() && !auto_advance.pending() && player_error.is_none()
@@ -1432,7 +1432,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 let name = match &action {
                                     iframe::Action::Play => "play",
                                     iframe::Action::Pause => "pause",
-                                    #[cfg(any(target_os = "macos", target_os = "linux", test))]
+                                    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows", test))]
                                     iframe::Action::NativePlayback { .. } => "native playback",
                                     iframe::Action::Seek(_) => "seek",
                                 iframe::Action::Advance { .. } => "advance",
@@ -1562,8 +1562,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
 
         let update_queue = update_queue || account_expired;
         if reload_player {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
-            native_media.update(None);
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+            native_media.update(&window, None);
             generation += 1;
             load_deadline = None;
             loading_slow = false;
@@ -1702,7 +1702,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         {
             eprintln!("Could not update the playback controls: {reason}");
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
         {
             let item = if approved && mode.iframe_player && !mode.smoke && !switching
                 && public_playlist.is_none() && player_error.is_none() && current_player.is_some()
@@ -1729,7 +1729,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             } else {
                 None
             };
-            native_media.update(item);
+            native_media.update(&window, item);
         }
     });
 }

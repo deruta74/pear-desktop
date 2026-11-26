@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use tao::event_loop::EventLoopProxy;
+use tao::{event_loop::EventLoopProxy, window::Window};
 
 use crate::media;
 
@@ -153,7 +153,7 @@ impl Session {
         }
     }
 
-    pub(super) fn update(&mut self, item: Option<Item<'_>>) {
+    pub(super) fn update(&mut self, _window: &Window, item: Option<Item<'_>>) {
         let state = self.projection.update(item);
         if state.is_some() && !self.attempted {
             self.attempted = true;
@@ -168,6 +168,10 @@ impl Session {
             #[cfg(target_os = "linux")]
             {
                 self.backend = media::Backend::new(media::SessionKind::OnlineQueue, dispatch);
+            }
+            #[cfg(target_os = "windows")]
+            {
+                self.backend = media::Backend::new(_window, dispatch);
             }
         }
         if let Some(backend) = &mut self.backend {
@@ -259,6 +263,50 @@ mod tests {
     }
 
     #[test]
+    fn play_and_pause_follow_the_current_controllable_session() {
+        use media::Command::{Pause, Play};
+
+        let mut projection = Projection::default();
+        let mut playback = sample(VIDEO, true);
+        let playing = projection.update(Some(item(VIDEO, &playback))).unwrap();
+        assert_eq!(
+            projection.requested_playback(
+                media::Request {
+                    generation: playing.generation,
+                    command: Play,
+                },
+                1,
+                VIDEO,
+            ),
+            None,
+        );
+        let pause = media::Request {
+            generation: playing.generation,
+            command: Pause,
+        };
+        assert_eq!(projection.requested_playback(pause, 1, VIDEO), Some(false));
+        assert_eq!(projection.requested_playback(pause, 2, VIDEO), None);
+        assert_eq!(projection.requested_playback(pause, 1, NEXT), None);
+
+        playback.state = Some(2);
+        let mut paused = item(VIDEO, &playback);
+        paused.can_control = false;
+        projection.update(Some(paused)).unwrap();
+        let play = media::Request {
+            command: Play,
+            ..pause
+        };
+        assert_eq!(projection.requested_playback(play, 1, VIDEO), None);
+        projection.update(Some(item(VIDEO, &playback))).unwrap();
+        assert_eq!(projection.requested_playback(play, 1, VIDEO), Some(true));
+
+        assert!(projection.update(None).is_none());
+        assert_eq!(projection.requested_playback(play, 1, VIDEO), None);
+        projection.update(Some(item(VIDEO, &playback))).unwrap();
+        assert_eq!(projection.requested_playback(play, 1, VIDEO), None);
+    }
+
+    #[test]
     fn advances_now_playing_time_between_the_poll_and_its_reply() {
         let mut projection = Projection::default();
         let mut sample = sample(VIDEO, true);
@@ -283,7 +331,7 @@ mod tests {
         assert_eq!(held.position_ms, 3500);
         #[cfg(target_os = "macos")]
         assert_eq!((held.speed, held.status), (0.0, media::Status::Playing));
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         assert_eq!((held.speed, held.status), (1.25, media::Status::Paused));
     }
 }
