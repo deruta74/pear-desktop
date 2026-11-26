@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use super::metadata::Metadata;
+
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
@@ -42,7 +46,7 @@ pub(super) enum Status {
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(super) struct State {
     pub(super) generation: u64,
-    pub(super) title: String,
+    pub(super) metadata: Arc<Metadata>,
     pub(super) duration_ms: u64,
     pub(super) position_ms: u64,
     pub(super) position_revision: u32,

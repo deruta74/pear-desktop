@@ -10,6 +10,7 @@ use symphonia::core::{
 use symphonia_opus::OpusDecoder;
 
 use super::{EngineOpenError, source::AudioInfo};
+use crate::local_audio::metadata::Metadata;
 use ogg::OggOpus;
 
 const SAMPLE_RATE: u32 = 48_000;
@@ -29,9 +30,9 @@ pub(super) struct OpusSource {
 }
 
 impl OpusSource {
-    pub(super) fn open(file: File, file_length: u64) -> Result<Self, EngineOpenError> {
+    pub(super) fn open(file: File, file_length: u64) -> Result<(Self, Metadata), EngineOpenError> {
         let unsupported = EngineOpenError::UnsupportedAudio;
-        let (reader, head) = OggOpus::open(file, file_length).map_err(|_| unsupported)?;
+        let (reader, head, metadata) = OggOpus::open(file, file_length).map_err(|_| unsupported)?;
         let mut params = AudioCodecParameters::new();
         params
             .for_codec(CODEC_ID_OPUS)
@@ -69,7 +70,7 @@ impl OpusSource {
             next_frame: 0,
         };
         source.read_packet(raw_start).map_err(|_| unsupported)?;
-        Ok(source)
+        Ok((source, metadata))
     }
 
     pub(super) fn info(&self) -> AudioInfo {

@@ -3,6 +3,7 @@
 const element = (id) => document.getElementById(id);
 const open = element('open');
 const track = element('track');
+const trackDetails = element('track-details');
 const seek = element('seek');
 const previous = element('previous');
 const play = element('play');
@@ -137,7 +138,9 @@ function renderPosition() {
 }
 
 window.renderPearLocal = ({
-  track: filename,
+  track: title,
+  artist,
+  album,
   transport,
   error,
   opening: isOpening = false,
@@ -180,7 +183,10 @@ window.renderPearLocal = ({
   }
   play.disabled = seek.disabled = opening || Boolean(current?.error);
   if (!transport) return;
-  setText(track, filename);
+  setText(track, title);
+  const details = [artist, album].filter(Boolean).join(' · ');
+  setText(trackDetails, details);
+  trackDetails.hidden = !details;
   const duration = Math.max(1, transport.durationMs);
   if (Number(seek.max) !== duration) seek.max = duration;
   if (!scrubbing && seek.valueAsNumber !== transport.positionMs) {

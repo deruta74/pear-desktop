@@ -51,6 +51,12 @@
   overflow-wrap: anywhere;
 }
 
+.local-track #track-details {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .local-queue h2,
 .local-effects .local-header h2 {
   font-size: 1.0625rem;

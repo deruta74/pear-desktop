@@ -8,10 +8,10 @@ use block2::RcBlock;
 use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_foundation::{NSDictionary, NSNumber, NSString};
 use objc2_media_player::{
-    MPMediaItemPropertyPlaybackDuration, MPMediaItemPropertyTitle, MPNowPlayingInfoCenter,
-    MPNowPlayingInfoPropertyElapsedPlaybackTime, MPNowPlayingInfoPropertyPlaybackRate,
-    MPNowPlayingPlaybackState, MPRemoteCommand, MPRemoteCommandCenter, MPRemoteCommandEvent,
-    MPRemoteCommandHandlerStatus,
+    MPMediaItemPropertyAlbumTitle, MPMediaItemPropertyArtist, MPMediaItemPropertyPlaybackDuration,
+    MPMediaItemPropertyTitle, MPNowPlayingInfoCenter, MPNowPlayingInfoPropertyElapsedPlaybackTime,
+    MPNowPlayingInfoPropertyPlaybackRate, MPNowPlayingPlaybackState, MPRemoteCommand,
+    MPRemoteCommandCenter, MPRemoteCommandEvent, MPRemoteCommandHandlerStatus,
 };
 
 use super::{Command, Request, State, Status};
@@ -196,7 +196,9 @@ impl Backend {
     }
 
     fn publish(&self, state: &State) {
-        let title = NSString::from_str(&state.title);
+        let title = NSString::from_str(&state.metadata.title);
+        let artist = state.metadata.artist.as_deref().map(NSString::from_str);
+        let album = state.metadata.album.as_deref().map(NSString::from_str);
         let duration = NSNumber::new_f64(state.duration_ms as f64 / 1_000.0);
         let elapsed = NSNumber::new_f64(state.position_ms as f64 / 1_000.0);
         let rate = NSNumber::new_f64(if state.status == Status::Playing {
@@ -211,15 +213,22 @@ impl Backend {
         };
         // MediaPlayer expects string/number objects at these named Now Playing keys.
         unsafe {
-            let info = NSDictionary::<NSString, AnyObject>::from_slices(
-                &[
-                    MPMediaItemPropertyTitle,
-                    MPMediaItemPropertyPlaybackDuration,
-                    MPNowPlayingInfoPropertyElapsedPlaybackTime,
-                    MPNowPlayingInfoPropertyPlaybackRate,
-                ],
-                &[&title, &duration, &elapsed, &rate],
-            );
+            let mut keys = vec![
+                MPMediaItemPropertyTitle,
+                MPMediaItemPropertyPlaybackDuration,
+                MPNowPlayingInfoPropertyElapsedPlaybackTime,
+                MPNowPlayingInfoPropertyPlaybackRate,
+            ];
+            let mut values: Vec<&AnyObject> = vec![&title, &duration, &elapsed, &rate];
+            if let Some(artist) = artist.as_deref() {
+                keys.push(MPMediaItemPropertyArtist);
+                values.push(artist);
+            }
+            if let Some(album) = album.as_deref() {
+                keys.push(MPMediaItemPropertyAlbumTitle);
+                values.push(album);
+            }
+            let info = NSDictionary::<NSString, AnyObject>::from_slices(&keys, &values);
             self.center.setNowPlayingInfo(Some(&info));
             self.center.setPlaybackState(status);
         }
@@ -252,14 +261,17 @@ impl Drop for Backend {
 }
 #[cfg(test)]
 mod tests {
-    use super::super::Status;
+    use super::super::{Metadata, Status};
     use super::*;
     use std::time::Duration;
 
     fn state(status: Status) -> State {
         State {
             generation: 1,
-            title: "Test tone".into(),
+            metadata: Arc::new(Metadata {
+                title: "Test tone".into(),
+                ..Metadata::default()
+            }),
             duration_ms: 10_000,
             position_ms: 2_000,
             position_revision: 0,

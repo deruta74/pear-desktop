@@ -4,7 +4,10 @@ use super::*;
 fn native_commands_follow_the_current_generation_and_capabilities() {
     let mut state = State {
         generation: 7,
-        title: "Track.wav".into(),
+        metadata: Arc::new(Metadata {
+            title: "Track.wav".into(),
+            ..Metadata::default()
+        }),
         duration_ms: 9_000,
         position_ms: 1_000,
         position_revision: 0,
@@ -40,7 +43,10 @@ fn native_commands_follow_the_current_generation_and_capabilities() {
 fn windows_controls_only_dispatch_available_buttons_for_the_current_track() {
     let mut state = State {
         generation: 12,
-        title: "Track.wav".into(),
+        metadata: Arc::new(Metadata {
+            title: "Track.wav".into(),
+            ..Metadata::default()
+        }),
         duration_ms: 9_000,
         position_ms: 1_000,
         position_revision: 0,

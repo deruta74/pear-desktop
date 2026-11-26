@@ -418,3 +418,34 @@ test('shuffles upcoming tracks and sets repeat mode through the current queue re
     290,
   );
 });
+
+test('displays local track tags as text and clears them for the next untagged track', async (t) => {
+  const { page, render, blocked } = await localAudioPage(t);
+  const transport = { positionMs: 0, durationMs: 1000, playing: true };
+  await render({
+    track: 'Tagged song',
+    artist: '<img src=https://outside.test/cover>',
+    album: 'Live album',
+    transport,
+    queue: {
+      revision: 1,
+      tracks: ['first.mp3', 'second.wav'],
+      selected: 0,
+      canShuffle: false,
+      repeat: 'off',
+    },
+  });
+  await expect(
+    page.getByRole('heading', { name: 'Tagged song' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('<img src=https://outside.test/cover>', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText('Live album', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'first.mp3' })).toBeVisible();
+
+  await render({ track: 'second.wav', transport });
+  await expect(page.getByRole('heading', { name: 'second.wav' })).toBeVisible();
+  await expect(page.getByText('Live album', { exact: false })).toBeHidden();
+  expect(blocked).toEqual([]);
+});

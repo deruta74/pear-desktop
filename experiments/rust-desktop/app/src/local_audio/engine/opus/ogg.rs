@@ -1,12 +1,13 @@
 use std::{
     collections::VecDeque,
     fs::File,
-    io::{self, Read, Seek, SeekFrom},
+    io::{self, Cursor, Read, Seek, SeekFrom},
 };
 
 use ::ogg::reading::{BasePacketReader, OggPage, PageParser};
 
 use super::MAX_PACKET_FRAMES;
+use crate::local_audio::metadata::Metadata;
 
 const NO_GRANULE: u64 = u64::MAX;
 const MAX_PAGE_BYTES: usize = 27 + 255 + 255 * 255;
@@ -32,7 +33,7 @@ pub(super) struct OggOpus {
 }
 
 impl OggOpus {
-    pub(super) fn open(file: File, length: u64) -> io::Result<(Self, Vec<u8>)> {
+    pub(super) fn open(file: File, length: u64) -> io::Result<(Self, Vec<u8>, Metadata)> {
         let mut input = Input {
             file,
             length,
@@ -65,7 +66,7 @@ impl OggOpus {
             parser,
             packets: VecDeque::new(),
         };
-        loop {
+        let metadata = loop {
             let page = source.push_next_page()?;
             if page.flags & 4 != 0 {
                 return Err(invalid());
@@ -79,14 +80,16 @@ impl OggOpus {
                         && !page.ends_continued
                         && tags.data.starts_with(b"OpusTags") =>
                 {
-                    break;
+                    let comments = &tags.data[8..];
+                    break Metadata::read_vorbis(Cursor::new(comments), comments.len() as u64)
+                        .unwrap_or_default();
                 }
                 _ => return Err(invalid()),
             }
-        }
+        };
         source.audio_offset = source.next_offset;
         source.fill_packets()?;
-        Ok((source, head.data))
+        Ok((source, head.data, metadata))
     }
 
     pub(super) fn start(&self) -> u64 {

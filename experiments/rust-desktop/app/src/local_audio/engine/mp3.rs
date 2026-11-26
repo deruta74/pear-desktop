@@ -14,6 +14,7 @@ use symphonia::{
 };
 
 use super::{EngineOpenError, source::AudioInfo};
+use crate::local_audio::metadata::{Metadata, synchsafe};
 
 const MAX_ID3_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PACKET_FRAMES: usize = 1_152;
@@ -40,9 +41,12 @@ impl Mp3Source {
         &header[..3] == b"ID3" || is_mp3_frame([header[0], header[1]])
     }
 
-    pub(super) fn open(mut file: File, file_length: u64) -> Result<Self, EngineOpenError> {
+    pub(super) fn open(
+        mut file: File,
+        file_length: u64,
+    ) -> Result<(Self, Metadata), EngineOpenError> {
         let unsupported = EngineOpenError::UnsupportedAudio;
-        let origin = audio_offset(&mut file, file_length).map_err(|_| unsupported)?;
+        let (origin, metadata) = read_header(&mut file, file_length).map_err(|_| unsupported)?;
         let mut input = MediaSourceStream::new(Box::new(UnknownLength(file)), Default::default());
         input
             .seek(SeekFrom::Start(origin))
@@ -96,7 +100,7 @@ impl Mp3Source {
             next_frame: 0,
         };
         source.read_packet().map_err(|_| unsupported)?;
-        Ok(source)
+        Ok((source, metadata))
     }
 
     pub(super) fn info(&self) -> AudioInfo {
@@ -194,33 +198,33 @@ fn is_mp3_frame([first, second]: [u8; 2]) -> bool {
     first == 0xff && second & 0xe6 == 0xe2 && second & 0x18 != 0x08
 }
 
-fn audio_offset(file: &mut File, file_length: u64) -> io::Result<u64> {
+fn read_header(file: &mut File, file_length: u64) -> io::Result<(u64, Metadata)> {
     let mut signature = [0; 3];
     file.read_exact(&mut signature)?;
     if &signature != b"ID3" {
-        return Ok(0);
+        return Ok((0, Metadata::default()));
     }
     let mut header = [0; 7];
     file.read_exact(&mut header)?;
     let [version, _, flags, a, b, c, d] = header;
-    if !matches!(version, 2..=4) || (a | b | c | d) & 0x80 != 0 {
+    if !matches!(version, 2..=4) {
         return Err(io::ErrorKind::InvalidData.into());
     }
-    let size = [a, b, c, d]
-        .into_iter()
-        .fold(0_u64, |size, byte| (size << 7) | u64::from(byte));
+    let size = synchsafe([a, b, c, d])?;
     let footer = u64::from(version == 4 && flags & 0x10 != 0) * 10;
     let offset = 10 + size + footer;
     if offset > MAX_ID3_BYTES || offset >= file_length {
         return Err(io::ErrorKind::InvalidData.into());
     }
-    // Skip artwork and tags. Playback needs only the compressed audio frames.
     file.seek(SeekFrom::Start(offset))?;
     let mut header = [0; 2];
     file.read_exact(&mut header)?;
-    is_mp3_frame(header)
-        .then_some(offset)
-        .ok_or_else(|| io::ErrorKind::InvalidData.into())
+    if !is_mp3_frame(header) {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    file.seek(SeekFrom::Start(10))?;
+    let metadata = Metadata::read_id3(file, version, flags, size).unwrap_or_default();
+    Ok((offset, metadata))
 }
 
 // Disable the demuxer's bitrate-based duration estimate while retaining exact seeks.

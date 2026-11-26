@@ -8,7 +8,7 @@ use gtk::{
     },
 };
 
-use super::{Command, Request, State, Status};
+use super::{Command, Metadata, Request, State, Status};
 
 const PATH: &str = "/org/mpris/MediaPlayer2";
 const PLAYER: &str = "org.mpris.MediaPlayer2.Player";
@@ -225,8 +225,8 @@ fn changed_properties(
         .collect()
 }
 
-fn metadata_identity(state: Option<&State>) -> Option<(u64, u64, &str)> {
-    state.map(|state| (state.generation, state.duration_ms, state.title.as_str()))
+fn metadata_identity(state: Option<&State>) -> Option<(u64, u64, &Metadata)> {
+    state.map(|state| (state.generation, state.duration_ms, state.metadata.as_ref()))
 }
 
 impl Drop for Backend {
@@ -301,7 +301,13 @@ fn metadata(state: Option<&State>) -> Variant {
             .expect("a decimal generation forms a valid D-Bus object path");
         fields.insert("mpris:trackid", id.to_variant());
         fields.insert("mpris:length", micros(state.duration_ms).to_variant());
-        fields.insert("xesam:title", state.title.to_variant());
+        fields.insert("xesam:title", state.metadata.title.to_variant());
+        if let Some(artist) = state.metadata.artist.as_deref() {
+            fields.insert("xesam:artist", [artist].to_variant());
+        }
+        if let Some(album) = state.metadata.album.as_deref() {
+            fields.insert("xesam:album", album.to_variant());
+        }
     }
     fields.to_variant()
 }
@@ -313,12 +319,16 @@ fn micros(milliseconds: u64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn mpris_uses_microseconds_and_object_paths_without_exposing_file_locations() {
         let mut state = State {
             generation: 1,
-            title: "Track.wav".into(),
+            metadata: Arc::new(Metadata {
+                title: "Track.wav".into(),
+                ..Metadata::default()
+            }),
             duration_ms: 5500,
             position_ms: 1234,
             position_revision: 0,
@@ -356,6 +366,21 @@ mod tests {
         );
         state.generation += 1;
         state.can_control = false;
+        state.metadata = Arc::new(Metadata {
+            title: "Tagged track".into(),
+            artist: Some("Artist".into()),
+            album: Some("Album".into()),
+        });
+        let tagged = fields(&state);
+        assert_eq!(tagged.len(), 5);
+        assert_eq!(
+            tagged["xesam:artist"].get::<Vec<String>>().unwrap(),
+            ["Artist"]
+        );
+        assert_eq!(
+            tagged["xesam:album"].get::<String>().as_deref(),
+            Some("Album")
+        );
         assert_ne!(fields(&state)["mpris:trackid"], first["mpris:trackid"]);
         assert_eq!(
             player_property(Some(&state), "CanGoNext").get::<bool>(),
@@ -368,7 +393,10 @@ mod tests {
     fn position_ticks_do_not_republish_metadata() {
         let original = State {
             generation: 1,
-            title: "Track.wav".into(),
+            metadata: Arc::new(Metadata {
+                title: "Track.wav".into(),
+                ..Metadata::default()
+            }),
             duration_ms: 5_500,
             position_ms: 1_234,
             position_revision: 0,

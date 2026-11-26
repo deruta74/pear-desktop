@@ -6,6 +6,8 @@ use std::{
 
 use super::{EngineOpenError, flac::FlacSource, mp3::Mp3Source, opus::OpusSource, wav::WavSource};
 
+use crate::local_audio::metadata::Metadata;
+
 pub(super) const MAX_INPUT_RATE: u32 = 384_000;
 
 #[derive(Clone, Copy)]
@@ -14,11 +16,16 @@ pub(super) struct AudioInfo {
     pub(super) sample_rate: u32,
 }
 
-pub(super) enum AudioSource {
+enum Format {
     Wav(WavSource),
     Flac(FlacSource),
     Mp3(Box<Mp3Source>),
     Opus(Box<OpusSource>),
+}
+
+pub(super) struct AudioSource {
+    format: Format,
+    pub(super) metadata: Metadata,
 }
 
 impl AudioSource {
@@ -44,43 +51,53 @@ impl AudioSource {
         let mut signature = [0; 4];
         file.read_exact(&mut signature).map_err(unsupported)?;
         file.rewind().map_err(unsupported)?;
-        match &signature {
-            b"RIFF" => WavSource::open(file, metadata.len()).map(Self::Wav),
-            b"fLaC" => FlacSource::open(file, metadata.len()).map(Self::Flac),
+        let length = metadata.len();
+        let (format, metadata) = match &signature {
+            b"RIFF" => (
+                Format::Wav(WavSource::open(file, length)?),
+                Metadata::default(),
+            ),
+            b"fLaC" => {
+                let (source, metadata) = FlacSource::open(file, length)?;
+                (Format::Flac(source), metadata)
+            }
             b"OggS" => {
-                OpusSource::open(file, metadata.len()).map(|source| Self::Opus(Box::new(source)))
+                let (source, metadata) = OpusSource::open(file, length)?;
+                (Format::Opus(Box::new(source)), metadata)
             }
             header if Mp3Source::recognizes(header) => {
-                Mp3Source::open(file, metadata.len()).map(|source| Self::Mp3(Box::new(source)))
+                let (source, metadata) = Mp3Source::open(file, length)?;
+                (Format::Mp3(Box::new(source)), metadata)
             }
-            _ => Err(EngineOpenError::UnsupportedAudio),
-        }
+            _ => return Err(EngineOpenError::UnsupportedAudio),
+        };
+        Ok(Self { format, metadata })
     }
 
     pub(super) fn info(&self) -> AudioInfo {
-        match self {
-            Self::Wav(source) => source.info(),
-            Self::Flac(source) => source.info(),
-            Self::Mp3(source) => source.info(),
-            Self::Opus(source) => source.info(),
+        match &self.format {
+            Format::Wav(source) => source.info(),
+            Format::Flac(source) => source.info(),
+            Format::Mp3(source) => source.info(),
+            Format::Opus(source) => source.info(),
         }
     }
 
     pub(super) fn seek_to(&mut self, frame: u32) -> io::Result<()> {
-        match self {
-            Self::Wav(source) => source.seek_to(frame),
-            Self::Flac(source) => source.seek_to(frame),
-            Self::Mp3(source) => source.seek_to(frame),
-            Self::Opus(source) => source.seek_to(frame),
+        match &mut self.format {
+            Format::Wav(source) => source.seek_to(frame),
+            Format::Flac(source) => source.seek_to(frame),
+            Format::Mp3(source) => source.seek_to(frame),
+            Format::Opus(source) => source.seek_to(frame),
         }
     }
 
     pub(super) fn read_frame(&mut self) -> io::Result<[f32; 2]> {
-        match self {
-            Self::Wav(source) => source.read_frame().map_err(io::Error::other),
-            Self::Flac(source) => source.read_frame(),
-            Self::Mp3(source) => source.read_frame(),
-            Self::Opus(source) => source.read_frame(),
+        match &mut self.format {
+            Format::Wav(source) => source.read_frame().map_err(io::Error::other),
+            Format::Flac(source) => source.read_frame(),
+            Format::Mp3(source) => source.read_frame(),
+            Format::Opus(source) => source.read_frame(),
         }
     }
 }

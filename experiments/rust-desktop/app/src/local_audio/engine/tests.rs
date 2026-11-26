@@ -871,3 +871,146 @@ fn wait_for_frame(reader: &mut rtrb::Consumer<QueuedFrame>) -> QueuedFrame {
         std::thread::sleep(Duration::from_millis(1));
     }
 }
+
+#[test]
+fn prepares_mp3_text_tags_after_skipping_artwork_and_large_text() {
+    let audio = include_bytes!("fixtures/mono-untagged.mp3");
+    let mut frames = Vec::new();
+    let mut frame = |id: &[u8; 4], value: &[u8]| {
+        frames.extend_from_slice(id);
+        frames.extend_from_slice(&synchsafe(value.len()));
+        frames.extend_from_slice(&[0, 0]);
+        frames.extend_from_slice(value);
+    };
+    frame(b"APIC", &vec![0xff; 100_000]);
+    frame(b"TIT2", &vec![0xff; 20_000]);
+    frame(b"TIT2", b"\x03Signal\n \xe2\x80\xaeTest");
+    frame(b"TPE1", &[0, b'J', b'o', b's', 0xe9]);
+    frame(b"TALB", &[1, 0xff, 0xfe, b'E', 0, b'P', 0]);
+    let mut tagged = b"ID3\x04\x00\x00".to_vec();
+    tagged.extend_from_slice(&synchsafe(frames.len()));
+    tagged.extend_from_slice(&frames);
+    tagged.extend_from_slice(audio);
+
+    let fixture = Fixture::with_extension(&tagged, "mp3");
+    let mut prepared = PreparedAudio::read(&fixture.0).unwrap();
+    let tags = prepared.metadata();
+    assert_eq!(tags.title, "Signal Test");
+    assert_eq!(tags.artist.as_deref(), Some("José"));
+    assert_eq!(tags.album.as_deref(), Some("EP"));
+    assert!(prepared.0.read_frame().is_ok());
+}
+
+fn synchsafe(len: usize) -> [u8; 4] {
+    [21, 14, 7, 0].map(|shift| ((len >> shift) & 0x7f) as u8)
+}
+
+fn comments(entries: &[&[u8]]) -> Vec<u8> {
+    let mut bytes = 0_u32.to_le_bytes().to_vec();
+    bytes.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for entry in entries {
+        bytes.extend_from_slice(&(entry.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(entry);
+    }
+    bytes
+}
+
+#[test]
+fn prepares_flac_text_when_the_picture_and_comment_payloads_are_unusable() {
+    let audio = include_bytes!("fixtures/stereo.flac");
+    let mut tagged = audio[..42].to_vec();
+    tagged[4] &= 0x7f;
+    let mut block = |kind, value: &[u8]| {
+        tagged.push(kind);
+        tagged.extend_from_slice(&(value.len() as u32).to_be_bytes()[1..]);
+        tagged.extend_from_slice(value);
+    };
+    // These blocks belong to metadata and playback can skip them entirely.
+    block(6, &vec![0xff; 90_000]);
+    block(4, &u32::MAX.to_le_bytes());
+    block(
+        0x80 | 4,
+        &comments(&[
+            b"METADATA_BLOCK_PICTURE=broken",
+            b"title=FLAC label",
+            b"ARTIST=First",
+            b"artist=Second",
+            b"ALBUM=Sessions",
+        ]),
+    );
+    tagged.extend_from_slice(&audio[42..]);
+
+    let fixture = Fixture::with_extension(&tagged, "flac");
+    let mut prepared = PreparedAudio::read(&fixture.0).unwrap();
+    let tags = prepared.metadata();
+    assert_eq!(tags.title, "FLAC label");
+    assert_eq!(tags.artist.as_deref(), Some("First"));
+    assert_eq!(tags.album.as_deref(), Some("Sessions"));
+    let first = prepared.0.read_frame().unwrap();
+    prepared.0.seek_to(0).unwrap();
+    assert_eq!(prepared.0.read_frame().unwrap(), first);
+}
+
+#[test]
+fn prepares_ogg_opus_comments_and_ignores_embedded_picture_comments() {
+    use ogg::{
+        PacketReader,
+        writing::{PacketWriteEndInfo, PacketWriter},
+    };
+
+    let audio = include_bytes!("fixtures/mono-preskip.opus");
+    let mut reader = PacketReader::new(Cursor::new(audio));
+    let mut bytes = Vec::new();
+    let mut writer = PacketWriter::new(&mut bytes);
+    while let Some(packet) = reader.read_packet().unwrap() {
+        let end = if packet.last_in_stream() {
+            PacketWriteEndInfo::EndStream
+        } else if packet.last_in_page() {
+            PacketWriteEndInfo::EndPage
+        } else {
+            PacketWriteEndInfo::NormalPacket
+        };
+        let serial = packet.stream_serial();
+        let granule = packet.absgp_page();
+        let data = if packet.data.starts_with(b"OpusTags") {
+            let picture = ["METADATA_BLOCK_PICTURE=", &"X".repeat(70_000)].concat();
+            let mut tags = b"OpusTags".to_vec();
+            tags.extend(comments(&[
+                picture.as_bytes(),
+                b"TITLE= Opus label ",
+                b"artist=Voice",
+                b"ALBUM=Sessions",
+            ]));
+            tags
+        } else {
+            packet.data
+        };
+        writer.write_packet(data, serial, end, granule).unwrap();
+    }
+
+    let fixture = Fixture::with_extension(&bytes, "opus");
+    let mut prepared = PreparedAudio::read(&fixture.0).unwrap();
+    let tags = prepared.metadata();
+    assert_eq!(tags.title, "Opus label");
+    assert_eq!(tags.artist.as_deref(), Some("Voice"));
+    assert_eq!(tags.album.as_deref(), Some("Sessions"));
+    assert_eq!(prepared.0.info().frames, 1_087);
+    assert!(prepared.0.read_frame().is_ok());
+}
+
+#[test]
+fn preserves_wav_playback_and_falls_back_to_a_sanitized_basename() {
+    let bytes = wav_fixture(MONO_I16, &[0_i16, 100]);
+    let fixture = Fixture::with_extension(&bytes, "wav");
+    let prepared = PreparedAudio::read(&fixture.0).unwrap();
+    let tags = prepared.metadata();
+    assert!(tags.title.is_empty());
+    assert!(tags.artist.is_none());
+    assert!(tags.album.is_none());
+    assert_eq!(
+        tags.clone()
+            .with_filename(Path::new("private/music/\u{202e} test.wav"))
+            .title,
+        "test.wav",
+    );
+}

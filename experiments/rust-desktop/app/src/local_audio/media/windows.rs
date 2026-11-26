@@ -154,12 +154,17 @@ impl Backend {
                 set_enabled(&self.controls, enabled)?;
             }
         }
-        if previous.map(|state| &state.title) != state.map(|state| &state.title) {
+        if previous.map(|state| &state.metadata) != state.map(|state| &state.metadata) {
             if let Some(state) = state {
                 self.display.SetType(MediaPlaybackType::Music)?;
-                self.display
-                    .MusicProperties()?
-                    .SetTitle(&HSTRING::from(state.title.as_str()))?;
+                let music = self.display.MusicProperties()?;
+                music.SetTitle(&HSTRING::from(state.metadata.title.as_str()))?;
+                music.SetArtist(&HSTRING::from(
+                    state.metadata.artist.as_deref().unwrap_or_default(),
+                ))?;
+                music.SetAlbumTitle(&HSTRING::from(
+                    state.metadata.album.as_deref().unwrap_or_default(),
+                ))?;
             } else {
                 self.display.ClearAll()?;
             }

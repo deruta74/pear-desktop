@@ -1,12 +1,13 @@
 mod engine;
 mod equalizer;
 mod media;
+mod metadata;
 mod presets;
 mod queue;
 
 use std::{
     borrow::Cow,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Command as Process, Stdio},
     sync::Arc,
     time::{Duration, Instant},
@@ -27,6 +28,8 @@ use wry::{
 };
 
 use crate::{Result, attach_menu, build_webview, player::isolated_builder};
+
+use metadata::Metadata;
 
 const SCHEME: &str = "pear-audio";
 const ASSET_ROOT: &str = "pear-audio://app.local/";
@@ -95,12 +98,12 @@ enum AudioEvent {
     Media(media::Request),
     DropFiles(Vec<PathBuf>),
     Menu(MenuEvent),
-    Prepared(std::result::Result<(String, engine::PreparedAudio), engine::EngineOpenError>),
-    Opened(std::result::Result<(String, engine::Engine), engine::EngineOpenError>),
+    Prepared(std::result::Result<(Arc<Metadata>, engine::PreparedAudio), engine::EngineOpenError>),
+    Opened(std::result::Result<(Arc<Metadata>, engine::Engine), engine::EngineOpenError>),
 }
 
 struct Track {
-    name: String,
+    metadata: Arc<Metadata>,
     engine: engine::Engine,
     generation: u64,
     stopped: bool,
@@ -109,6 +112,10 @@ struct Track {
 #[derive(Serialize)]
 struct View<'a> {
     track: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    artist: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    album: Option<&'a str>,
     transport: Option<engine::Snapshot>,
     error: Option<&'a str>,
     opening: bool,
@@ -182,24 +189,6 @@ fn assets(request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
         ))
         .body(Cow::Borrowed(bytes))
         .expect("valid bundled audio asset")
-}
-
-fn title(path: &Path) -> String {
-    let name: String = path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .chars()
-        .filter(|character| !character.is_control())
-        .take(180)
-        .collect();
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        "Audio file"
-    } else {
-        trimmed
-    }
-    .to_owned()
 }
 
 fn pick_files(window: &Window) -> Vec<PathBuf> {
@@ -416,7 +405,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                 dropped_files = Some(paths);
                 Some(AudioCommand::Open {})
             }
-            Event::UserEvent(AudioEvent::Prepared(Ok((name, audio)))) => {
+            Event::UserEvent(AudioEvent::Prepared(Ok((metadata, audio)))) => {
                 // A direct ALSA endpoint can permit only one active stream.
                 // Keep the old track while validating the file and release it
                 // before asking the current default output for a new stream.
@@ -426,7 +415,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                     .name("pear-audio-output".into())
                     .spawn(move || {
                         let result =
-                            engine::Engine::open_prepared(audio).map(|engine| (name, engine));
+                            engine::Engine::open_prepared(audio).map(|engine| (metadata, engine));
                         let _ = result_events.send_event(AudioEvent::Opened(result));
                     })
                     .is_err()
@@ -445,7 +434,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             }
             Event::UserEvent(AudioEvent::Opened(result)) => {
                 match result {
-                    Ok((name, mut engine)) => {
+                    Ok((metadata, mut engine)) => {
                         #[cfg(target_os = "macos")]
                         if media.is_none() {
                             // Let the first AppKit file picker finish before registering MediaPlayer.
@@ -468,7 +457,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                         engine.set_playing(play);
                         track_generation += 1;
                         track = Some(Track {
-                            name,
+                            metadata,
                             engine,
                             generation: track_generation,
                             stopped: false,
@@ -648,8 +637,10 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             match std::thread::Builder::new()
                 .name("pear-audio-open".into())
                 .spawn(move || {
-                    let result =
-                        engine::PreparedAudio::read(&path).map(|audio| (title(&path), audio));
+                    let result = engine::PreparedAudio::read(&path).map(|audio| {
+                        let metadata = audio.metadata().clone().with_filename(&path);
+                        (Arc::new(metadata), audio)
+                    });
                     let _ = result_events.send_event(AudioEvent::Prepared(result));
                 }) {
                 Ok(_) => error = None,
@@ -682,7 +673,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                         };
                         media::State {
                             generation: track.generation,
-                            title: track.name.clone(),
+                            metadata: Arc::clone(&track.metadata),
                             duration_ms: snapshot.duration_ms,
                             position_ms: snapshot.position_ms,
                             position_revision: snapshot.position_revision,
@@ -712,8 +703,11 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
             deadline = timer.schedule(deadline);
         }
         *flow = deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil);
+        let metadata = track.as_ref().map(|track| &track.metadata);
         let state = View {
-            track: track.as_ref().map(|track| track.name.as_str()),
+            track: metadata.map(|metadata| metadata.title.as_str()),
+            artist: metadata.and_then(|metadata| metadata.artist.as_deref()),
+            album: metadata.and_then(|metadata| metadata.album.as_deref()),
             transport,
             error: error.as_deref(),
             opening,
@@ -742,6 +736,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn local_queue_keeps_the_old_selection_until_a_batch_opens() {
@@ -860,6 +855,6 @@ mod tests {
         );
         assert!(command(&message("https://example.com/", r#"{"type":"open"}"#)).is_none());
         assert!(command(&message(DOCUMENT, &" ".repeat(8193))).is_none());
-        assert_eq!(title(Path::new("music/test.wav")), "test.wav");
+        assert_eq!(metadata::filename(Path::new("music/test.wav")), "test.wav");
     }
 }

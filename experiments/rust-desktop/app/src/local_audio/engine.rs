@@ -66,6 +66,10 @@ impl PreparedAudio {
     pub(super) fn read(path: &Path) -> Result<Self, EngineOpenError> {
         AudioSource::open(path).map(Self)
     }
+
+    pub(super) fn metadata(&self) -> &super::metadata::Metadata {
+        &self.0.metadata
+    }
 }
 
 #[derive(Serialize)]

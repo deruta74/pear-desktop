@@ -93,7 +93,7 @@ impl Queue {
         let entries: Vec<_> = paths
             .into_iter()
             .map(|path| Entry {
-                title: super::title(&path),
+                title: super::metadata::filename(&path),
                 path,
             })
             .collect();
