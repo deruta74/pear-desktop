@@ -311,6 +311,10 @@ jobs:
               }
             }
           }
+      - name: Probe visible IFrame playback with a diagnostic build
+        if: ${{ contains(github.event.head_commit.message, '[webview2-iframe-playback]') }}
+        timeout-minutes: 10
+        run: ./tools/windows-iframe-playback-qa.ps1
       - name: Upload Windows QA logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
