@@ -1,12 +1,57 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    time::{Duration, Instant},
+};
 
-use gtk::{Box as GtkBox, Orientation, prelude::*};
+use gtk::{Box as GtkBox, Orientation, glib, prelude::*};
 use tao::{platform::unix::WindowExtUnix, window::Window};
 use webkit2gtk::WebViewExt as _;
 use wry::{WebView, WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
 
 use super::{PANEL_WIDTH, Pane};
 use crate::Result;
+
+#[derive(Default)]
+pub(in crate::player) struct DeadlineTimer(Option<(Instant, glib::Source)>);
+
+impl DeadlineTimer {
+    pub(in crate::player) fn schedule(&mut self, deadline: Option<Instant>) -> Option<Instant> {
+        if let (Some(next), Some((scheduled, source))) = (deadline, self.0.as_ref())
+            && *scheduled <= next
+            && !source.is_destroyed()
+        {
+            // Tao must wait for the same wakeup the attached source will provide.
+            return Some(*scheduled);
+        }
+        self.cancel();
+        let deadline = deadline?;
+
+        // Tao's Linux WaitUntil can block in GTK without arming a wakeup.
+        // Round up so GTK cannot wake Tao just before the requested time.
+        let delay = deadline.saturating_duration_since(Instant::now());
+        let millis =
+            delay.as_millis() + u128::from(!delay.subsec_nanos().is_multiple_of(1_000_000));
+        let timeout = Duration::from_millis(millis.min(u128::from(u32::MAX)) as u64);
+        let source = glib::timeout_source_new(timeout, None, glib::Priority::DEFAULT, || {
+            glib::ControlFlow::Break
+        });
+        source.attach(None);
+        self.0 = Some((deadline, source));
+        Some(deadline)
+    }
+
+    fn cancel(&mut self) {
+        if let Some((_, source)) = self.0.take() {
+            source.destroy();
+        }
+    }
+}
+
+impl Drop for DeadlineTimer {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
 
 pub(in crate::player) struct Layout {
     video: GtkBox,
@@ -82,4 +127,21 @@ pub(in crate::player) fn observe_video(
     native.connect_web_process_terminated(move |_, _| {
         on_problem("The video player stopped. Use Reload Player or Open in browser.");
     });
+}
+
+#[cfg(test)]
+mod timer_tests {
+    use super::*;
+
+    #[test]
+    fn retaining_an_earlier_source_also_retains_its_wake_time() {
+        let mut timer = DeadlineTimer::default();
+        let early = Instant::now() + Duration::from_secs(10);
+        assert_eq!(timer.schedule(Some(early)), Some(early));
+        assert_eq!(
+            timer.schedule(Some(early + Duration::from_millis(1))),
+            Some(early)
+        );
+        assert_eq!(timer.schedule(None), None);
+    }
 }

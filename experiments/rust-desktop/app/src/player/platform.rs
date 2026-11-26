@@ -16,7 +16,7 @@ mod macos;
 mod windows;
 
 #[cfg(target_os = "linux")]
-pub(super) use linux::{Layout, observe_video};
+pub(super) use linux::{DeadlineTimer, Layout, observe_video};
 #[cfg(target_os = "macos")]
 pub(super) use macos::Layout;
 #[cfg(target_os = "windows")]

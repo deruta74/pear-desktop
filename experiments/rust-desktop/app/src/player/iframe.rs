@@ -1,8 +1,15 @@
 //! Local wrapper for the official YouTube IFrame API in the video pane.
+#[cfg(target_os = "macos")]
 use objc2_foundation::{NSBundle, NSString, NSURL};
 use serde::Deserialize;
 use url::Url;
-use wry::{WebView, WebViewExtMacOS};
+#[cfg(target_os = "linux")]
+use webkit2gtk::WebViewExt as _;
+use wry::WebView;
+#[cfg(target_os = "macos")]
+use wry::WebViewExtMacOS;
+#[cfg(target_os = "linux")]
+use wry::WebViewExtUnix;
 
 use super::platform::APP_ID;
 use crate::{Result, library::valid_id};
@@ -42,6 +49,7 @@ impl Page {
     }
 
     pub(super) fn load(&self, view: &WebView) -> Result<()> {
+        #[cfg(target_os = "macos")]
         if !NSBundle::mainBundle()
             .bundleIdentifier()
             .is_some_and(|id| id.to_string() == APP_ID)
@@ -50,8 +58,6 @@ impl Page {
         }
 
         let url = wrapper_url();
-        let base = NSURL::URLWithString(&NSString::from_str(&url))
-            .ok_or("Could not create the local IFrame player URL.")?;
         let html = HTML
             .replace("{WRAPPER_URL}", &url)
             .replace("{EMBED_PATH}", self.embed_url.path())
@@ -59,15 +65,24 @@ impl Page {
                 "{PLAYER_URL}",
                 &self.embed_url.as_str().replace('&', "&amp;"),
             );
-        // The WebView belongs to the main thread. This loads the bundled
-        // document locally, with the HTTPS origin verified against APP_ID.
-        let navigation = unsafe {
-            view.webview()
-                .loadHTMLString_baseURL(&NSString::from_str(&html), Some(&base))
-        };
-        if navigation.is_none() {
-            return Err("WKWebView could not load the local IFrame player.".into());
+        #[cfg(target_os = "macos")]
+        {
+            let base = NSURL::URLWithString(&NSString::from_str(&url))
+                .ok_or("Could not create the local IFrame player URL.")?;
+            // The WebView belongs to the main thread. This loads the bundled
+            // document locally, with the HTTPS origin verified against APP_ID.
+            let navigation = unsafe {
+                view.webview()
+                    .loadHTMLString_baseURL(&NSString::from_str(&html), Some(&base))
+            };
+            if navigation.is_none() {
+                return Err("WKWebView could not load the local IFrame player.".into());
+            }
         }
+        #[cfg(target_os = "linux")]
+        // WebKitGTK uses the HTTPS base for the local wrapper's origin and Referer.
+        view.webview().load_html(&html, Some(&url));
+
         Ok(())
     }
 
@@ -106,7 +121,7 @@ fn wrapper_origin() -> String {
     format!("https://{APP_ID}")
 }
 
-fn wrapper_url() -> String {
+pub(super) fn wrapper_url() -> String {
     format!("{}{WRAPPER_PATH}", wrapper_origin())
 }
 
