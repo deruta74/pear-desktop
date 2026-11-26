@@ -74,7 +74,7 @@ async function state(
   error = null,
   notice = null,
   sequence,
-  { titles, playerProblem, metadata, metadataProblem } = {},
+  { titles, playerProblem, metadata, metadataProblem, catalog } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
   return page.evaluate(
@@ -88,7 +88,14 @@ async function state(
       );
     },
     {
-      queueState: { entries, current, titles, metadata, metadataProblem },
+      queueState: {
+        entries,
+        current,
+        titles,
+        metadata,
+        metadataProblem,
+        catalog,
+      },
       error,
       notice,
       sequence,
@@ -590,6 +597,273 @@ test('fits a queue row at the minimum panel size while displaying long YouTube m
   const list = await page.locator('#queue-items').boundingBox();
   const row = await page.locator('#queue-items > li').first().boundingBox();
   assertVisibleQueueRow(list, row);
+});
+
+function searchState(overrides = {}) {
+  return {
+    query: '',
+    pending: false,
+    results: [],
+    problem: null,
+    ...overrides,
+  };
+}
+
+const pianoResult = {
+  id: second,
+  title: '<b>Studio piano & strings</b>',
+  channel: '<i>Artist & friends</i>',
+};
+
+test('makes the Search view available only with an active catalog and keeps playback accessible', async (t) => {
+  const page = await panel(t);
+  const navigation = page.getByRole('navigation', { name: 'Queue and search' });
+  const query = page.getByRole('searchbox', { name: 'Search YouTube' });
+  const source = page.getByRole('textbox', {
+    name: 'YouTube link or video ID',
+  });
+
+  await state(page, [first], first);
+  await expect(navigation).toHaveCount(0);
+  await expect(query).toHaveCount(0);
+  await expect(source).toBeVisible();
+
+  await state(page, [first], first, null, null, null, {
+    catalog: searchState(),
+  });
+  await transport(page, readyTransport);
+  const showSearch = navigation.getByRole('button', { name: 'Search' });
+  await expect(showSearch).toBeVisible();
+  await showSearch.press('Enter');
+  await expect(showSearch).toHaveAttribute('aria-pressed', 'true');
+  await expect(query).toBeFocused();
+  await expect(source).toBeHidden();
+  await expect(page.locator('#selection-id')).toHaveText(first);
+  await expect(
+    page.getByRole('slider', { name: 'Playback position' }),
+  ).toBeVisible();
+  await navigation.getByRole('button', { name: 'Queue' }).press('Space');
+  await expect(source).toBeFocused();
+  await showSearch.press('Enter');
+  await state(page, [first], first, null, null, null, { catalog: null });
+  await expect(navigation).toHaveCount(0);
+  await expect(query).toHaveCount(0);
+  await expect(source).toBeFocused();
+});
+
+test('opens Queue and focuses its add field from the native shortcut while preserving both drafts', async (t) => {
+  const page = await panel(t);
+  const source = page.getByRole('textbox', {
+    name: 'YouTube link or video ID',
+  });
+  const query = page.getByRole('searchbox', { name: 'Search YouTube' });
+  const view = page.getByRole('navigation', { name: 'Queue and search' });
+
+  await page.evaluate(() => window.focusPearAdd?.());
+  await state(page, [first], first, null, null, 1, { catalog: searchState() });
+  await expect(source).toBeFocused();
+  await source.fill(second);
+  await view.getByRole('button', { name: 'Search' }).click();
+  await query.fill('unsubmitted search');
+  await page.evaluate(() => window.focusPearAdd?.());
+  await expect(view.getByRole('button', { name: 'Queue' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(source).toBeFocused();
+  await expect(source).toHaveValue(second);
+  await view.getByRole('button', { name: 'Search' }).click();
+  await expect(query).toHaveValue('unsubmitted search');
+  expect(await messages(page)).toHaveLength(1);
+});
+
+test('reports Search progress and provider results after an acknowledgement with a playback notice', async (t) => {
+  const page = await panel(t);
+  const view = page.getByRole('navigation', { name: 'Queue and search' });
+  const query = page.getByRole('searchbox', { name: 'Search YouTube' });
+  const notice = 'Opening the YouTube player…';
+  await state(page, [first], first, null, null, 1, { catalog: searchState() });
+  await view.getByRole('button', { name: 'Search' }).click();
+  await query.fill('piano');
+  await query.press('Enter');
+  await state(page, [first], first, null, notice, 2, {
+    catalog: searchState({ query: 'piano', pending: true }),
+  });
+  await expect(page.getByText('Searching YouTube…')).toBeVisible();
+  await expect(page.locator('#catalog-form')).not.toContainText(notice);
+  const providerError = 'YouTube search is temporarily unavailable.';
+  await state(page, [first], first, null, notice, null, {
+    catalog: searchState({ query: 'piano', problem: providerError }),
+  });
+  await expect(page.getByText(providerError)).toBeVisible();
+  await state(page, [first], first, null, null, null, {
+    catalog: searchState({ query: 'piano' }),
+  });
+  await expect(
+    page.getByText('No videos found. Try a different search.'),
+  ).toBeVisible();
+});
+
+test('keeps Search actions unavailable until a pending playback command is acknowledged', async (t) => {
+  const page = await panel(t);
+  const catalog = searchState({ query: 'piano', results: [pianoResult] });
+  await state(page, [first], first, null, null, 1, { catalog });
+  await page
+    .getByRole('navigation', { name: 'Queue and search' })
+    .getByRole('button', { name: 'Search' })
+    .click();
+  const submit = page
+    .locator('#catalog-form')
+    .getByRole('button', { name: 'Search' });
+  const addResult = page.getByRole('button', {
+    name: 'Add <b>Studio piano & strings</b> to queue',
+  });
+  await page.getByRole('button', { name: 'Open in browser' }).click();
+  await expect(submit).toBeDisabled();
+  await expect(addResult).toBeDisabled();
+  await page.getByRole('searchbox', { name: 'Search YouTube' }).press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'open_browser' },
+  });
+  await state(page, [first], first, null, null, 2, { catalog });
+  await expect(submit).toBeEnabled();
+  await expect(addResult).toBeEnabled();
+});
+
+test('submits only explicit YouTube searches, replacing old results while the next query loads', async (t) => {
+  const page = await panel(t);
+  const view = page.getByRole('navigation', { name: 'Queue and search' });
+  const query = page.getByRole('searchbox', { name: 'Search YouTube' });
+  const previousResult = page.getByText('<b>Studio piano & strings</b>', {
+    exact: true,
+  });
+  await state(page, [first], first, null, null, 1, {
+    catalog: searchState({ query: 'piano', results: [pianoResult] }),
+  });
+  await expect(view).toBeVisible();
+  await view.getByRole('button', { name: 'Search' }).click();
+  await expect(query).toHaveValue('piano');
+  await expect(previousResult).toBeVisible();
+  await expect(
+    page.getByText('YouTube · <i>Artist & friends</i>', { exact: true }),
+  ).toBeVisible();
+  await query.fill('  live music  ');
+  expect(await messages(page)).toHaveLength(1);
+  await expect(previousResult).toBeVisible();
+  await query.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'search', query: 'live music' },
+  });
+  await expect(previousResult).toHaveCount(0);
+  await expect(page.getByText('Searching YouTube…')).toBeVisible();
+  await expect(query).toBeFocused();
+
+  await state(page, [first], first, null, null, 2, {
+    catalog: searchState({ query: 'live music', pending: true }),
+  });
+  await expect(page.getByText('Searching YouTube…')).toBeVisible();
+  await query.fill('cello music');
+  await query.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 3,
+    command: { type: 'search', query: 'cello music' },
+  });
+  await state(page, [first], first, null, null, 3, {
+    catalog: searchState({
+      query: 'cello music',
+      problem: 'YouTube search is temporarily unavailable.',
+    }),
+  });
+  const problem = page.getByText('YouTube search is temporarily unavailable.');
+  await expect(problem).toHaveAttribute('aria-live', 'polite');
+  await state(page, [first], first, null, null, null, {
+    catalog: searchState({ query: 'cello music' }),
+  });
+  await expect(
+    page.getByText('No videos found. Try a different search.'),
+  ).toBeVisible();
+  await expect(problem).toHaveCount(0);
+  await expect(query).toHaveValue('cello music');
+});
+
+test('adds a YouTube search result by keyboard without clearing the queue draft', async (t) => {
+  const page = await panel(t);
+  const catalog = searchState({ query: 'piano', results: [pianoResult] });
+  await state(page, [first], first, null, null, 1, { catalog });
+  const source = page.getByRole('textbox', {
+    name: 'YouTube link or video ID',
+  });
+  await source.fill(second);
+  const view = page.getByRole('navigation', { name: 'Queue and search' });
+  await expect(view).toBeVisible();
+  await view.getByRole('button', { name: 'Search' }).click();
+  const addResult = page.getByRole('button', {
+    name: 'Add <b>Studio piano & strings</b> to queue',
+  });
+  await addResult.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'add', source: second },
+  });
+  const addProblem = 'The queue is full.';
+  await state(page, [first], first, addProblem, null, 2, { catalog });
+  await expect(page.getByText(addProblem, { exact: true })).toBeVisible();
+  await expect(page.getByText('1 video found.', { exact: true })).toBeVisible();
+  await expect(addResult).toBeFocused();
+  await addResult.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 3,
+    command: { type: 'add', source: second },
+  });
+  await state(page, [first, second], first, null, null, 3, { catalog });
+  await expect(page.getByText(addProblem, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText('Added to the queue.', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('1 video found.', { exact: true })).toBeVisible();
+  await expect(addResult).toBeFocused();
+  await view.getByRole('button', { name: 'Queue' }).click();
+  await expect(source).toHaveValue(second);
+  await expect(page.getByRole('status')).toBeEmpty();
+});
+
+test('fits Queue and Search rows at the minimum panel size alongside playback controls', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const catalog = searchState({
+    query: 'music',
+    results: [
+      {
+        id: second,
+        title: 'Long search result title '.repeat(10),
+        channel: 'LongChannel'.repeat(18),
+      },
+    ],
+  });
+  await state(page, [first], first, null, null, 1, {
+    metadata: {
+      title: 'Current video with a long title and multiple lines '.repeat(8),
+      channel: 'Current channel with a long display name '.repeat(8),
+    },
+    catalog,
+  });
+  await transport(page, readyTransport);
+  const queueList = page.getByRole('list', { name: 'Queue' });
+  assertVisibleQueueRow(
+    await queueList.boundingBox(),
+    await queueList.getByRole('listitem').first().boundingBox(),
+  );
+  const view = page.getByRole('navigation', { name: 'Queue and search' });
+  await expect(view).toBeVisible();
+  await view.getByRole('button', { name: 'Search' }).click();
+  const list = page.getByRole('list', { name: 'YouTube results' });
+  const row = list.getByRole('listitem').first();
+  assertVisibleQueueRow(await list.boundingBox(), await row.boundingBox());
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
 });
 
 test('updates the player alert independently from queue acknowledgements and validation', async (t) => {

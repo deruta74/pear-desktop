@@ -1,10 +1,11 @@
 //! The desktop queue separates its local controls from the remote video.
-#[cfg(target_os = "macos")]
+mod catalog;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod iframe;
 mod metadata;
 mod metadata_lookup;
 mod platform;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod transport;
 use std::{
     borrow::Cow,
@@ -32,10 +33,12 @@ use wry::{
     http::{Request, Response, header},
 };
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use wry::PageLoadEvent;
+#[cfg(target_os = "macos")]
+use wry::WebViewBuilderExtDarwin;
 #[cfg(not(target_os = "windows"))]
 use wry::http::{HeaderMap, HeaderValue};
-#[cfg(target_os = "macos")]
-use wry::{PageLoadEvent, WebViewBuilderExtDarwin};
 
 use crate::{
     Result, TITLE, attach_menu,
@@ -71,9 +74,10 @@ enum PlayerEvent {
     TitleChanged(u64, String),
     VideoProblem(u64, &'static str),
     Metadata(String, metadata_lookup::Response),
-    #[cfg(target_os = "macos")]
+    SearchResults(u64, catalog::Response),
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     TransportCommitted(u64),
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     TransportSample(u64, u64, String),
 }
 
@@ -93,23 +97,28 @@ struct QueueView<'a> {
     metadata: Option<&'a metadata::Metadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata_problem: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    catalog: Option<&'a catalog::View>,
 }
 
 #[derive(Clone, Copy)]
 pub struct LaunchMode {
     smoke: bool,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     iframe_player: bool,
 }
 
 pub fn launch_mode() -> Result<Option<LaunchMode>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let queue = args.len() == 1 && args[0] == "--queue";
-    let smoke = cfg!(feature = "benchmark") && args.len() == 1 && args[0] == "--queue-smoke";
-    let iframe_player = args.len() == 1 && args[0] == "--iframe-player";
-    #[cfg(not(target_os = "macos"))]
+    let iframe_smoke =
+        cfg!(feature = "benchmark") && args.len() == 1 && args[0] == "--iframe-player-smoke";
+    let smoke = iframe_smoke
+        || (cfg!(feature = "benchmark") && args.len() == 1 && args[0] == "--queue-smoke");
+    let iframe_player = iframe_smoke || (args.len() == 1 && args[0] == "--iframe-player");
+    #[cfg(target_os = "windows")]
     if iframe_player {
-        return Err("The IFrame API player preview currently requires macOS.".into());
+        return Err("The IFrame API player preview currently requires macOS or Linux.".into());
     }
     #[cfg(target_os = "macos")]
     {
@@ -133,7 +142,7 @@ pub fn launch_mode() -> Result<Option<LaunchMode>> {
     }
     Ok((queue || smoke || iframe_player).then_some(LaunchMode {
         smoke,
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         iframe_player,
     }))
 }
@@ -244,15 +253,14 @@ fn show_video(
     let report_problem = move |message| {
         let _ = problem_events.send_event(PlayerEvent::VideoProblem(generation, message));
     };
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     if mode.iframe_player {
         let page = Arc::new(iframe::Page::new(id)?);
         let navigation = page.clone();
         let view = layout.build(
             window,
             move |builder| {
-                isolated_builder(builder)
-                    .with_allow_link_preview(false)
+                let builder = isolated_builder(builder)
                     .with_navigation_handler(move |candidate| navigation.permits(&candidate))
                     .with_on_page_load_handler(move |event, url| {
                         if matches!(event, PageLoadEvent::Started)
@@ -260,21 +268,25 @@ fn show_video(
                         {
                             let _ = events.send_event(PlayerEvent::TransportCommitted(generation));
                         }
-                    })
+                    });
+                #[cfg(target_os = "macos")]
+                let builder = builder
+                    .with_allow_link_preview(false)
                     .with_on_web_content_process_terminate_handler(move || {
                         report_problem(
                             "The video player stopped. Use Reload Player or Open in browser.",
                         );
-                    })
+                    });
+                builder
             },
             Pane::Video,
             queue_visible,
         )?;
+        #[cfg(target_os = "linux")]
+        platform::observe_video(&view, &iframe::wrapper_url(), report_problem);
         page.load(&view)?;
         return Ok(view);
     }
-    #[cfg(target_os = "linux")]
-    let _ = mode;
     let url = embed_url(id);
     let permitted_url = url.clone();
     let title_events = events.clone();
@@ -335,7 +347,7 @@ fn show_video(
 
 fn focus_add(controls: &WebView) -> wry::Result<()> {
     controls.focus()?;
-    controls.evaluate_script("document.getElementById('video-source')?.focus();")
+    controls.evaluate_script("window.focusPearAdd?.();")
 }
 
 fn render(
@@ -373,14 +385,17 @@ fn render(
 fn player_flow(
     load: Option<Instant>,
     metadata: Option<Instant>,
-    #[cfg(target_os = "macos")] transport: Option<&transport::Transport>,
+    catalog: Option<Instant>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))] transport: Option<&transport::Transport>,
+    #[cfg(target_os = "linux")] timer: &mut platform::DeadlineTimer,
 ) -> ControlFlow {
-    let deadlines = load.into_iter().chain(metadata);
-    #[cfg(target_os = "macos")]
+    let deadlines = load.into_iter().chain(metadata).chain(catalog);
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let deadlines = deadlines.chain(transport.and_then(transport::Transport::deadline));
-    deadlines
-        .min()
-        .map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
+    let deadline = deadlines.min();
+    #[cfg(target_os = "linux")]
+    let deadline = timer.schedule(deadline);
+    deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
 }
 
 pub fn run(mode: LaunchMode) -> Result<()> {
@@ -476,33 +491,45 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut loading_slow = false;
     let mut titled_generation = None;
     let mut controls_ready = false;
-    let mut lookup = (!mode.smoke)
-        .then(metadata::Client::from_env)
-        .flatten()
-        .and_then(
-            |client| match metadata_lookup::Lookup::new(client, event_loop.create_proxy()) {
-                Ok(mut lookup) => {
-                    lookup.select(library.state().current.as_deref());
-                    Some(lookup)
-                }
-                Err(_) => {
-                    eprintln!("Could not start YouTube video details lookup.");
-                    None
-                }
-            },
-        );
-    #[cfg(target_os = "macos")]
+    let client = (!mode.smoke).then(metadata::Client::from_env).flatten();
+    let mut catalog = client.as_ref().and_then(|client| {
+        match catalog::Catalog::new(client.clone(), event_loop.create_proxy()) {
+            Ok(catalog) => Some(catalog),
+            Err(_) => {
+                eprintln!("Could not start YouTube search.");
+                None
+            }
+        }
+    });
+    let mut lookup = client.and_then(|client| {
+        match metadata_lookup::Lookup::new(client, event_loop.create_proxy()) {
+            Ok(mut lookup) => {
+                lookup.select(library.state().current.as_deref());
+                Some(lookup)
+            }
+            Err(_) => {
+                eprintln!("Could not start YouTube video details lookup.");
+                None
+            }
+        }
+    });
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut transport = mode.iframe_player.then(transport::Transport::default);
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let results = event_loop.create_proxy();
+    #[cfg(target_os = "linux")]
+    let mut timer = platform::DeadlineTimer::default();
 
     event_loop.run(move |event, _, flow| {
         let _keep_alive = (&menu, &queue_lock);
         *flow = player_flow(
             load_deadline,
             lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
-            #[cfg(target_os = "macos")]
+            catalog.as_ref().and_then(catalog::Catalog::deadline),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             transport.as_ref(),
+            #[cfg(target_os = "linux")]
+            &mut timer,
         );
         let mut reload_player = false;
         let mut error = None;
@@ -585,7 +612,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::UserEvent(PlayerEvent::VideoProblem(id, message)) if id == generation => {
                 load_deadline = None;
                 player_error = Some(message.into());
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 if let Some(transport) = &mut transport {
                     transport.reset(false);
                 }
@@ -594,14 +621,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::UserEvent(PlayerEvent::Metadata(id, response)) => lookup
                 .as_mut()
                 .is_some_and(|lookup| lookup.receive(&id, response, Instant::now())),
-            #[cfg(target_os = "macos")]
+            Event::UserEvent(PlayerEvent::SearchResults(revision, response)) => catalog
+                .as_mut()
+                .is_some_and(|catalog| catalog.receive(revision, response, Instant::now())),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::TransportCommitted(id)) if id == generation => {
                 if let Some(transport) = &mut transport {
                     transport.reset(true);
                 }
                 false
             }
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::TransportSample(id, sequence, response)) if id == generation => {
                 let Some(transport) = &mut transport else { return };
                 let previous_status = (transport.ready(), transport.is_stale());
@@ -613,6 +643,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     true
                 } else if previous_status != (transport.ready(), transport.is_stale()) {
                     if transport.ready() {
+                        if mode.smoke {
+                            println!("PEAR_QUEUE_TRANSPORT_READY");
+                        }
                         load_deadline = None;
                         loading_slow = false;
                     }
@@ -624,9 +657,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                 let now = Instant::now();
                 let metadata_changed = lookup.as_mut().is_some_and(|lookup| lookup.tick(now));
-                #[cfg(target_os = "macos")]
+                let catalog_changed = catalog.as_mut().is_some_and(|catalog| catalog.tick(now));
+                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 let expired = transport.as_mut().is_some_and(|transport| transport.expire(now));
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 if let (Some(transport), Some(video)) = (&mut transport, &current_player)
                     && let Some(sequence) = transport.begin(now)
                 {
@@ -647,9 +681,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         platform::diagnose_video(player);
                     }
                 }
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 let overdue = overdue || expired;
-                overdue || metadata_changed
+                overdue || metadata_changed || catalog_changed
             }
             Event::UserEvent(PlayerEvent::Command(message)) => {
                 acknowledged_sequence = Some(message.sequence);
@@ -666,7 +700,12 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             error = Some(format!("Could not open the browser: {reason}"));
                         }
                     }
-                    #[cfg(target_os = "macos")]
+                    Command::Search { query } => {
+                        if let Some(catalog) = &mut catalog {
+                            catalog.submit(&query, Instant::now());
+                        }
+                    }
+                    #[cfg(any(target_os = "macos", target_os = "linux"))]
                     command @ (Command::SetPlayback { .. } | Command::Seek { .. }) => {
                         if let (Some(transport), Some(video)) = (&mut transport, &current_player) {
                             let action = match command {
@@ -675,6 +714,14 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 Command::Seek { position } => iframe::Action::Seek(position),
                                 _ => unreachable!("only transport commands enter this arm"),
                             };
+                            if mode.smoke {
+                                let name = match &action {
+                                    iframe::Action::Play => "play",
+                                    iframe::Action::Pause => "pause",
+                                    iframe::Action::Seek(_) => "seek",
+                                };
+                                println!("PEAR_QUEUE_TRANSPORT_COMMAND {name}");
+                            }
                             if let Err(reason) = transport.perform(video, action) {
                                 transport.resend_controls();
                                 error = Some(reason.to_string());
@@ -697,7 +744,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             generation += 1;
             load_deadline = None;
             loading_slow = false;
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             if let Some(transport) = &mut transport {
                 transport.reset(false);
             }
@@ -722,14 +769,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         *flow = player_flow(
             load_deadline,
             lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
-            #[cfg(target_os = "macos")]
+            catalog.as_ref().and_then(catalog::Catalog::deadline),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             transport.as_ref(),
+            #[cfg(target_os = "linux")]
+            &mut timer,
         );
         if controls_ready && update_queue {
             let player_ready = titled_generation == Some(generation);
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             let player_ready = player_ready || transport.as_ref().is_some_and(transport::Transport::ready);
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             let loading_slow = loading_slow || transport.as_ref().is_some_and(transport::Transport::is_stale);
             let notice = if library.state().current.is_none()
                 || player_error.is_some()
@@ -747,6 +797,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     queue: library.state(),
                     metadata: lookup.as_ref().and_then(metadata_lookup::Lookup::metadata),
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
+                    catalog: catalog.as_ref().map(catalog::Catalog::view),
                 },
                 error.as_deref(),
                 notice,
@@ -757,7 +808,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 eprintln!("Could not update the queue controls: {error}");
             }
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         if controls_ready && let Some(transport) = &mut transport
             && let Err(reason) = transport.render(&controls, library.state().current.is_some())
         {

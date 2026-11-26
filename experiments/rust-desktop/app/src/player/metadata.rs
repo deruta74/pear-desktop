@@ -10,7 +10,11 @@ use ureq::{
 use crate::library::valid_id;
 
 const VIDEOS_ENDPOINT: &str = "https://www.googleapis.com/youtube/v3/videos";
-const MAX_BODY_BYTES: u64 = 16 * 1024;
+const SEARCH_ENDPOINT: &str = "https://www.googleapis.com/youtube/v3/search";
+const MAX_VIDEO_BODY_BYTES: u64 = 16 * 1024;
+const MAX_SEARCH_BODY_BYTES: u64 = 48 * 1024;
+const MAX_SEARCH_QUERY_CHARS: usize = 160;
+const MAX_SEARCH_RESULTS: usize = 12;
 const MAX_FIELD_CHARS: usize = 180;
 const MAX_KEY_FILE_BYTES: u64 = 512;
 
@@ -26,9 +30,17 @@ pub(super) struct Metadata {
     pub(super) channel: String,
 }
 
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub(super) struct SearchResult {
+    pub(super) id: String,
+    pub(super) title: String,
+    pub(super) channel: String,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum LookupError {
     InvalidVideoId,
+    InvalidQuery,
     InvalidKey,
     InvalidKeyConfiguration,
     QuotaExceeded,
@@ -65,23 +77,64 @@ impl Client {
         if !valid_id(id) {
             return Err(LookupError::InvalidVideoId);
         }
+        let mut response = self.get(
+            VIDEOS_ENDPOINT,
+            &[
+                ("part", "snippet,id"),
+                ("id", id),
+                ("fields", "items(id,snippet(title,channelTitle))"),
+            ],
+        )?;
+        interpret_response(response.status().as_u16(), response.body_mut(), id)
+    }
+
+    pub(super) fn search(&self, query: &str) -> Result<Vec<SearchResult>, LookupError> {
+        let query = normalize_query(query).ok_or(LookupError::InvalidQuery)?;
+        let max_results = MAX_SEARCH_RESULTS.to_string();
+        let mut response = self.get(
+            SEARCH_ENDPOINT,
+            &[
+                ("part", "snippet"),
+                ("q", &query),
+                ("type", "video"),
+                ("videoCategoryId", "10"),
+                ("videoEmbeddable", "true"),
+                ("order", "relevance"),
+                ("maxResults", &max_results),
+                ("fields", "items(id(videoId),snippet(title,channelTitle))"),
+            ],
+        )?;
+        interpret_search_response(response.status().as_u16(), response.body_mut())
+    }
+
+    fn get(
+        &self,
+        endpoint: &str,
+        params: &[(&str, &str)],
+    ) -> Result<ureq::http::Response<Body>, LookupError> {
         let api_key = self
             .api_key
             .clone()
             .ok_or(LookupError::InvalidKeyConfiguration)?;
-        let mut response = self
-            .agent
-            .get(VIDEOS_ENDPOINT)
-            .query("part", "snippet,id")
-            .query("id", id)
-            .query("fields", "items(id,snippet(title,channelTitle))")
+        self.agent
+            .get(endpoint)
+            .query_pairs(params.iter().copied())
             .header(header::ACCEPT, "application/json")
             .header("x-goog-api-key", api_key)
             .call()
-            .map_err(transport_error)?;
-
-        interpret_response(response.status().as_u16(), response.body_mut(), id)
+            .map_err(transport_error)
     }
+}
+
+pub(super) fn normalize_query(query: &str) -> Option<String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty()
+        || trimmed.chars().nth(MAX_SEARCH_QUERY_CHARS).is_some()
+        || query.chars().any(char::is_control)
+    {
+        return None;
+    }
+    Some(trimmed.to_owned())
 }
 
 fn read_key_file(path: &Path) -> Option<HeaderValue> {
@@ -133,6 +186,23 @@ struct VideoSnippet {
 }
 
 #[derive(Deserialize)]
+struct SearchList {
+    items: Vec<SearchItem>,
+}
+
+#[derive(Deserialize)]
+struct SearchItem {
+    id: SearchVideoId,
+    snippet: VideoSnippet,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchVideoId {
+    video_id: String,
+}
+
+#[derive(Deserialize)]
 struct ApiError {
     error: ApiErrorDetails,
 }
@@ -156,6 +226,58 @@ fn interpret_response(
     body: &mut Body,
     id: &str,
 ) -> Result<Option<Metadata>, LookupError> {
+    let Some(bytes) = read_api_response(status, body, MAX_VIDEO_BODY_BYTES)? else {
+        return Ok(None);
+    };
+    let list: VideoList =
+        serde_json::from_slice(&bytes).map_err(|_| LookupError::InvalidResponse)?;
+    match list.items.as_slice() {
+        [] => Ok(None),
+        [item] if item.id == id => Ok(Some(Metadata {
+            title: display_field(&item.snippet.title)?,
+            channel: display_field(&item.snippet.channel_title)?,
+        })),
+        _ => Err(LookupError::InvalidResponse),
+    }
+}
+
+fn interpret_search_response(
+    status: u16,
+    body: &mut Body,
+) -> Result<Vec<SearchResult>, LookupError> {
+    let bytes =
+        read_api_response(status, body, MAX_SEARCH_BODY_BYTES)?.ok_or(LookupError::Service)?;
+    let list: SearchList =
+        serde_json::from_slice(&bytes).map_err(|_| LookupError::InvalidResponse)?;
+    let mut results: Vec<SearchResult> =
+        Vec::with_capacity(list.items.len().min(MAX_SEARCH_RESULTS));
+    for item in list.items {
+        let id = item.id.video_id;
+        if !valid_id(&id) {
+            return Err(LookupError::InvalidResponse);
+        }
+        if results.iter().any(|result| result.id == id) {
+            continue;
+        }
+        results.push(SearchResult {
+            id,
+            title: display_field(&html_escape::decode_html_entities(&item.snippet.title))?,
+            channel: display_field(&html_escape::decode_html_entities(
+                &item.snippet.channel_title,
+            ))?,
+        });
+        if results.len() == MAX_SEARCH_RESULTS {
+            break;
+        }
+    }
+    Ok(results)
+}
+
+fn read_api_response(
+    status: u16,
+    body: &mut Body,
+    max_bytes: u64,
+) -> Result<Option<Vec<u8>>, LookupError> {
     match status {
         200 | 400 | 403 | 404 => {}
         401 => return Err(LookupError::InvalidKey),
@@ -175,26 +297,17 @@ fn interpret_response(
     }
     let bytes = body
         .with_config()
-        .limit(MAX_BODY_BYTES)
+        .limit(max_bytes)
         .read_to_vec()
         .map_err(transport_error)?;
-    if status != 200 {
-        return classify_api_error(status, &bytes);
+    if status == 200 {
+        return Ok(Some(bytes));
     }
-
-    let list: VideoList =
-        serde_json::from_slice(&bytes).map_err(|_| LookupError::InvalidResponse)?;
-    match list.items.as_slice() {
-        [] => Ok(None),
-        [item] if item.id == id => Ok(Some(Metadata {
-            title: display_field(&item.snippet.title)?,
-            channel: display_field(&item.snippet.channel_title)?,
-        })),
-        _ => Err(LookupError::InvalidResponse),
-    }
+    classify_api_error(status, &bytes)?;
+    Ok(None)
 }
 
-fn classify_api_error(status: u16, bytes: &[u8]) -> Result<Option<Metadata>, LookupError> {
+fn classify_api_error(status: u16, bytes: &[u8]) -> Result<(), LookupError> {
     let response: ApiError = serde_json::from_slice(bytes).map_err(|_| LookupError::Service)?;
     let reasons = response
         .error
@@ -205,7 +318,7 @@ fn classify_api_error(status: u16, bytes: &[u8]) -> Result<Option<Metadata>, Loo
         .chain(response.error.status.as_deref());
     for reason in reasons {
         match reason {
-            "videoNotFound" if status == 404 => return Ok(None),
+            "videoNotFound" if status == 404 => return Ok(()),
             "API_KEY_INVALID"
             | "API_KEY_EXPIRED"
             | "API_KEY_SERVICE_BLOCKED"
@@ -349,5 +462,122 @@ mod tests {
         assert!(key_header(&b"secret\nother-header: value"[..]).is_none());
         assert!(key_header(&b" "[..]).is_none());
         assert!(key_header(vec![b'a'; MAX_KEY_FILE_BYTES as usize + 1].as_slice()).is_none());
+    }
+
+    fn search_response(
+        status: u16,
+        json: impl Into<Vec<u8>>,
+    ) -> Result<Vec<SearchResult>, LookupError> {
+        let mut body = Body::builder().mime_type("application/json").data(json);
+        interpret_search_response(status, &mut body)
+    }
+
+    #[test]
+    fn trims_multilingual_searches_and_rejects_controls_or_excess_length() {
+        assert_eq!(
+            normalize_query("  Björk  音楽 موسيقى  "),
+            Some("Björk  音楽 موسيقى".into())
+        );
+        assert_eq!(normalize_query(&"界".repeat(160)), Some("界".repeat(160)));
+        assert_eq!(normalize_query(&"界".repeat(161)), None);
+        assert_eq!(normalize_query("   "), None);
+        assert_eq!(normalize_query("query\n"), None);
+        assert_eq!(normalize_query("mu\u{007f}sic"), None);
+    }
+
+    #[test]
+    fn validates_search_before_credentials_or_network() {
+        let client = Client {
+            agent: Agent::new_with_defaults(),
+            api_key: None,
+        };
+        assert_eq!(client.search("\n"), Err(LookupError::InvalidQuery));
+        assert_eq!(
+            client.search("Björk"),
+            Err(LookupError::InvalidKeyConfiguration)
+        );
+    }
+
+    #[test]
+    fn keeps_unique_video_ids_in_search_result_order() {
+        let json = br#"{
+            "items": [
+                {"id": {"videoId": "jNQXAC9IVRw"}, "snippet": {"title": " First\nSong ", "channelTitle": " First Band "}},
+                {"id": {"videoId": "dQw4w9WgXcQ"}, "snippet": {"title": "Second Song", "channelTitle": "Second Band"}},
+                {"id": {"videoId": "jNQXAC9IVRw"}, "snippet": {"title": "Duplicate", "channelTitle": "First Band"}}
+            ]
+        }"#;
+        assert_eq!(
+            search_response(200, json),
+            Ok(vec![
+                SearchResult {
+                    id: "jNQXAC9IVRw".into(),
+                    title: "First Song".into(),
+                    channel: "First Band".into(),
+                },
+                SearchResult {
+                    id: "dQw4w9WgXcQ".into(),
+                    title: "Second Song".into(),
+                    channel: "Second Band".into(),
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn rejects_a_value_that_isnt_an_exact_video_id() {
+        let json = br#"{"items":[{"id":{"videoId":"abcdefghij?"},"snippet":{"title":"Song","channelTitle":"Band"}}]}"#;
+        assert_eq!(
+            search_response(200, json),
+            Err(LookupError::InvalidResponse)
+        );
+    }
+
+    #[test]
+    fn returns_an_empty_list_for_no_search_hits() {
+        assert_eq!(search_response(200, br#"{"items":[]}"#), Ok(vec![]));
+    }
+
+    #[test]
+    fn displays_search_character_references_as_literally_decoded_text() {
+        let json = br#"{"items":[{"id":{"videoId":"dQw4w9WgXcQ"},"snippet":{"title":"Rock &amp; Roll &lt;b&gt;Don&#39;t&lt;/b&gt; &amp;lt;","channelTitle":"A &amp; B"}}]}"#;
+        let hits = search_response(200, json).unwrap();
+        assert_eq!(hits[0].title, "Rock & Roll <b>Don't</b> &lt;");
+        assert_eq!(hits[0].channel, "A & B");
+    }
+
+    #[test]
+    fn caps_results_at_twelve_unique_video_ids() {
+        let items: Vec<_> = (0..14)
+            .map(|index| {
+                serde_json::json!({
+                    "id": {"videoId": format!("videoID{index:04}")},
+                    "snippet": {"title": "Song", "channelTitle": "Band"},
+                })
+            })
+            .collect();
+        let json = serde_json::json!({"items": items}).to_string();
+        let hits = search_response(200, json).unwrap();
+        assert_eq!(hits.len(), 12);
+        assert_eq!(hits[11].id, "videoID0011");
+    }
+
+    #[test]
+    fn bounds_decoded_search_response_before_parsing() {
+        let mut json = br#"{"items":[]}"#.to_vec();
+        json.resize(48 * 1024 + 1, b' ');
+        assert_eq!(
+            search_response(200, json),
+            Err(LookupError::InvalidResponse)
+        );
+    }
+
+    #[test]
+    fn preserves_separate_search_quota_and_throttle_outcomes() {
+        let quota = br#"{"error":{"errors":[{"reason":"quotaExceeded"}]}}"#;
+        let throttled = br#"{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}"#;
+        assert_eq!(search_response(403, quota), Err(LookupError::QuotaExceeded));
+        assert_eq!(search_response(403, throttled), Err(LookupError::Throttled));
+        assert_eq!(search_response(429, b""), Err(LookupError::Throttled));
     }
 }

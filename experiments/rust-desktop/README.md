@@ -18,18 +18,28 @@ The local controls and the official player use separate private WebViews. Only t
 
 **Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
 
-### Experimental playback controls on macOS
+### Experimental playback controls on macOS and Linux
 
 ```sh
 app="$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
 "$app/Contents/MacOS/pear-desktop-preview" --iframe-player
 ```
 
-Press Play in the visible YouTube player first. Once playback starts, the queue panel can pause, resume, and seek through the official IFrame Player API. The mode uses the same local queue and displays previously saved titles. Open new entries in the default player to capture their titles. The example video was paused, scrubbed to another position, and resumed from the queue panel on macOS.
+On Linux, use the same `--iframe-player` flag through Cargo.
+
+```sh
+cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --iframe-player
+```
+
+Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. The mode uses the same local queue and displays previously saved titles. Open new entries in the default player to capture their titles, or enable video details below.
+
+On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. On Ubuntu ARM64, the same video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
 
 ### Optional video details
 
-To show the public title and channel for the selected video, store a developer key restricted to YouTube Data API v3 in a private text file. Set `PEAR_YOUTUBE_API_KEY_FILE` in the launch environment to the file path. Pear looks up only the selected video ID and keeps the result in memory for up to one day or until selection changes. The standard player and queue work without a key. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/videos/list)
+To enable public video details and music search, store a developer key restricted to YouTube Data API v3 in a private text file. Set `PEAR_YOUTUBE_API_KEY_FILE` in the launch environment to the file path. The standard player and queue work without a key.
+
+Pear looks up the selected video's title and channel. Open **Search** to submit a music query and add embeddable results to the queue. Search requests use the configured project's API quota and run when you submit a query. Titles and search results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
 
 ## Run the queue on Linux or Windows
 
