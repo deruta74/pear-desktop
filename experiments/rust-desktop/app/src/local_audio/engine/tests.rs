@@ -137,6 +137,44 @@ fn ogg_opus_seeks_to_sequential_samples_through_the_padded_final_page() {
 }
 
 #[test]
+fn ogg_opus_accepts_code_three_packets_with_more_than_31_frames() {
+    // One packet with forty 2.5 ms CELT frames, minus 120 samples of pre-skip.
+    check_short_ogg_opus(
+        include_bytes!("fixtures/forty-frames.opus"),
+        4_680,
+        [0.004_302_978_5, 0.120_513_916],
+    );
+}
+
+#[test]
+fn ogg_opus_honors_the_initial_granule_of_a_single_audio_page() {
+    // The last granule is shifted by ten seconds. This page has no earlier audio granule.
+    check_short_ogg_opus(
+        include_bytes!("fixtures/offset-single-page.opus"),
+        1_879,
+        [0.075_286_865, -0.000_549_316_4],
+    );
+}
+
+fn check_short_ogg_opus(media: &[u8], frames: u32, [first, last]: [f32; 2]) {
+    let fixture = Fixture::with_extension(media, "opus");
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().frames, frames);
+    let sequential: Vec<_> = (0..frames).map(|_| source.read_frame().unwrap()).collect();
+    // The endpoint PCM comes from the reference libopus decoder.
+    assert_opus_frame(sequential[0], [first; 2]);
+    assert_opus_frame(sequential[frames as usize - 1], [last; 2]);
+    assert_eq!(
+        source.read_frame().unwrap_err().kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
+    for index in [frames - 1, 0, frames / 3, 1] {
+        source.seek_to(index).unwrap();
+        assert_opus_frame(source.read_frame().unwrap(), sequential[index as usize]);
+    }
+}
+
+#[test]
 fn ogg_opus_rejects_invalid_inputs_and_other_ogg_codecs() {
     let opus = include_bytes!("fixtures/mono-preskip.opus");
     let vorbis = include_bytes!("fixtures/reject-vorbis.ogg");
@@ -147,6 +185,18 @@ fn ogg_opus_rejects_invalid_inputs_and_other_ogg_codecs() {
             Err(EngineOpenError::UnsupportedAudio)
         ));
     }
+}
+
+#[test]
+fn ogg_opus_rejects_a_chained_file_with_a_different_final_stream() {
+    let mono = include_bytes!("fixtures/mono-preskip.opus");
+    let stereo = include_bytes!("fixtures/stereo-tail-page.ogg");
+    let chain = [&mono[..], &stereo[..]].concat();
+    let fixture = Fixture::with_extension(&chain, "ogg");
+    assert!(matches!(
+        AudioSource::open(&fixture.0),
+        Err(EngineOpenError::UnsupportedAudio)
+    ));
 }
 
 #[test]

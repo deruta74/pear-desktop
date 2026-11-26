@@ -67,7 +67,44 @@ You can also pass `--local-audio` to the executable. Local playback runs offline
 
 Expand **Equalizer** to choose the 8-, 14- or 20-band layout, or add up to 64 custom peaking bands. In **Custom**, click the graph to add a point and drag it to set frequency and gain. The fields below the graph accept exact frequency, gain and Q values. **Auto preamp** adjusts attenuation for the active EQ curve and the local volume. Named presets are saved in the local audio profile so they can be loaded after restarting Pear.
 
-Symphonia 0.6.1 handles FLAC, MP3, and Ogg demuxing. The symphonia-opus 0.1.3 library decodes Opus. Both are licensed under MPL 2.0. [Symphonia source](https://github.com/pdeljanov/Symphonia/tree/v0.6.1) · [symphonia-opus source](https://crates.io/crates/symphonia-opus/0.1.3)
+Symphonia 0.6.1 handles FLAC and MP3, and symphonia-opus 0.1.3 decodes Opus. Both libraries use MPL 2.0. The ogg 0.9.2 library parses Ogg pages and packets under the BSD 3-Clause license. [Symphonia source](https://github.com/pdeljanov/Symphonia/tree/v0.6.1) · [symphonia-opus source](https://crates.io/crates/symphonia-opus/0.1.3) · [ogg source and license](https://docs.rs/crate/ogg/0.9.2/source/LICENSE)
+
+<details>
+<summary>ogg license notice</summary>
+
+```text
+Copyright (c) 2016-2017 est31 <MTest31@outlook.com> and contributors
+Copyright (c) 2002-2015 Xiph.org Foundation
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+- Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+
+- Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+- Neither the name of the Xiph.org Foundation nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION
+OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+</details>
 
 ### Video details and optional search
 
