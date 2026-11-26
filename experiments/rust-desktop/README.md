@@ -29,7 +29,9 @@ Press Play in the visible YouTube player first. Once playback starts, the queue 
 
 ### Optional video details
 
-To show the public title and channel for the selected video, store a developer key restricted to YouTube Data API v3 in a private text file. Set `PEAR_YOUTUBE_API_KEY_FILE` in the launch environment to the file path. Pear looks up only the selected video ID and keeps the result in memory for up to one day or until selection changes. The standard player and queue work without a key. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/videos/list)
+To enable public video details and music search, store a developer key restricted to YouTube Data API v3 in a private text file. Set `PEAR_YOUTUBE_API_KEY_FILE` in the launch environment to the file path. The standard player and queue work without a key.
+
+Pear looks up the selected video's title and channel. Open **Search** to submit a music query and add embeddable results to the queue. Search requests use the configured project's API quota and run when you submit a query. Titles and search results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
 
 ## Run the queue on Linux or Windows
 

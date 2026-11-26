@@ -1,4 +1,5 @@
 //! The desktop queue separates its local controls from the remote video.
+mod catalog;
 #[cfg(target_os = "macos")]
 mod iframe;
 mod metadata;
@@ -71,6 +72,7 @@ enum PlayerEvent {
     TitleChanged(u64, String),
     VideoProblem(u64, &'static str),
     Metadata(String, metadata_lookup::Response),
+    SearchResults(u64, catalog::Response),
     #[cfg(target_os = "macos")]
     TransportCommitted(u64),
     #[cfg(target_os = "macos")]
@@ -93,6 +95,8 @@ struct QueueView<'a> {
     metadata: Option<&'a metadata::Metadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata_problem: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    catalog: Option<&'a catalog::View>,
 }
 
 #[derive(Clone, Copy)]
@@ -335,7 +339,7 @@ fn show_video(
 
 fn focus_add(controls: &WebView) -> wry::Result<()> {
     controls.focus()?;
-    controls.evaluate_script("document.getElementById('video-source')?.focus();")
+    controls.evaluate_script("window.focusPearAdd?.();")
 }
 
 fn render(
@@ -373,9 +377,10 @@ fn render(
 fn player_flow(
     load: Option<Instant>,
     metadata: Option<Instant>,
+    catalog: Option<Instant>,
     #[cfg(target_os = "macos")] transport: Option<&transport::Transport>,
 ) -> ControlFlow {
-    let deadlines = load.into_iter().chain(metadata);
+    let deadlines = load.into_iter().chain(metadata).chain(catalog);
     #[cfg(target_os = "macos")]
     let deadlines = deadlines.chain(transport.and_then(transport::Transport::deadline));
     deadlines
@@ -476,21 +481,28 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut loading_slow = false;
     let mut titled_generation = None;
     let mut controls_ready = false;
-    let mut lookup = (!mode.smoke)
-        .then(metadata::Client::from_env)
-        .flatten()
-        .and_then(
-            |client| match metadata_lookup::Lookup::new(client, event_loop.create_proxy()) {
-                Ok(mut lookup) => {
-                    lookup.select(library.state().current.as_deref());
-                    Some(lookup)
-                }
-                Err(_) => {
-                    eprintln!("Could not start YouTube video details lookup.");
-                    None
-                }
-            },
-        );
+    let client = (!mode.smoke).then(metadata::Client::from_env).flatten();
+    let mut catalog = client.as_ref().and_then(|client| {
+        match catalog::Catalog::new(client.clone(), event_loop.create_proxy()) {
+            Ok(catalog) => Some(catalog),
+            Err(_) => {
+                eprintln!("Could not start YouTube search.");
+                None
+            }
+        }
+    });
+    let mut lookup = client.and_then(|client| {
+        match metadata_lookup::Lookup::new(client, event_loop.create_proxy()) {
+            Ok(mut lookup) => {
+                lookup.select(library.state().current.as_deref());
+                Some(lookup)
+            }
+            Err(_) => {
+                eprintln!("Could not start YouTube video details lookup.");
+                None
+            }
+        }
+    });
     #[cfg(target_os = "macos")]
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     #[cfg(target_os = "macos")]
@@ -501,6 +513,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         *flow = player_flow(
             load_deadline,
             lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
+            catalog.as_ref().and_then(catalog::Catalog::deadline),
             #[cfg(target_os = "macos")]
             transport.as_ref(),
         );
@@ -594,6 +607,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::UserEvent(PlayerEvent::Metadata(id, response)) => lookup
                 .as_mut()
                 .is_some_and(|lookup| lookup.receive(&id, response, Instant::now())),
+            Event::UserEvent(PlayerEvent::SearchResults(revision, response)) => catalog
+                .as_mut()
+                .is_some_and(|catalog| catalog.receive(revision, response, Instant::now())),
             #[cfg(target_os = "macos")]
             Event::UserEvent(PlayerEvent::TransportCommitted(id)) if id == generation => {
                 if let Some(transport) = &mut transport {
@@ -624,6 +640,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                 let now = Instant::now();
                 let metadata_changed = lookup.as_mut().is_some_and(|lookup| lookup.tick(now));
+                let catalog_changed = catalog.as_mut().is_some_and(|catalog| catalog.tick(now));
                 #[cfg(target_os = "macos")]
                 let expired = transport.as_mut().is_some_and(|transport| transport.expire(now));
                 #[cfg(target_os = "macos")]
@@ -649,7 +666,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 #[cfg(target_os = "macos")]
                 let overdue = overdue || expired;
-                overdue || metadata_changed
+                overdue || metadata_changed || catalog_changed
             }
             Event::UserEvent(PlayerEvent::Command(message)) => {
                 acknowledged_sequence = Some(message.sequence);
@@ -664,6 +681,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 open::that_detached(format!("https://www.youtube.com/watch?v={id}"))
                         {
                             error = Some(format!("Could not open the browser: {reason}"));
+                        }
+                    }
+                    Command::Search { query } => {
+                        if let Some(catalog) = &mut catalog {
+                            catalog.submit(&query, Instant::now());
                         }
                     }
                     #[cfg(target_os = "macos")]
@@ -722,6 +744,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         *flow = player_flow(
             load_deadline,
             lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
+            catalog.as_ref().and_then(catalog::Catalog::deadline),
             #[cfg(target_os = "macos")]
             transport.as_ref(),
         );
@@ -747,6 +770,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     queue: library.state(),
                     metadata: lookup.as_ref().and_then(metadata_lookup::Lookup::metadata),
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
+                    catalog: catalog.as_ref().map(catalog::Catalog::view),
                 },
                 error.as_deref(),
                 notice,

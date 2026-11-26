@@ -38,6 +38,9 @@ pub enum Command {
     Next {},
     Ready {},
     OpenBrowser {},
+    Search {
+        query: String,
+    },
     #[cfg(target_os = "macos")]
     SetPlayback {
         playing: bool,
@@ -152,7 +155,9 @@ impl Library {
                 };
                 state.current = Some(id.clone());
             }
-            Command::Ready {} | Command::OpenBrowser {} => return Ok(false),
+            Command::Ready {} | Command::OpenBrowser {} | Command::Search { .. } => {
+                return Ok(false);
+            }
             #[cfg(target_os = "macos")]
             Command::SetPlayback { .. } | Command::Seek { .. } => return Ok(false),
         }

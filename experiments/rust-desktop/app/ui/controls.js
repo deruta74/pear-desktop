@@ -20,27 +20,55 @@ const seek = document.getElementById('playback-position');
 const elapsed = document.getElementById('elapsed');
 const duration = document.getElementById('duration');
 const queue = document.getElementById('queue-items');
+const queuePanel = document.getElementById('queue-panel');
 const count = document.getElementById('queue-count');
 const empty = document.getElementById('queue-empty');
 const filter = document.getElementById('queue-filter');
+const catalogTemplate = document.getElementById('catalog-template');
+const panel = catalogTemplate.parentElement;
 const encoder = new TextEncoder();
 
 let nextSequence = 1;
 let pending = null;
 let renderedState = null;
 let renderedTransport = null;
+let renderedCatalog = null;
+let catalogView = null;
+let catalogSearchError = '';
+let catalogAddFeedback = null;
+let focusAddOnReady = false;
 let editingPosition = false;
 
-function send(command) {
+function commandProblem(message, context) {
+  if (context === 'queue') {
+    errorText.textContent = message;
+    statusText.textContent = '';
+    return;
+  }
+  if (context === 'search') catalogSearchError = message;
+  else catalogAddFeedback = { message, error: true };
+  updateCatalog(renderedCatalog);
+}
+
+function primaryInput() {
+  return form.hidden ? catalogView.query : source;
+}
+
+function send(command, context = 'queue') {
   if (pending) return;
 
+  if (context === 'search') catalogSearchError = '';
+  if (context !== 'queue') catalogAddFeedback = null;
   const sequence = nextSequence;
   const message = JSON.stringify({ sequence, command });
   if (message.length > 4096 || encoder.encode(message).length > 4096) {
-    errorText.textContent =
-      'This input is too long. Use shorter links or add fewer videos at a time.';
-    statusText.textContent = '';
-    source.focus();
+    commandProblem(
+      context === 'search'
+        ? 'Enter a search of up to 160 characters.'
+        : 'This input is too long. Use shorter links or add fewer videos at a time.',
+      context,
+    );
+    primaryInput().focus();
     return;
   }
 
@@ -48,20 +76,26 @@ function send(command) {
   pending = {
     sequence,
     command,
+    context,
     entryCount: renderedState?.entries.length ?? 0,
     entryIndex: renderedState?.entries.indexOf(command.id) ?? -1,
   };
-  if (command.type === 'add') add.setAttribute('aria-disabled', 'true');
+  if (context === 'queue' && command.type === 'add') {
+    add.setAttribute('aria-disabled', 'true');
+  }
 
   try {
     window.ipc.postMessage(message);
   } catch {
     pending = null;
     add.removeAttribute('aria-disabled');
-    errorText.textContent =
-      'Could not connect to the queue. Close and reopen the window to try again.';
-    statusText.textContent = '';
+    commandProblem(
+      'Could not connect to the queue. Close and reopen the window to try again.',
+      context,
+    );
+    return;
   }
+  if (catalogView) updateCatalog(renderedCatalog);
 }
 
 function formatTime(seconds) {
@@ -136,7 +170,7 @@ function updateTransport() {
   if (transportHint.textContent !== hint) transportHint.textContent = hint;
 
   if ((active === playToggle && !canPlay) || (active === seek && !canSeek)) {
-    const fallback = openBrowser.disabled ? source : openBrowser;
+    const fallback = openBrowser.disabled ? primaryInput() : openBrowser;
     (canPlay ? playToggle : fallback).focus({ preventScroll: true });
   }
 }
@@ -304,8 +338,170 @@ function updateQueue(entries, current, entryTitles) {
   }
 }
 
+function showCatalog(open) {
+  const view = catalogView;
+  form.hidden = open;
+  queuePanel.hidden = open;
+  view.showQueue.setAttribute('aria-pressed', String(!open));
+  view.showSearch.setAttribute('aria-pressed', String(open));
+  view.form.hidden = !open;
+  view.results.hidden = !open || !view.results.childElementCount;
+  primaryInput().focus();
+}
+
+function focusQueueAdd() {
+  focusAddOnReady = source.disabled;
+  if (catalogView) showCatalog(false);
+  else source.focus();
+}
+
+window.focusPearAdd = focusQueueAdd;
+
+function mountCatalog(query) {
+  const [navigation, searchForm, results] =
+    catalogTemplate.content.cloneNode(true).children;
+  const [showQueue, showSearch] = navigation.children;
+  const input = searchForm.querySelector('#catalog-query');
+  const submit = searchForm.querySelector('button');
+  const feedback = searchForm.querySelector('#catalog-feedback');
+  const addFeedback = searchForm.querySelector('#catalog-add-feedback');
+  input.value = query;
+  showQueue.addEventListener('click', focusQueueAdd);
+  showSearch.addEventListener('click', () => showCatalog(true));
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (pending) return;
+    const query = input.value.trim();
+    if (!query) {
+      catalogAddFeedback = null;
+      commandProblem('Enter a search term.', 'search');
+      input.focus();
+      return;
+    }
+    input.value = query;
+    send({ type: 'search', query }, 'search');
+  });
+  panel.querySelector('.panel-header').append(navigation);
+  panel.setAttribute('data-catalog', '');
+  catalogTemplate.before(searchForm, results);
+  return {
+    navigation,
+    showQueue,
+    showSearch,
+    form: searchForm,
+    query: input,
+    submit,
+    feedback,
+    addFeedback,
+    results,
+    renderedResults: [],
+  };
+}
+
+function createCatalogResult({ id, title, channel }) {
+  const row = document.createElement('li');
+  row.className = 'catalog-result';
+  const description = document.createElement('div');
+  const name = document.createElement('p');
+  name.className = 'queue-title catalog-title';
+  name.dir = 'auto';
+  name.textContent = title;
+  name.title = title;
+  const attribution = document.createElement('p');
+  attribution.className = 'catalog-channel';
+  attribution.textContent = `YouTube · ${channel}`;
+  attribution.title = attribution.textContent;
+  description.append(name, attribution);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Add';
+  button.setAttribute('aria-label', `Add ${title} to queue`);
+  button.addEventListener('click', () => {
+    send({ type: 'add', source: id }, 'result-add');
+  });
+  row.append(description, button);
+  return row;
+}
+
+function updateCatalog(catalog) {
+  renderedCatalog = catalog ?? null;
+  if (!catalog) {
+    catalogSearchError = '';
+    catalogAddFeedback = null;
+    if (catalogView) {
+      const panels = [
+        catalogView.navigation,
+        catalogView.form,
+        catalogView.results,
+      ];
+      const wasFocused = panels.some((element) =>
+        element.contains(document.activeElement),
+      );
+      for (const element of panels) element.remove();
+      panel.removeAttribute('data-catalog');
+      form.hidden = queuePanel.hidden = false;
+      catalogView = null;
+      if (wasFocused) source.focus();
+    }
+    return;
+  }
+
+  catalogView ??= mountCatalog(catalog.query);
+  const view = catalogView;
+  const searching = catalog.pending || pending?.command.type === 'search';
+  const results = searching ? [] : catalog.results;
+  if (
+    results.length !== view.renderedResults.length ||
+    results.some((result, index) => {
+      const previous = view.renderedResults[index];
+      return (
+        result.id !== previous.id ||
+        result.title !== previous.title ||
+        result.channel !== previous.channel
+      );
+    })
+  ) {
+    if (view.results.contains(document.activeElement)) view.query.focus();
+    view.results.replaceChildren(...results.map(createCatalogResult));
+    view.renderedResults = results;
+  }
+  view.results.hidden = view.form.hidden || !results.length;
+  const controlsBusy = Boolean(pending);
+  view.submit.setAttribute('aria-disabled', String(controlsBusy));
+  for (const button of view.results.querySelectorAll('button')) {
+    button.setAttribute('aria-disabled', String(controlsBusy));
+  }
+
+  let message = '';
+  let error = false;
+  if (catalogSearchError) {
+    message = catalogSearchError;
+    error = true;
+  } else if (searching) {
+    message = 'Searching YouTube…';
+  } else if (catalog.problem) {
+    message = catalog.problem;
+    error = true;
+  } else if (catalog.query) {
+    message = results.length
+      ? `${results.length} ${results.length === 1 ? 'video' : 'videos'} found.`
+      : 'No videos found. Try a different search.';
+  }
+  view.feedback.classList.toggle('error', error);
+  if (view.feedback.textContent !== message)
+    view.feedback.textContent = message;
+  const addMessage = catalogAddFeedback?.message ?? '';
+  view.addFeedback.classList.toggle(
+    'error',
+    Boolean(catalogAddFeedback?.error),
+  );
+  if (view.addFeedback.textContent !== addMessage) {
+    view.addFeedback.textContent = addMessage;
+  }
+}
+
 window.renderPearState = (
-  { entries, current, titles, metadata, metadataProblem },
+  { entries, current, titles, metadata, metadataProblem, catalog },
   error = null,
   notice = null,
   acknowledgedSequence = null,
@@ -319,9 +515,11 @@ window.renderPearState = (
   }
 
   const command = acknowledged?.command;
+  const context = acknowledged?.context ?? 'queue';
   if (command?.type === 'ready') {
     source.disabled = false;
     add.disabled = false;
+    if (focusAddOnReady) focusQueueAdd();
   }
 
   const index = entries.indexOf(current);
@@ -352,10 +550,10 @@ window.renderPearState = (
   openBrowser.disabled = !hasSelection;
 
   if (active === previous && previous.disabled)
-    (next.disabled ? source : next).focus();
+    (next.disabled ? primaryInput() : next).focus();
   if (active === next && next.disabled)
-    (previous.disabled ? source : previous).focus();
-  if (active === openBrowser && openBrowser.disabled) source.focus();
+    (previous.disabled ? primaryInput() : previous).focus();
+  if (active === openBrowser && openBrowser.disabled) primaryInput().focus();
 
   const oldEntries = renderedState?.entries ?? [];
   const changed =
@@ -371,7 +569,8 @@ window.renderPearState = (
 
   let confirmation = '';
   if (!error && command?.type === 'add') {
-    if (source.value === command.source) source.value = '';
+    if (context === 'queue' && source.value === command.source)
+      source.value = '';
     const added = entries.length - acknowledged.entryCount;
     if (added > 1) confirmation = `Added ${added} videos to the queue.`;
     else if (added === 1) confirmation = 'Added to the queue.';
@@ -393,7 +592,20 @@ window.renderPearState = (
     }
   }
 
-  if (acknowledged || error !== null) errorText.textContent = error ?? '';
+  if (context === 'search') {
+    catalogSearchError = error ?? '';
+  } else if (context === 'result-add') {
+    catalogAddFeedback = {
+      message: error || confirmation,
+      error: Boolean(error),
+    };
+  } else if (acknowledged || error !== null) {
+    errorText.textContent = error ?? '';
+  }
+  statusText.textContent = [context === 'queue' ? confirmation : '', notice]
+    .filter(Boolean)
+    .join(' ');
+  updateCatalog(catalog);
   const problem = playerProblem ?? '';
   const problemChanged = playerProblemText.textContent !== problem;
   if (problemChanged) playerProblemText.textContent = problem;
@@ -403,7 +615,6 @@ window.renderPearState = (
   }
   if (selectionChanged) renderedTransport = null;
   if (selectionChanged || problemChanged) updateTransport();
-  statusText.textContent = [confirmation, notice].filter(Boolean).join(' ');
 };
 
 form.addEventListener('submit', (event) => {

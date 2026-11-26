@@ -108,7 +108,7 @@
         <p id="queue-status" class="feedback" role="status">Loading queue…</p>
       </form>
 
-      <section class="queue" aria-labelledby="queue-heading">
+      <section id="queue-panel" class="queue" aria-labelledby="queue-heading">
         <div class="queue-toolbar">
           <div class="queue-heading">
             <h2 id="queue-heading">Queue</h2>
@@ -142,6 +142,49 @@
           hidden
         ></ol>
       </section>
+
+      <template id="catalog-template">
+        <nav class="catalog-nav" aria-label="Queue and search">
+          <button
+            id="show-queue"
+            type="button"
+            aria-controls="add-video queue-panel"
+            aria-pressed="true"
+          >
+            Queue
+          </button>
+          <button
+            id="show-search"
+            type="button"
+            aria-controls="catalog-form catalog-results"
+            aria-pressed="false"
+          >
+            Search
+          </button>
+        </nav>
+        <form id="catalog-form" hidden>
+          <label for="catalog-query">Search YouTube</label>
+          <div class="add-controls">
+            <input
+              id="catalog-query"
+              type="search"
+              autocomplete="off"
+              aria-describedby="catalog-feedback"
+              required
+            />
+            <button class="add-button" type="submit">Search</button>
+          </div>
+          <p id="catalog-feedback" class="feedback" aria-live="polite"></p>
+          <p id="catalog-add-feedback" class="feedback" aria-live="polite"></p>
+        </form>
+        <ul
+          id="catalog-results"
+          class="queue-items catalog-results"
+          role="list"
+          aria-label="YouTube results"
+          hidden
+        ></ul>
+      </template>
     </main>
   </body>
 </html>

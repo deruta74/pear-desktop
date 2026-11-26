@@ -20,12 +20,39 @@ const MAX_ATTEMPTS: u8 = 2;
 
 pub(super) type Response = Result<Option<Metadata>, LookupError>;
 
+pub(super) struct Retention {
+    deadline: Instant,
+    wall: SystemTime,
+}
+
+impl Retention {
+    pub(super) fn new(time: Instant) -> Self {
+        Self {
+            deadline: time + RETENTION,
+            wall: SystemTime::now() + RETENTION,
+        }
+    }
+
+    pub(super) fn deadline(&self) -> Instant {
+        let remaining = self
+            .wall
+            .duration_since(SystemTime::now())
+            .unwrap_or_default();
+        self.deadline
+            .min(Instant::now() + remaining.min(CLOCK_CHECK_INTERVAL))
+    }
+
+    pub(super) fn expired(&self, time: Instant) -> bool {
+        self.deadline <= time || self.wall <= SystemTime::now()
+    }
+}
+
 pub(super) struct Lookup {
     sender: SyncSender<String>,
     selected: Option<String>,
     requested: Option<String>,
     metadata: Option<Metadata>,
-    expires: Option<(Instant, SystemTime)>,
+    expires: Option<Retention>,
     retry_after: Option<Instant>,
     attempts: u8,
     problem: Option<&'static str>,
@@ -107,9 +134,7 @@ impl Lookup {
         }
         match response {
             Ok(metadata) if is_current => {
-                self.expires = metadata
-                    .as_ref()
-                    .map(|_| (time + RETENTION, SystemTime::now() + RETENTION));
+                self.expires = metadata.as_ref().map(|_| Retention::new(time));
                 self.metadata = metadata;
             }
             Ok(_) => {}
@@ -133,10 +158,7 @@ impl Lookup {
     }
 
     pub(super) fn deadline(&self) -> Option<Instant> {
-        let clock_check = self.expires.map(|(deadline, wall)| {
-            let remaining = wall.duration_since(SystemTime::now()).unwrap_or_default();
-            deadline.min(Instant::now() + remaining.min(CLOCK_CHECK_INTERVAL))
-        });
+        let clock_check = self.expires.as_ref().map(Retention::deadline);
         let retry = self.retry_after.filter(|_| self.can_request());
         clock_check.into_iter().chain(retry).min()
     }
@@ -144,7 +166,8 @@ impl Lookup {
     pub(super) fn tick(&mut self, time: Instant) -> bool {
         let expired = self
             .expires
-            .is_some_and(|(deadline, wall)| deadline <= time || wall <= SystemTime::now());
+            .as_ref()
+            .is_some_and(|expiry| expiry.expired(time));
         if expired {
             self.metadata = None;
             self.expires = None;
@@ -257,7 +280,10 @@ mod tests {
         lookup.select(Some(FIRST));
         assert_eq!(receiver.try_recv().unwrap(), FIRST);
         assert!(lookup.receive(FIRST, Ok(Some(found("Old title"))), now));
-        lookup.expires = Some((now + RETENTION, SystemTime::UNIX_EPOCH));
+        lookup.expires = Some(Retention {
+            deadline: now + RETENTION,
+            wall: SystemTime::UNIX_EPOCH,
+        });
         assert!(lookup.tick(now));
         assert!(lookup.metadata().is_none());
         assert_eq!(receiver.try_recv().unwrap(), FIRST);
