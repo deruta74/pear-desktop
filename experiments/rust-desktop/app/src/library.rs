@@ -62,6 +62,10 @@ pub enum Command {
     LoadMorePlaylist {
         revision: u64,
     },
+    QueuePublicPlaylist {
+        revision: u64,
+        loaded_count: usize,
+    },
     OpenMusicSearch {
         query: String,
     },
@@ -275,6 +279,7 @@ impl Library {
             | Command::OpenBrowser {}
             | Command::Search { .. }
             | Command::LoadMorePlaylist { .. }
+            | Command::QueuePublicPlaylist { .. }
             | Command::OpenMusicSearch { .. }
             | Command::OpenPlaylistVideo { .. }
             | Command::PlayPublicPlaylist { .. }
@@ -292,6 +297,15 @@ impl Library {
             }
         }
 
+        self.update_state(state)
+    }
+
+    pub(crate) fn enqueue_public_playlist<'a>(
+        &mut self,
+        ids: impl IntoIterator<Item = &'a str>,
+    ) -> io::Result<bool> {
+        let mut state = self.state.clone();
+        state.append_ids(ids.into_iter().map(str::to_owned))?;
         self.update_state(state)
     }
 
@@ -891,6 +905,48 @@ mod tests {
     }
 
     #[test]
+    fn queues_public_playlist_ids_in_order_without_reselecting_playback() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let mut library = Library::load(path.clone()).unwrap();
+        assert!(
+            library
+                .enqueue_public_playlist([SECOND, FIRST, SECOND])
+                .unwrap()
+        );
+        assert_eq!(library.state().current.as_deref(), Some(SECOND));
+        assert!(library.apply(select(FIRST)).unwrap());
+        assert!(
+            !library
+                .enqueue_public_playlist([FIRST, THIRD, THIRD, SECOND])
+                .unwrap()
+        );
+
+        let restored = Library::load(path).unwrap();
+        assert_eq!(restored.state().entries, [SECOND, FIRST, THIRD]);
+        assert_eq!(restored.state().current.as_deref(), Some(FIRST));
+    }
+
+    #[test]
+    fn public_playlist_batch_cannot_partially_exceed_the_queue_limit() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let entries: Vec<String> = (0..MAX_ENTRIES - 1)
+            .map(|index| format!("video{index:06}"))
+            .collect();
+        let saved = serde_json::json!({"entries": entries, "current": entries[0]}).to_string();
+        fs::write(&path, &saved).unwrap();
+        let mut library = Library::load(path.clone()).unwrap();
+
+        let error = library
+            .enqueue_public_playlist([&entries[0][..], FIRST, SECOND])
+            .unwrap_err();
+        assert_eq!(error.to_string(), "The queue can hold up to 500 videos.");
+        assert_eq!(library.state().entries, entries);
+        assert_eq!(fs::read_to_string(path).unwrap(), saved);
+    }
+
+    #[test]
     fn rejects_an_invalid_batch_at_its_original_line_without_adding_valid_entries() {
         let directory = TestDirectory::new();
         let path = directory.queue_path();
@@ -1113,6 +1169,8 @@ mod tests {
                 .is_err()
         );
         assert!(library.apply(play_next(THIRD)).is_err());
+        assert!(library.enqueue_public_playlist([FIRST, THIRD]).is_err());
+        assert!(!library.enqueue_public_playlist([FIRST, SECOND]).unwrap());
         assert!(library.apply(select_search_result(THIRD)).is_err());
         assert!(library.apply(select_search_result(SECOND)).is_err());
         assert!(!library.apply(play_next(FIRST)).unwrap());

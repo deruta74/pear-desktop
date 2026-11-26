@@ -755,10 +755,18 @@ button.play-toggle:enabled:active {
   gap: 0.5rem;
 }
 
+.catalog-summary .catalog-actions {
+  flex: none;
+}
+
 .catalog-summary button {
   flex: none;
   margin-block-start: 0.5rem;
   font-size: 0.875rem;
+}
+
+#catalog-form {
+  min-width: 0;
 }
 
 #catalog-form[data-browser-search] .add-button {

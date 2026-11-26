@@ -1304,6 +1304,21 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             catalog.load_more(revision, Instant::now());
                         }
                     }
+                    Command::QueuePublicPlaylist { revision, loaded_count } => {
+                        let ids = catalog.as_ref().and_then(|catalog| {
+                            catalog.playlist_queue_ids(revision, loaded_count, Instant::now())
+                        });
+                        if let Some(ids) = ids {
+                            match library.enqueue_public_playlist(ids) {
+                                Ok(selection_changed) => reload_player = queue_edit_requires_reload(
+                                    &mut public_playlist, false, selection_changed,
+                                ),
+                                Err(reason) => error = Some(reason.to_string()),
+                            }
+                        } else {
+                            error = Some("These playlist results are no longer available to add to Queue.".into());
+                        }
+                    }
                     Command::OpenMusicSearch { query } => {
                         match music_search_url(&query) {
                             Ok(url) => {
@@ -1720,11 +1735,24 @@ mod tests {
                 ..
             }) if name == "Evening"
         ));
+        assert!(matches!(
+            command(r#"{"type":"queue_public_playlist","revision":7,"loaded_count":30}"#),
+            Some(ControlMessage {
+                command: Command::QueuePublicPlaylist {
+                    revision: 7,
+                    loaded_count: 30
+                },
+                ..
+            })
+        ));
         for invalid in [
             r#"{"type":"save_playlist","name":"Evening","id":1}"#,
             r#"{"type":"close_playlist","also_remove":true}"#,
             r#"{"type":"select_playlist_track","id":1}"#,
             r#"{"type":"append_playlist","id":-1}"#,
+            r#"{"type":"queue_public_playlist","revision":7}"#,
+            r#"{"type":"queue_public_playlist","revision":7,"loaded_count":-1}"#,
+            r#"{"type":"queue_public_playlist","revision":7,"loaded_count":30,"source":"https://example.com/"}"#,
         ] {
             assert!(command(invalid).is_none(), "{invalid}");
         }

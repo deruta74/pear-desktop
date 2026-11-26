@@ -367,6 +367,28 @@ impl Catalog {
         self.view.playlist.is_none() && self.has_current_video(id, time)
     }
 
+    pub(super) fn playlist_queue_ids(
+        &self,
+        revision: u64,
+        loaded_count: usize,
+        time: Instant,
+    ) -> Option<impl Iterator<Item = &str>> {
+        let playlist = self.view.playlist.as_ref()?;
+        // Page responses append rows without changing the playlist revision.
+        if playlist.revision != revision
+            || playlist.pending
+            || loaded_count == 0
+            || loaded_count != self.view.results.len()
+            || self
+                .expires
+                .as_ref()
+                .is_none_or(|expiry| expiry.expired(time))
+        {
+            return None;
+        }
+        Some(self.view.results.iter().map(|result| result.id.as_str()))
+    }
+
     fn has_current_video(&self, id: &str, time: Instant) -> bool {
         self.expires
             .as_ref()
@@ -534,6 +556,58 @@ mod tests {
         assert!(!catalog.can_open_playlist_video("M7lc1UVf-VE", expired));
         assert!(catalog.tick(expired));
         assert!(catalog.view().playlist.is_none());
+    }
+
+    #[test]
+    fn playlist_queue_uses_only_the_current_displayed_rows() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let revision = open_playlist(&mut catalog, &receiver, now, "later");
+        assert_eq!(
+            catalog
+                .playlist_queue_ids(revision, 1, now)
+                .unwrap()
+                .collect::<Vec<_>>(),
+            ["M7lc1UVf-VE"]
+        );
+        assert!(catalog.playlist_queue_ids(revision + 1, 1, now).is_none());
+        assert!(receiver.try_recv().is_err());
+
+        catalog.load_more(revision, now);
+        let (request, _) = receiver.try_recv().unwrap();
+        assert!(catalog.playlist_queue_ids(revision, 1, now).is_none());
+        let mut later = result("Later");
+        later.id = "dQw4w9WgXcQ".into();
+        assert!(catalog.receive(request, playlist_page(vec![later], None, 2), now));
+        assert!(catalog.playlist_queue_ids(revision, 1, now).is_none());
+        assert_eq!(
+            catalog
+                .playlist_queue_ids(revision, 2, now)
+                .unwrap()
+                .collect::<Vec<_>>(),
+            ["M7lc1UVf-VE", "dQw4w9WgXcQ"]
+        );
+        assert!(catalog.playlist_queue_ids(revision, 3, now).is_none());
+        let expiry = now + Duration::from_secs(24 * 60 * 60);
+        assert!(catalog.playlist_queue_ids(revision, 2, expiry).is_none());
+
+        catalog.submit("replacement", now);
+        let (request, _) = receiver.try_recv().unwrap();
+        assert!(catalog.receive(request, Ok(Results::Search(vec![result("Other")])), now));
+        assert!(catalog.playlist_queue_ids(revision, 1, now).is_none());
+    }
+
+    #[test]
+    fn playlist_queue_rejects_a_playlist_without_any_available_rows() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        catalog.submit("https://www.youtube.com/playlist?list=PL_1234567890", now);
+        let (request, _) = receiver.try_recv().unwrap();
+        let revision = catalog.view().playlist.as_ref().unwrap().revision;
+        assert!(catalog.receive(request, playlist_page(vec![], None, 2), now));
+        assert!(catalog.playlist_queue_ids(revision, 0, now).is_none());
     }
 
     #[test]

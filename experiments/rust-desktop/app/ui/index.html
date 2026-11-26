@@ -202,15 +202,26 @@
           </div>
           <div class="catalog-summary">
             <p id="catalog-feedback" class="feedback" aria-live="polite"></p>
-            <button
-              id="catalog-load-more"
-              type="button"
-              aria-controls="catalog-results"
-              aria-describedby="catalog-page-feedback"
-              hidden
-            >
-              Load more
-            </button>
+            <div class="catalog-actions">
+              <button
+                id="catalog-add-playlist"
+                type="button"
+                aria-label="Add loaded videos to queue"
+                aria-describedby="catalog-result-feedback"
+                hidden
+              >
+                Add to queue
+              </button>
+              <button
+                id="catalog-load-more"
+                type="button"
+                aria-controls="catalog-results"
+                aria-describedby="catalog-page-feedback"
+                hidden
+              >
+                Load more
+              </button>
+            </div>
           </div>
           <p id="catalog-page-feedback" class="feedback" aria-live="polite"></p>
           <p

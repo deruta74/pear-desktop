@@ -1761,6 +1761,53 @@ test('shows public playlist limitations and hands off a selected row without add
   await expect(page.getByRole('button', { name: 'Load more' })).toBeHidden();
 });
 
+test('queues loaded public playlist videos without changing the current selection', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const results = [pianoResult, pianoResult, { ...pianoResult, id: third }];
+  const render = (playlist, entries = [first], sequence, error = null) =>
+    state(page, entries, first, error, null, sequence, {
+      catalog: searchState({ query: 'PL_1234567890', results, playlist }),
+    });
+  await render(publicPlaylistState({ pending: true }));
+  await page.getByRole('button', { name: 'Search' }).click();
+
+  const addLoaded = page.getByRole('button', {
+    name: 'Add loaded videos to queue',
+  });
+  await expect(addLoaded).toBeVisible({ timeout: 1500 });
+  await expect(addLoaded).toBeDisabled();
+  await render(publicPlaylistState());
+  await expect(addLoaded).toBeInViewport();
+  await addLoaded.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'queue_public_playlist', revision: 7, loaded_count: 3 },
+  });
+  await expect(addLoaded).toBeDisabled();
+  await render(publicPlaylistState(), [first], 2, 'Could not save the queue.');
+  await expect(page.getByText('Could not save the queue.')).toBeVisible();
+
+  await addLoaded.press('Enter');
+  await render(publicPlaylistState(), [first, second, third], 3);
+  await expect(page.getByText('Added 2 videos to the queue.')).toBeVisible();
+  await expect(page.getByText('1 of 3')).toBeVisible();
+  await expect(addLoaded).toBeFocused();
+  const playlistRows = page.getByRole('list', {
+    name: 'YouTube playlist videos',
+  });
+  await expect(playlistRows.getByRole('listitem')).toHaveCount(3);
+
+  await addLoaded.press('Enter');
+  await render(publicPlaylistState(), [first, second, third], 4);
+  await expect(
+    page.getByText('All loaded videos are already in the queue.'),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+});
+
 test('loads more playlist rows explicitly and preserves repeated rows, scroll, and focus through a retry', async (t) => {
   const page = await panel(t);
   await page.setViewportSize({ width: 384, height: 520 });
@@ -1968,7 +2015,7 @@ test('keeps queue confirmations while clearing a completed player notice', async
   await page.getByRole('button', { name: 'Load more' }).click();
   await render([first], publicPlaylistState({ pending: true }), initial, 2);
 
-  await page.getByRole('button', { name: 'Queue' }).click();
+  await page.getByRole('button', { name: 'Queue', exact: true }).click();
   await page.getByRole('button', { name: 'Add links' }).click();
   const input = page.getByRole('textbox', { name: 'YouTube link or video ID' });
   await input.fill(third);

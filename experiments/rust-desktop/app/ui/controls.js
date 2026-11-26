@@ -895,6 +895,7 @@ function mountCatalog(query) {
   const submit = searchForm.querySelector('button');
   const feedback = searchForm.querySelector('#catalog-feedback');
   const loadMore = searchForm.querySelector('#catalog-load-more');
+  const addPlaylist = searchForm.querySelector('#catalog-add-playlist');
   const pageFeedback = searchForm.querySelector('#catalog-page-feedback');
   const resultFeedback = searchForm.querySelector('#catalog-result-feedback');
   input.value = query;
@@ -934,6 +935,24 @@ function mountCatalog(query) {
       'playlist-page',
     );
   });
+  addPlaylist.addEventListener('click', () => {
+    const { playlist, results } = renderedCatalog ?? {};
+    if (
+      addPlaylist.hidden ||
+      addPlaylist.getAttribute('aria-disabled') === 'true' ||
+      !Number.isSafeInteger(playlist?.revision) ||
+      !results?.length
+    )
+      return;
+    send(
+      {
+        type: 'queue_public_playlist',
+        revision: playlist.revision,
+        loaded_count: results.length,
+      },
+      'result-action',
+    );
+  });
   catalogTemplate.before(searchForm, results);
   return {
     form: searchForm,
@@ -942,6 +961,7 @@ function mountCatalog(query) {
     submit,
     feedback,
     loadMore,
+    addPlaylist,
     pageFeedback,
     resultFeedback,
     results,
@@ -1094,13 +1114,22 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   view.submit.setAttribute('aria-disabled', String(controlsBusy));
   const loadingPage = playlist?.pending || pending?.context === 'playlist-page';
   const canLoadMore = !searching && playlist?.hasMore;
-  const loadMoreHadFocus = document.activeElement === view.loadMore;
+  const canAddPlaylist = Boolean(!searching && playlist && results.length);
+  const focused = document.activeElement;
   view.loadMore.hidden = !canLoadMore;
+  view.addPlaylist.hidden = !canAddPlaylist;
   view.loadMore.setAttribute(
     'aria-disabled',
     String(controlsBusy || loadingPage),
   );
-  if (!canLoadMore && loadMoreHadFocus)
+  view.addPlaylist.setAttribute(
+    'aria-disabled',
+    String(controlsBusy || loadingPage),
+  );
+  if (
+    (!canLoadMore && focused === view.loadMore) ||
+    (!canAddPlaylist && focused === view.addPlaylist)
+  )
     (results.length && !searching ? view.results : view.query).focus({
       preventScroll: true,
     });
@@ -2053,6 +2082,12 @@ window.renderPearState = (
     else if (command.source.trim().includes('\n'))
       confirmation = 'These videos are already in the queue.';
     else confirmation = 'Video is already in the queue.';
+  }
+  if (!error && command?.type === 'queue_public_playlist') {
+    const added = entries.length - acknowledged.entryCount;
+    if (added > 1) confirmation = `Added ${added} videos to the queue.`;
+    else if (added === 1) confirmation = 'Added to the queue.';
+    else confirmation = 'All loaded videos are already in the queue.';
   }
   if (error && command?.type === 'add' && active === add) source.focus();
   if (!error && command?.type === 'play_next') {
