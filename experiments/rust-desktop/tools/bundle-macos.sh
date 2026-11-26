@@ -6,7 +6,28 @@ if [[ $(uname -s) != Darwin ]]; then
 fi
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+repository=$(cd -- "$root/../.." && pwd -P)
 build=(cargo build --manifest-path "$root/Cargo.toml" --target-dir "$root/target" --release --locked -p pear-desktop-preview)
+output="$root/target/macos"
+release="$root/target/release"
+
+usage() {
+  echo 'Usage: bundle-macos.sh [preview|embed] [aarch64-apple-darwin|x86_64-apple-darwin]' >&2
+  exit 2
+}
+
+if [[ $# -gt 2 ]]; then
+  usage
+fi
+case "${2:-}" in
+  '') ;;
+  aarch64-apple-darwin|x86_64-apple-darwin)
+    build+=(--target "$2")
+    output="$output/$2"
+    release="$root/target/$2/release"
+    ;;
+  *) usage ;;
+esac
 
 case "${1:-preview}" in
   preview)
@@ -15,7 +36,7 @@ case "${1:-preview}" in
     executable='pear-desktop-preview'
     version='0.3.0'
     build_number='3'
-    source="$root/target/release/$executable"
+    source="$release/$executable"
     ;;
   embed)
     name='Pear Official Embed Probe'
@@ -24,18 +45,28 @@ case "${1:-preview}" in
     version='0.1.0'
     build_number='1'
     build+=(--example "$executable")
-    source="$root/target/release/examples/$executable"
+    source="$release/examples/$executable"
     ;;
-  *)
-    echo 'Usage: bundle-macos.sh [preview|embed]' >&2
-    exit 2
-    ;;
+  *) usage ;;
 esac
 
-"${build[@]}" >&2
-bundle="$root/target/macos/$name.app"
-mkdir -p "$bundle/Contents/MacOS"
+# Use the system Mach-O tools for the installed copy on both architectures.
+CARGO_PROFILE_RELEASE_STRIP=none "${build[@]}" >&2
+bundle="$output/$name.app"
+mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 install -m 0755 "$source" "$bundle/Contents/MacOS/$executable"
+xcrun strip -S "$bundle/Contents/MacOS/$executable"
+
+icons="$repository/assets/generated/icons/png"
+iconset="$output/Pear.iconset"
+mkdir -p "$iconset"
+for size in 16 32 128 256 512; do
+  double=$((size * 2))
+  install -m 0644 "$icons/${size}x${size}.png" "$iconset/icon_${size}x${size}.png"
+  install -m 0644 "$icons/${double}x${double}.png" "$iconset/icon_${size}x${size}@2x.png"
+done
+iconutil --convert icns --output "$bundle/Contents/Resources/Pear.icns" "$iconset"
+
 cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -47,6 +78,8 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
   <string>$name</string>
   <key>CFBundleExecutable</key>
   <string>$executable</string>
+  <key>CFBundleIconFile</key>
+  <string>Pear.icns</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
