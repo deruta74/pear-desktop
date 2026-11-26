@@ -57,10 +57,19 @@ async function mediaState(frame) {
         if (location.href !== wanted) return null;
         const movie = document.querySelector('#movie_player');
         const video = movie?.querySelector('video.html5-main-video');
+        const error = video?.error;
+        const errorCode = error?.code;
+        const readyState = video?.readyState;
+        const networkState = video?.networkState;
         const playing = Boolean(video && !video.paused && !video.seeking && !video.ended &&
-            video.readyState >= 2 && !video.error &&
+            readyState >= 2 && !error &&
             !movie.matches('.ad-showing, .ad-interrupting') && Number.isFinite(video.currentTime));
-        return { present: Boolean(video), playing, time: playing ? video.currentTime : null };
+        return {
+            present: Boolean(video), playing, time: playing ? video.currentTime : null,
+            mediaErrorCode: error === null ? 0 : [1, 2, 3, 4].includes(errorCode) ? errorCode : null,
+            mediaReadyState: [0, 1, 2, 3, 4].includes(readyState) ? readyState : null,
+            mediaNetworkState: [0, 1, 2, 3].includes(networkState) ? networkState : null,
+        };
     }, embed, { timeout: 600 }).catch(() => null);
 }
 
@@ -149,6 +158,11 @@ async function run(port, result) {
             const sample = await mediaState(frame);
             result.mediaPresent ||= sample?.present ?? false;
             result.mediaPlaying ||= sample?.playing ?? false;
+            if (sample?.present) {
+                result.mediaErrorCode = sample.mediaErrorCode;
+                result.mediaReadyState = sample.mediaReadyState;
+                result.mediaNetworkState = sample.mediaNetworkState;
+            }
             if (!sample?.playing) {
                 firstTime = null;
                 lastTime = null;
@@ -166,7 +180,10 @@ async function run(port, result) {
 
 async function main() {
     const port = Number(process.argv[2]);
-    const result = { stage: 'invalid-port', mediaPresent: false, mediaPlaying: false, mediaAdvanced: false };
+    const result = {
+        stage: 'invalid-port', mediaPresent: false, mediaPlaying: false, mediaAdvanced: false,
+        mediaErrorCode: null, mediaReadyState: null, mediaNetworkState: null,
+    };
     const report = () => writeSync(1, JSON.stringify(result) + '\n');
     if (!Number.isInteger(port) || port < 1024 || port > 65535) {
         report();

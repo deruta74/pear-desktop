@@ -61,6 +61,10 @@ $report = [ordered]@{
     cdpMediaPresent = $false
     cdpMediaPlaying = $false
     cdpMediaAdvanced = $false
+    mediaErrorCode = $null
+    mediaReadyState = $null
+    mediaNetworkState = $null
+    audioSrv = 'unavailable'
     playback = 'inconclusive'
     settle = 'unavailable'
     readyBy25 = $null
@@ -90,6 +94,22 @@ function Get-FixtureDebuggerStage([int] $port, [uint] $owner) {
         return 'cdp-listener-binding'
     }
     return 'cdp-listener-verified'
+}
+
+function Test-DiagnosticMediaEnum($value, [int] $maximum) {
+    return $null -eq $value -or (($value -is [int] -or $value -is [long]) -and $value -ge 0 -and $value -le $maximum)
+}
+
+function Get-DiagnosticAudioStatus {
+    try {
+        $status = (Get-Service -Name 'AudioSrv' -ErrorAction Stop).Status.ToString()
+        if ($status -cin 'Stopped', 'StartPending', 'StopPending', 'Running', 'ContinuePending', 'PausePending', 'Paused') {
+            return $status
+        }
+    } catch {
+        # This read-only diagnostic can be unavailable on a runner.
+    }
+    return 'unavailable'
 }
 
 function Update-Readiness {
@@ -352,7 +372,7 @@ try {
         'wrapper-not-visible', 'iframe-geometry-mismatch', 'iframe-target-mismatch',
         'iframe-center-click', 'clock-signal', 'clicked',
         'invalid-port', 'probe-bootstrap', 'cdp-deadline')
-    if ($probe -isnot [System.Collections.IDictionary] -or $probe.Count -ne 4 -or
+    if ($probe -isnot [System.Collections.IDictionary] -or $probe.Count -ne 7 -or
         $probe.stage -isnot [string] -or $probe.stage -cnotin $probeStages -or $probe.mediaPresent -isnot [bool] -or
         $probe.mediaPlaying -isnot [bool] -or $probe.mediaAdvanced -isnot [bool]) {
         throw 'unexpected-probe-output'
@@ -361,6 +381,13 @@ try {
     $report.cdpMediaPresent = $probe.mediaPresent
     $report.cdpMediaPlaying = $probe.mediaPlaying
     $report.cdpMediaAdvanced = $probe.mediaAdvanced
+    $mediaBounds = @{ mediaErrorCode = 4; mediaReadyState = 4; mediaNetworkState = 3 }
+    foreach ($name in $mediaBounds.Keys) {
+        if (!$probe.Contains($name) -or !(Test-DiagnosticMediaEnum $probe[$name] $mediaBounds[$name])) {
+            throw 'unexpected-probe-output'
+        }
+        $report[$name] = $probe[$name]
+    }
     $stage = $probe.stage
     if ($probeExit -ne 0 -or $probe.stage -cne 'clicked' -or
         !(Test-Path -LiteralPath (Join-Path $fixtureProfile 'visual-play-clicked') -PathType Leaf)) {
@@ -403,6 +430,7 @@ try {
 } finally {
     try {
         if ($null -ne $preview) {
+            $report.audioSrv = Get-DiagnosticAudioStatus
             if (!$preview.HasExited -and (!$preview.CloseMainWindow() -or !$preview.WaitForExit(3000))) {
                 if (!$preview.HasExited) { $preview.Kill($true) }
             }
