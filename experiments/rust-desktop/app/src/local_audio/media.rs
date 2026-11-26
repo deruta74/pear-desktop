@@ -4,11 +4,15 @@ mod linux;
 mod macos;
 #[cfg(test)]
 mod tests;
+#[cfg(target_os = "windows")]
+mod windows;
 
 #[cfg(target_os = "linux")]
 pub(super) use linux::Backend;
 #[cfg(target_os = "macos")]
 pub(super) use macos::Backend;
+#[cfg(target_os = "windows")]
+pub(super) use windows::Backend;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
@@ -49,7 +53,7 @@ pub(super) struct State {
     pub(super) can_control: bool,
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
 impl State {
     fn allows(&self, request: Request) -> bool {
         self.generation == request.generation
@@ -62,10 +66,27 @@ impl State {
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(any(target_os = "windows", test))]
+fn windows_request(state: Option<&State>, command: Command) -> Option<Request> {
+    let state = state?;
+    let request = Request {
+        command,
+        generation: state.generation,
+    };
+    let available = match command {
+        Command::Play => state.status != Status::Playing,
+        Command::Pause => state.status == Status::Playing,
+        Command::Stop => state.status != Status::Stopped,
+        Command::Next | Command::Previous => true,
+        Command::Toggle => false,
+    };
+    (available && state.allows(request)).then_some(request)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub(super) struct Backend;
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 impl Backend {
     pub(super) fn new(_dispatch: impl Fn(Request) + 'static) -> Option<Self> {
         None

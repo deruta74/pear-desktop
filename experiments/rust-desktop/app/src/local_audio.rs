@@ -333,9 +333,13 @@ pub(crate) fn run() -> Result<()> {
     crate::verify_private_session(&view)?;
     view.load_url(DOCUMENT)?;
     let media_events = event_loop.create_proxy();
-    let mut media = media::Backend::new(move |request| {
+    let dispatch_media = move |request| {
         let _ = media_events.send_event(AudioEvent::Media(request));
-    });
+    };
+    #[cfg(target_os = "windows")]
+    let mut media = media::Backend::new(&window, dispatch_media);
+    #[cfg(not(target_os = "windows"))]
+    let mut media = media::Backend::new(dispatch_media);
     let mut track: Option<Track> = None;
     let mut track_generation = 0_u64;
     let mut volume = 1.0;
