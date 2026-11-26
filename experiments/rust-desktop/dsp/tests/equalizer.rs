@@ -319,3 +319,45 @@ fn prepared_equalizer_can_be_replaced_without_running_a_destructor() {
         std::mem::needs_drop::<StereoEqualizer>()
     ));
 }
+
+#[test]
+fn auto_preamp_covers_a_center_that_f32_rounds_to_nyquist() {
+    let bands = [band(3999.99988, 48.0, 1000.0)];
+    let config = EqualizerSettings {
+        auto_preamp: true,
+        ..settings(&bands)
+    };
+    let equalizer = StereoEqualizer::new(8000, config, 1.0).unwrap();
+    assert_close(equalizer.effective_preamp_db(), -48.1, 0.01);
+}
+
+#[test]
+fn prefix_validation_covers_overlapping_centers_that_f32_rounds_to_nyquist() {
+    let bands = [band(3999.99988, 48.0, 1000.0); 6];
+    for auto_preamp in [false, true] {
+        let config = EqualizerSettings {
+            auto_preamp,
+            ..settings(&bands)
+        };
+        assert!(matches!(
+            StereoEqualizer::new(8000, config, 1.0),
+            Err(EqualizerError::ExcessiveResponse)
+        ));
+    }
+}
+
+#[test]
+fn pcm_saturates_only_when_the_f32_output_would_overflow() {
+    let config = EqualizerSettings {
+        manual_preamp_db: 12.0,
+        ..Default::default()
+    };
+    let mut equalizer = StereoEqualizer::new(RATE, config, 1.0).unwrap();
+    assert_eq!(
+        equalizer.process_frame([f32::MAX, f32::MIN]),
+        [f32::MAX, f32::MIN],
+    );
+    let [left, right] = equalizer.process_frame([0.5, -0.5]);
+    let expected = (0.5 * 10.0_f64.powf(12.0 / 20.0)) as f32;
+    assert_eq!([left, right], [expected, -expected]);
+}

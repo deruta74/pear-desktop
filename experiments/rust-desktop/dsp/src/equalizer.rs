@@ -4,7 +4,10 @@
 // src/plugins/equalizer/{config,controller,response}.ts (9e8e4edf, 8bf7c1a4,
 // c31b0e8c). Peaking sections implement the Web Audio Audio EQ Cookbook formula.
 
-use std::{f64::consts::TAU, fmt};
+use std::{
+    f64::consts::{PI, TAU},
+    fmt,
+};
 
 /// Maximum number of bands in a custom profile.
 pub const MAX_BANDS: usize = 64;
@@ -157,7 +160,7 @@ impl StereoEqualizer {
         let response_bound_db = manual_preamp_db
             + active_filters
                 .iter()
-                .map(|filter| filter.band.gain_db.max(0.0))
+                .map(|filter| filter.center_gain_db().max(0.0))
                 .sum::<f64>();
         let peak_db = if filter_count != 0 && (auto_preamp || response_bound_db > DSP_LIMIT_DB) {
             sample_peak(active_filters, sample_rate, manual_preamp_db)?
@@ -201,7 +204,8 @@ impl StereoEqualizer {
         }
     }
 
-    /// Process stereo PCM. Non-finite input is treated as silence.
+    /// Process stereo PCM. Non-finite samples are treated as silence.
+    /// Finite output greater than the PCM type can represent is saturated.
     pub fn process_frame(&mut self, input: [f32; 2]) -> [f32; 2] {
         let mut frame = input.map(|sample| {
             if sample.is_finite() {
@@ -213,7 +217,13 @@ impl StereoEqualizer {
         for filter in &mut self.filters[..self.filter_count] {
             frame = filter.process(frame);
         }
-        frame.map(|sample| sample as f32)
+        frame.map(|sample| {
+            if sample.is_finite() {
+                sample.clamp(f64::from(f32::MIN), f64::from(f32::MAX)) as f32
+            } else {
+                0.0
+            }
+        })
     }
 
     /// Process any number of stereo frames in place.
@@ -245,10 +255,9 @@ fn auto_preamp_db(peak_db: f64, mut volume: f64) -> f64 {
 
 #[derive(Clone, Copy)]
 struct Peaking {
-    band: EqualizerBand,
-    center: f64,
-    numerator_damping: f64,
-    denominator_damping: f64,
+    q: f64,
+    dc_response: f64,
+    nyquist_response: f64,
     a1: f64,
     a2: f64,
     correction: f64,
@@ -257,14 +266,9 @@ struct Peaking {
 
 impl Peaking {
     const INACTIVE: Self = Self {
-        band: EqualizerBand {
-            frequency_hz: 0.0,
-            gain_db: 0.0,
-            q: 1.0,
-        },
-        center: 0.0,
-        numerator_damping: 0.0,
-        denominator_damping: 0.0,
+        q: 1.0,
+        dc_response: 1.0,
+        nyquist_response: 1.0,
         a1: 0.0,
         a2: 0.0,
         correction: 0.0,
@@ -283,17 +287,21 @@ impl Peaking {
         let a0 = weight + denominator_damping;
         let a2 = (weight - denominator_damping) / a0;
         let a1 = -2.0 * center.cos() * (weight / a0);
-        // Require the rounded denominator to retain both poles inside the
-        // unit circle, even for frequencies arbitrarily close to DC/Nyquist.
-        if !(a2.abs() < 1.0 && a1.abs() < 1.0 + a2) {
+        // Calculate the denominator at DC and Nyquist. Cancel the larger
+        // terms first to preserve the tiny pole margin near either endpoint.
+        let (dc_response, nyquist_response) = if a2 >= 0.0 {
+            ((1.0 + a1) + a2, (1.0 - a1) + a2)
+        } else {
+            ((1.0 + a2) + a1, (1.0 + a2) - a1)
+        };
+        if !(a2.abs() < 1.0 && dc_response > 0.0 && nyquist_response > 0.0) {
             return None;
         }
         let correction = (numerator_damping - denominator_damping) / a0;
         Some(Self {
-            band,
-            center,
-            numerator_damping,
-            denominator_damping,
+            q: band.q,
+            dc_response,
+            nyquist_response,
             a1,
             a2,
             correction,
@@ -314,15 +322,43 @@ impl Peaking {
         frame
     }
 
-    fn gain_db_at(&self, omega: f64, sin_omega: f64) -> f64 {
-        // Evaluate the shifted numerator and denominator without subtracting
-        // nearly equal cosines around narrow or low-frequency filter centers.
-        let cosine_difference =
-            -2.0 * ((omega + self.center) * 0.5).sin() * ((omega - self.center) * 0.5).sin();
-        let real = 2.0 * self.band.q * cosine_difference;
-        let numerator = real.hypot(self.numerator_damping * sin_omega);
-        let denominator = real.hypot(self.denominator_damping * sin_omega);
-        20.0 * f64::from((numerator / denominator) as f32).log10()
+    fn center_frequency(&self, nyquist: f64) -> f64 {
+        let from_nyquist = self.a1 > 0.0;
+        let endpoint = if from_nyquist {
+            self.nyquist_response
+        } else {
+            self.dc_response
+        };
+        // The resonance is the zero of the shifted denominator's real
+        // component. Rounded coefficients can shift it away from the input
+        // frequency by several peak widths near DC or Nyquist.
+        let half_angle = (endpoint / (2.0 * (1.0 + self.a2))).sqrt().asin();
+        let distance = nyquist * (2.0 * half_angle / PI);
+        if from_nyquist {
+            nyquist - distance
+        } else {
+            distance
+        }
+    }
+
+    fn center_gain_db(&self) -> f64 {
+        let denominator_weight = 1.0 - self.a2;
+        let numerator_weight = denominator_weight + 2.0 * self.correction;
+        20.0 * (numerator_weight / denominator_weight).abs().log10()
+    }
+
+    fn gain_db_at(&self, from_nyquist: bool, cosine_offset: f64, sine: f64) -> f64 {
+        let endpoint = if from_nyquist {
+            self.nyquist_response
+        } else {
+            self.dc_response
+        };
+        let real = (-(1.0 + self.a2)).mul_add(cosine_offset, endpoint);
+        let denominator_imaginary = (1.0 - self.a2) * sine;
+        let numerator_imaginary = denominator_imaginary + (2.0 * self.correction) * sine;
+        let numerator = real.hypot(numerator_imaginary);
+        let denominator = real.hypot(denominator_imaginary);
+        20.0 * (numerator / denominator).log10()
     }
 }
 
@@ -332,15 +368,21 @@ fn response_at(
     frequency: f64,
     manual_preamp_db: f64,
 ) -> Result<f64, EqualizerError> {
-    if frequency == 0.0 || frequency >= sample_rate / 2.0 {
+    let nyquist = sample_rate / 2.0;
+    if frequency == 0.0 || frequency >= nyquist {
         return Ok(0.0);
     }
 
-    let omega = TAU * frequency / sample_rate;
-    let sin_omega = omega.sin();
+    // Measure the angle from the closer endpoint so the half-angle formula
+    // retains the cosine offset even if cos(omega) rounds to +1 or -1.
+    let from_nyquist = frequency > nyquist / 2.0;
+    let distance = frequency.min(nyquist - frequency);
+    let (sine_half, cosine_half) = ((PI / 2.0) * (distance / nyquist)).sin_cos();
+    let cosine_offset = 2.0 * sine_half * sine_half;
+    let sine = 2.0 * sine_half * cosine_half;
     let mut sum = 0.0;
     for filter in filters {
-        sum += filter.gain_db_at(omega, sin_omega);
+        sum += filter.gain_db_at(from_nyquist, cosine_offset, sine);
         // Validate every prefix so cancellation later in the cascade cannot
         // conceal an excessive intermediate gain, even in automatic mode.
         if !sum.is_finite() || sum + manual_preamp_db > DSP_LIMIT_DB {
@@ -358,7 +400,7 @@ fn sample_peak(
     let nyquist = sample_rate / 2.0;
     let mut frequencies = Vec::new();
     let add = |frequencies: &mut Vec<f64>, frequency: f64| {
-        frequencies.push(f64::from(frequency.clamp(0.0, nyquist) as f32));
+        frequencies.push(frequency.clamp(0.0, nyquist));
     };
     add(&mut frequencies, 0.0);
     add(&mut frequencies, nyquist);
@@ -369,11 +411,9 @@ fn sample_peak(
         add(&mut frequencies, nyquist * f64::from(step) / 128.0);
     }
     for filter in filters {
-        let EqualizerBand {
-            frequency_hz, q, ..
-        } = filter.band;
+        let frequency_hz = filter.center_frequency(nyquist);
         add(&mut frequencies, frequency_hz);
-        let width = frequency_hz.min(nyquist - frequency_hz) / q;
+        let width = frequency_hz.min(nyquist - frequency_hz) / filter.q;
         for offset in [0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0] {
             add(&mut frequencies, frequency_hz - width * offset);
             add(&mut frequencies, frequency_hz + width * offset);
