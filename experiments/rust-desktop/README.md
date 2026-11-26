@@ -47,7 +47,7 @@ cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-d
 
 Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. Press **Space** while the queue panel is focused outside an input or button to pause or resume. Both players share the local queue and playlists. The experimental player shows saved titles and looks up details for the selected video.
 
-With the experimental player active, **View → Play Next Automatically** can advance the queue when the current video ends and the window is in the foreground. The option starts off. If YouTube blocks the transition, Pear opens the next video for you to start with its Play button.
+With the experimental player active, **View → Play Next Automatically** can advance the queue when the current video ends and the window is in the foreground. Enable **View → Repeat Queue** to return to the first video after the last when the queue has at least two videos. Both options start off. If YouTube blocks a transition, Pear opens the next video for you to start with its Play button.
 
 **Volume controls** can adjust the embedded player before playback when YouTube exposes volume and mute. Pear remembers changes confirmed by the player and reapplies them when it opens another video.
 

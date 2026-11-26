@@ -72,6 +72,8 @@ const MAX_IPC_BYTES: usize = 4096;
 const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
 const IFRAME_MENU_LABEL: &str = "Experimental Playback Controls";
 const AUTO_ADVANCE_LABEL: &str = "Play Next Automatically";
+const REPEAT_QUEUE_LABEL: &str = "Repeat Queue";
+const ADVANCE_PENDING: &str = "Waiting for the next video to start.";
 
 enum PlayerEvent {
     Menu(MenuEvent),
@@ -305,6 +307,15 @@ fn queue_edit_requires_reload(
 ) -> bool {
     let leaving_playlist = selecting && playlist.take().is_some();
     leaving_playlist || (playlist.is_none() && queue_requires_reload)
+}
+
+fn is_queue_append(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Add { .. }
+            | Command::QueuePublicPlaylist { .. }
+            | Command::Playlist(crate::library::playlists::Command::AppendPlaylist { .. })
+    )
 }
 
 fn show_video(
@@ -601,6 +612,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut automatic = preferences
         .as_ref()
         .is_some_and(preferences::Preferences::auto_advance);
+    let mut repeat_queue = preferences
+        .as_ref()
+        .is_some_and(preferences::Preferences::repeat_queue);
     let mut preferred_iframe = preferences
         .as_ref()
         .is_some_and(preferences::Preferences::iframe_player);
@@ -698,6 +712,13 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         None,
     );
     view_menu.append(&toggle_advance)?;
+    let toggle_repeat = CheckMenuItem::new(
+        REPEAT_QUEUE_LABEL,
+        approved && preferences.is_some() && mode.iframe_player && automatic,
+        repeat_queue,
+        None,
+    );
+    view_menu.append(&toggle_repeat)?;
     let mut speed_menu = speed_menu::SpeedMenu::new();
     view_menu.append(speed_menu.submenu())?;
     let edit_menu = Submenu::with_items(
@@ -809,6 +830,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     };
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     let mut auto_advance = advance::Advance::default();
+    auto_advance.set_repeat_queue(repeat_queue);
     let make_lyrics_lookup = {
         let events = event_loop.create_proxy();
         move || lyrics_lookup::Lookup::new(events.clone())
@@ -955,7 +977,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 true
             }
             Event::UserEvent(PlayerEvent::Menu(event))
-                if event.id == *toggle_iframe.id() || event.id == *toggle_advance.id() =>
+                if event.id == *toggle_iframe.id() || event.id == *toggle_advance.id()
+                    || event.id == *toggle_repeat.id() =>
             {
                 if !approved {
                     return;
@@ -965,7 +988,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 let enabled = toggle_iframe.is_checked();
                 let next_automatically = toggle_advance.is_checked();
-                if enabled == mode.iframe_player && next_automatically == automatic {
+                let repeat = toggle_repeat.is_checked();
+                if enabled == mode.iframe_player && next_automatically == automatic
+                    && repeat == repeat_queue
+                {
                     return;
                 }
                 if event.id == *toggle_iframe.id() {
@@ -973,6 +999,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 save_options = true;
                 automatic = next_automatically;
+                repeat_queue = repeat;
+                auto_advance.set_repeat_queue(repeat);
+                toggle_repeat.set_enabled(enabled && automatic);
                 if !automatic && auto_advance.cancel() {
                     reload_player = true;
                 }
@@ -1198,6 +1227,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
             Event::UserEvent(PlayerEvent::Command(message)) => {
                 acknowledged_sequence = Some(message.sequence);
+                // Appending entries can succeed without changing the selection.
+                let entries_before_append = is_queue_append(&message.command)
+                    .then(|| library.state().entries.len());
                 match message.command {
                     Command::Ready {} => {
                         verify_controls = mode.smoke && !controls_ready;
@@ -1225,6 +1257,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 add_video.set_enabled(true);
                                 toggle_iframe.set_enabled(preferences.is_some());
                                 toggle_advance.set_enabled(preferences.is_some() && mode.iframe_player);
+                                toggle_repeat.set_enabled(preferences.is_some() && mode.iframe_player && automatic);
                                 catalog_key_menu.refresh(preferences.as_ref());
                                 oauth_client_menu.refresh(preferences.as_ref());
                                 let saved_key = preferences.as_ref().and_then(preferences::Preferences::youtube_key_file);
@@ -1263,6 +1296,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                     _ if !approved => {}
+                    _ if entries_before_append.is_some() && auto_advance.pending_wrap() => {
+                        error = Some(ADVANCE_PENDING.into());
+                    }
                     Command::Account(command) => {
                         if !show_legal
                             && let Some(job) = account.as_mut().and_then(|account| account.apply(command))
@@ -1362,7 +1398,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         | Command::SetVolume { .. }
                         | Command::SetMuted { .. }) => {
                         if auto_advance.pending() {
-                            error = Some("Waiting for the next video to start.".into());
+                            error = Some(ADVANCE_PENDING.into());
                         } else if let (Some(transport), Some(video)) = (&mut transport, &current_player) {
                             let action = match command {
                                 Command::SetPlayback { playing: true } => iframe::Action::Play,
@@ -1401,7 +1437,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             _ => true,
                         };
                         if auto_advance.pending() {
-                            error = Some("Waiting for the next video to start.".into());
+                            error = Some(ADVANCE_PENDING.into());
                         } else if !available {
                             error = Some("That video is no longer available in Queue or Search.".into());
                         } else {
@@ -1439,6 +1475,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                 }
+                if entries_before_append.is_some_and(|len| library.state().entries.len() > len) {
+                    auto_advance.retarget_after_queue_edit(library.state());
+                }
                 true
             }
             _ if account_expired => true,
@@ -1446,15 +1485,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         };
 
         if save_options && let Some(preferences) = &mut preferences {
-            if let Err(reason) = preferences.set_playback(preferred_iframe, automatic, mode.audio_output) {
+            if let Err(reason) = preferences.set_playback(preferred_iframe, automatic, repeat_queue, mode.audio_output) {
                 eprintln!("Could not save playback preferences: {reason}");
                 preferences_problem = Some("Playback preferences changed for this session. They could not be saved.");
                 toggle_iframe.set_text(format!("{IFRAME_MENU_LABEL} (This Session)"));
                 toggle_advance.set_text(format!("{AUTO_ADVANCE_LABEL} (This Session)"));
+                toggle_repeat.set_text(format!("{REPEAT_QUEUE_LABEL} (This Session)"));
             } else {
                 preferences_problem = None;
                 toggle_iframe.set_text(IFRAME_MENU_LABEL);
                 toggle_advance.set_text(AUTO_ADVANCE_LABEL);
+                toggle_repeat.set_text(REPEAT_QUEUE_LABEL);
             }
         }
 
@@ -1643,6 +1684,27 @@ pub fn run(mode: LaunchMode) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identifies_the_commands_that_append_to_the_queue_without_selecting_a_video() {
+        for (body, append) in [
+            (r#"{"type":"add","source":"M7lc1UVf-VE"}"#, true),
+            (
+                r#"{"type":"queue_public_playlist","revision":7,"loaded_count":30}"#,
+                true,
+            ),
+            (r#"{"type":"append_playlist","id":1}"#, true),
+            (
+                r#"{"type":"select_playlist_track","id":1,"video":"M7lc1UVf-VE"}"#,
+                false,
+            ),
+            (r#"{"type":"play_next","id":"M7lc1UVf-VE"}"#, false),
+            (r#"{"type":"set_playback","playing":true}"#, false),
+        ] {
+            let command: Command = serde_json::from_str(body).unwrap();
+            assert_eq!(is_queue_append(&command), append, "{body}");
+        }
+    }
 
     #[test]
     fn public_playlist_temporarily_replaces_playback_without_selecting_a_queue_video() {
