@@ -20,7 +20,7 @@ use tao::{
     window::{Window, WindowBuilder},
 };
 use wry::{
-    WebViewBuilder,
+    DragDropEvent, WebViewBuilder,
     http::{Request, Response, header},
 };
 
@@ -79,6 +79,7 @@ enum AudioCommand {
 
 enum AudioEvent {
     Command(AudioCommand),
+    DropFiles(Vec<PathBuf>),
     Menu(MenuEvent),
     Prepared(std::result::Result<(String, engine::PreparedAudio), engine::EngineOpenError>),
     Opened(std::result::Result<Track, engine::EngineOpenError>),
@@ -267,10 +268,19 @@ pub(crate) fn run() -> Result<()> {
     })));
     let events = event_loop.create_proxy();
     let result_events = events.clone();
+    let drop_events = events.clone();
     let builder = isolated_builder(WebViewBuilder::new())
         .with_custom_protocol(SCHEME.into(), |_, request| assets(request))
         .with_navigation_handler(|url| url == DOCUMENT)
-        .with_drag_drop_handler(|_| true)
+        .with_drag_drop_handler(move |event| {
+            if let DragDropEvent::Drop { paths, .. } = event
+                && !paths.is_empty()
+            {
+                let _ = drop_events.send_event(AudioEvent::DropFiles(paths));
+            }
+            // Keep dropped files out of WebView navigation and script access.
+            true
+        })
         .with_ipc_handler(move |request| {
             if let Some(command) = command(&request) {
                 let _ = events.send_event(AudioEvent::Command(command));
@@ -300,6 +310,7 @@ pub(crate) fn run() -> Result<()> {
 
     event_loop.run(move |event, _, flow| {
         let _keep_menu_alive = &menu;
+        let mut dropped_path = None;
         let action = match event {
             Event::WindowEvent {
                 window_id,
@@ -319,7 +330,16 @@ pub(crate) fn run() -> Result<()> {
                 Some(AudioCommand::Open {})
             }
             Event::UserEvent(AudioEvent::Command(command)) => Some(command),
-            Event::UserEvent(AudioEvent::Prepared(Ok((name, wav)))) => {
+            Event::UserEvent(AudioEvent::DropFiles(mut paths)) if !opening => {
+                if paths.len() == 1 {
+                    dropped_path = paths.pop();
+                    Some(AudioCommand::Open {})
+                } else {
+                    error = Some("Drop one audio file at a time.".into());
+                    Some(AudioCommand::Ready {})
+                }
+            }
+            Event::UserEvent(AudioEvent::Prepared(Ok((name, audio)))) => {
                 // A direct ALSA endpoint can permit only one active stream.
                 // Keep the old track while validating the file and release it
                 // before asking the current default output for a new stream.
@@ -328,8 +348,8 @@ pub(crate) fn run() -> Result<()> {
                 if std::thread::Builder::new()
                     .name("pear-audio-output".into())
                     .spawn(move || {
-                        let result =
-                            engine::Engine::open_prepared(wav).map(|engine| Track { name, engine });
+                        let result = engine::Engine::open_prepared(audio)
+                            .map(|engine| Track { name, engine });
                         let _ = result_events.send_event(AudioEvent::Opened(result));
                     })
                     .is_err()
@@ -386,7 +406,7 @@ pub(crate) fn run() -> Result<()> {
             );
         match action {
             Some(AudioCommand::Open {}) => {
-                if !opening && let Some(path) = pick_file(&window) {
+                if !opening && let Some(path) = dropped_path.or_else(|| pick_file(&window)) {
                     let result_events = result_events.clone();
                     match std::thread::Builder::new()
                         .name("pear-audio-open".into())

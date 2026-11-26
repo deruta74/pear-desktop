@@ -59,7 +59,7 @@ In `--iframe-player`, start the video and open **Lyrics**. Check the track name 
 
 ### Local audio and Slowed + Reverb
 
-Choose **File → Open Local Audio Window**, then **Open audio file**. Pear streams mono or stereo integer PCM and IEEE float WAV, as well as native FLAC files with a known duration, through the system’s default output. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. The effect settings apply to the current local audio session.
+Choose **File → Open Local Audio Window**, then **Open audio file**, or drag a file into the Local Audio window. Pear streams mono or stereo integer PCM and IEEE float WAV, as well as native FLAC files with a known duration, through the system’s default output. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. The effect settings apply to the current local audio session.
 
 You can also pass `--local-audio` to the executable. Local playback runs offline in a separate window and uses its own session. The embedded YouTube player has its own playback controls.
 
