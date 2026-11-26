@@ -449,6 +449,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     })));
 
     let layout = Layout::new(&window, &data_dir)?;
+    #[cfg(all(target_os = "windows", feature = "windows-playback-qa"))]
+    let layout = layout.with_smoke_cdp(mode.smoke)?;
     let controls_proxy = event_loop.create_proxy();
     let controls = layout.build(
         &window,

@@ -26,6 +26,8 @@ jobs:
           package-manager-cache: false
       - name: Build preview and run Rust tests on MSVC
         id: build
+        env:
+          PEAR_WINDOWS_PLAYBACK_QA: ${{ contains(github.event.head_commit.message, '[webview2-playback]') }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
           $artifactDir = Join-Path $env:RUNNER_TEMP 'pear-windows-qa'
@@ -49,7 +51,8 @@ jobs:
           Copy-Item (Join-Path $env:CARGO_TARGET_DIR "$target/release/pear-desktop-preview.exe") $artifactDir
           'portable=true' >> $env:GITHUB_OUTPUT
           Invoke-Rustup run $toolchain cargo test --locked --target $target --workspace --all-features
-          Invoke-Rustup run $toolchain cargo build --locked --target $target --features benchmark -p pear-desktop-preview
+          $qaFeatures = if ($env:PEAR_WINDOWS_PLAYBACK_QA -eq 'true') { 'windows-playback-qa' } else { 'benchmark' }
+          Invoke-Rustup run $toolchain cargo build --locked --target $target --features $qaFeatures -p pear-desktop-preview
       - name: Run the native WebView2 queue smoke
         timeout-minutes: 3
         run: |

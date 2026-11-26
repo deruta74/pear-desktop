@@ -55,8 +55,9 @@ try {
     $options.RedirectStandardOutput = $true
     $options.RedirectStandardError = $true
     $options.Environment['PEAR_PREVIEW_QUEUE_DIR'] = $root
-    $options.Environment['WEBVIEW2_USER_DATA_FOLDER'] = $profile
-    $options.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port"
+    $options.Environment['PEAR_PREVIEW_SMOKE_CDP_PORT'] = $port.ToString([Globalization.CultureInfo]::InvariantCulture)
+    $null = $options.Environment.Remove('WEBVIEW2_USER_DATA_FOLDER')
+    $null = $options.Environment.Remove('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS')
     $null = $options.Environment.Remove('WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER')
     $null = $options.Environment.Remove('WEBVIEW2_WAIT_FOR_SCRIPT_DEBUGGER')
     $null = $options.Environment.Remove('PEAR_YOUTUBE_API_KEY_FILE')
