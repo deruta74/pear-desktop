@@ -91,19 +91,32 @@ async function until(milliseconds, sample) {
     return null;
 }
 
+const officialPlayName = /^Play(?: video)?(?:\s*\([^)]*\))?$/i;
+
 async function officialPlay(frame) {
-    const role = frame.getByRole('button', { name: /^Play(?:\s*\([^)]*\))?$/i });
-    return until(8_000, async () => {
+    const role = frame.getByRole('button', { name: officialPlayName, includeHidden: true });
+    let reason = 'official-play-button-missing';
+    const play = await until(8_000, async () => {
         for (const selector of ['.ytp-large-play-button', '.ytp-play-button']) {
-            const button = frame.locator(`#movie_player button${selector}`).and(role);
-            if (await button.count() !== 1) continue;
+            const candidates = frame.locator(`#movie_player button${selector}`);
+            if (!await candidates.count()) continue;
+            const button = candidates.and(role);
+            if (await button.count() !== 1) {
+                if (reason === 'official-play-button-missing') reason = 'official-play-label-mismatch';
+                continue;
+            }
             try {
                 const candidate = await button.elementHandle({ timeout: 500 });
                 const { documentUrl, painted } = await candidate.evaluate((element) => ({
                     documentUrl: location.href,
                     painted: element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
                 }));
-                if (!painted || !acceptedUrl(frameUrlStatus(documentUrl))) continue;
+                if (!acceptedUrl(frameUrlStatus(documentUrl))) continue;
+                if (!painted) {
+                    if (reason !== 'official-play-not-actionable') reason = 'official-play-hidden';
+                    continue;
+                }
+                reason = 'official-play-not-actionable';
                 await candidate.click({ trial: true, timeout: 700 });
                 return candidate;
             } catch {
@@ -112,6 +125,7 @@ async function officialPlay(frame) {
         }
         return null;
     });
+    return { play, reason };
 }
 
 function playerState(panel) {
@@ -224,8 +238,8 @@ async function run(port) {
         if (!frame) return ['inconclusive', reason];
         stage = 'official-play-not-actionable';
         if (!await video.evaluate(() => document.visibilityState === 'visible')) return ['inconclusive', 'video-not-visible'];
-        const play = await officialPlay(frame);
-        if (!play) return ['inconclusive', stage];
+        const { play, reason: playReason } = await officialPlay(frame);
+        if (!play) return ['inconclusive', playReason];
         stage = 'official-play-click';
         const playDocument = await play.evaluate(() => location.href);
         if (!acceptedUrl(frameUrlStatus(playDocument))) return ['inconclusive', 'iframe-document-changed'];
@@ -275,4 +289,4 @@ async function main() {
 }
 
 if (require.main === module) void main();
-module.exports = { frameUrlStatus, waitForOfficialFrame, formatFrameEvidence };
+module.exports = { frameUrlStatus, waitForOfficialFrame, formatFrameEvidence, officialPlayName };

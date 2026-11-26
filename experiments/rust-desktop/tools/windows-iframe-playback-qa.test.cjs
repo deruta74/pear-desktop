@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { frameUrlStatus, waitForOfficialFrame, formatFrameEvidence } = require('./windows-iframe-playback-qa.cjs');
+const { frameUrlStatus, waitForOfficialFrame, formatFrameEvidence, officialPlayName } = require('./windows-iframe-playback-qa.cjs');
 
 const site = 'https://www.youtube.com/embed/M7lc1UVf-VE';
 const origin = 'https%3A%2F%2Fcom.pear-desktop.rust-preview';
@@ -92,4 +92,13 @@ test('waits for an unattached matching iframe to become evaluable', async () => 
     const result = await waitForOfficialFrame(video, 1_000);
     assert.equal(result.frame, frame);
     assert.equal(attempts, 2);
+});
+
+test('recognizes the official embed Play video label without matching other actions', () => {
+    for (const label of ['Play', 'Play (k)', 'Play video', 'Play video (k)']) {
+        assert.equal(officialPlayName.test(label), true, label);
+    }
+    for (const label of ['Pause video', 'Play next', 'Play in browser', 'Replay']) {
+        assert.equal(officialPlayName.test(label), false, label);
+    }
 });
