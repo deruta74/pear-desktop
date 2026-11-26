@@ -98,6 +98,12 @@ impl Transport {
         self.snapshot.as_ref()?.duration
     }
 
+    pub(super) fn observed_at(&self, time: Instant) -> Option<&Snapshot> {
+        self.snapshot
+            .as_ref()
+            .filter(|_| self.sampled_at == Some(time))
+    }
+
     pub(super) fn problem(&self) -> Option<&'static str> {
         Some(match self.snapshot.as_ref()?.error? {
             100 => "This video is unavailable.",

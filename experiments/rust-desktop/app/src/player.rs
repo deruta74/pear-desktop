@@ -1,4 +1,6 @@
 //! The desktop queue separates its local controls from the remote video.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod advance;
 mod catalog;
 mod consent;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -70,6 +72,8 @@ const MAX_IPC_BYTES: usize = 4096;
 const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 const IFRAME_MENU_LABEL: &str = "Experimental Playback Controls";
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+const AUTO_ADVANCE_LABEL: &str = "Play Next Automatically";
 
 const EMPTY_PLAYER: &str = r#"<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
@@ -121,6 +125,9 @@ struct QueueView<'a> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     lyrics: Option<&'a lyrics_lookup::View>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    lyrics_switching: bool,
 }
 
 #[derive(Serialize)]
@@ -419,13 +426,15 @@ fn player_flow(
     catalog: Option<Instant>,
     #[cfg(any(target_os = "macos", target_os = "linux"))] transport: Option<&transport::Transport>,
     #[cfg(any(target_os = "macos", target_os = "linux"))] lyrics: Option<Instant>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))] advance: Option<Instant>,
     #[cfg(target_os = "linux")] timer: &mut platform::DeadlineTimer,
 ) -> ControlFlow {
     let deadlines = load.into_iter().chain(metadata).chain(catalog);
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let deadlines = deadlines
         .chain(transport.and_then(transport::Transport::deadline))
-        .chain(lyrics);
+        .chain(lyrics)
+        .chain(advance);
     let deadline = deadlines.min();
     #[cfg(target_os = "linux")]
     let deadline = timer.schedule(deadline);
@@ -481,8 +490,16 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         .as_ref()
         .and_then(preferences::Preferences::problem);
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    if let Some(preferences) = &preferences {
-        mode.iframe_player |= preferences.iframe_player();
+    let mut automatic = preferences
+        .as_ref()
+        .is_some_and(preferences::Preferences::auto_advance);
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut preferred_iframe = preferences
+        .as_ref()
+        .is_some_and(preferences::Preferences::iframe_player);
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        mode.iframe_player |= preferred_iframe;
         if let Some(problem) = preferences_problem {
             eprintln!("{problem}");
         }
@@ -529,6 +546,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     );
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     view_menu.append(&toggle_iframe)?;
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let toggle_advance = CheckMenuItem::new(
+        AUTO_ADVANCE_LABEL,
+        approved && preferences.is_some() && mode.iframe_player,
+        automatic,
+        None,
+    );
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    view_menu.append(&toggle_advance)?;
     let edit_menu = Submenu::with_items(
         "Edit",
         true,
@@ -607,6 +633,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut auto_advance = advance::Advance::default();
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let lyrics_worker = {
         let events = event_loop.create_proxy();
         move || match lyrics_lookup::Lookup::new(events.clone()) {
@@ -638,6 +666,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             transport.as_ref(),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             lyrics.as_ref().and_then(lyrics_lookup::Lookup::deadline),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            auto_advance.deadline(),
             #[cfg(target_os = "linux")]
             &mut timer,
         );
@@ -646,12 +676,16 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         let mut acknowledged_sequence = None;
         let mut focus_add_field = false;
         let mut verify_controls = false;
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        let mut advance_resolution = None;
         let update_queue = match event {
             Event::WindowEvent {
                 window_id, event, ..
             } if window_id == window.id() => {
                 match event {
                     WindowEvent::CloseRequested => *flow = ControlFlow::Exit,
+                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    WindowEvent::Focused(false) => auto_advance.disarm(),
                     WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                         if let Err(error) = layout.arrange(
                             &window,
@@ -678,38 +712,53 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 true
             }
             #[cfg(any(target_os = "macos", target_os = "linux"))]
-            Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *toggle_iframe.id() => {
+            Event::UserEvent(PlayerEvent::Menu(event))
+                if event.id == *toggle_iframe.id() || event.id == *toggle_advance.id() =>
+            {
                 if !approved {
                     return;
                 }
                 let Some(preferences) = &mut preferences else { return };
                 let enabled = toggle_iframe.is_checked();
-                if enabled == mode.iframe_player {
+                let next_automatically = toggle_advance.is_checked();
+                if enabled == mode.iframe_player && next_automatically == automatic {
                     return;
                 }
-                if let Err(reason) = preferences.set_iframe_player(enabled) {
-                    eprintln!("Could not save playback mode: {reason}");
-                    preferences_problem = Some("Playback mode changed for this session. The preference could not be saved.");
+                if event.id == *toggle_iframe.id() {
+                    preferred_iframe = enabled;
+                }
+                if let Err(reason) = preferences.set_playback(preferred_iframe, next_automatically) {
+                    eprintln!("Could not save playback preferences: {reason}");
+                    preferences_problem = Some("Playback preferences changed for this session. They could not be saved.");
                     toggle_iframe.set_text(format!("{IFRAME_MENU_LABEL} (This Session)"));
+                    toggle_advance.set_text(format!("{AUTO_ADVANCE_LABEL} (This Session)"));
                 } else {
                     preferences_problem = None;
                     toggle_iframe.set_text(IFRAME_MENU_LABEL);
+                    toggle_advance.set_text(AUTO_ADVANCE_LABEL);
                 }
-                mode.iframe_player = enabled;
-                transport = enabled.then(transport::Transport::default);
-                if enabled {
-                    if lyrics.is_none() {
-                        lyrics = lyrics_worker();
-                    }
-                } else {
-                    if let Some(lyrics) = &mut lyrics {
-                        lyrics.select(None, None, None);
-                    }
-                    if let Err(reason) = controls.evaluate_script("window.renderPearTransport?.(null);") {
-                        eprintln!("Could not reset the playback controls: {reason}");
-                    }
+                automatic = next_automatically;
+                if !automatic && auto_advance.cancel() {
+                    reload_player = true;
                 }
-                reload_player = true;
+                if enabled != mode.iframe_player {
+                    mode.iframe_player = enabled;
+                    toggle_advance.set_enabled(enabled);
+                    transport = enabled.then(transport::Transport::default);
+                    if enabled {
+                        if lyrics.is_none() {
+                            lyrics = lyrics_worker();
+                        }
+                    } else {
+                        if let Some(lyrics) = &mut lyrics {
+                            lyrics.select(None, None, None);
+                        }
+                        if let Err(reason) = controls.evaluate_script("window.renderPearTransport?.(null);") {
+                            eprintln!("Could not reset the playback controls: {reason}");
+                        }
+                    }
+                    reload_player = true;
+                }
                 true
             }
             Event::UserEvent(PlayerEvent::Menu(event))
@@ -806,8 +855,33 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::UserEvent(PlayerEvent::TransportSample(id, sequence, response)) if id == generation => {
                 let Some(transport) = &mut transport else { return };
                 let previous_status = (transport.ready(), transport.is_stale());
-                if !transport.receive(sequence, &response, Instant::now()) { return; }
-                if let Some(problem) = transport.problem() {
+                let now = Instant::now();
+                if !transport.receive(sequence, &response, now) { return; }
+                let sample = transport.observed_at(now);
+                advance_resolution = auto_advance.resolve(library.state(), sample, now);
+                let foreground_automatic = automatic
+                    && window.is_visible()
+                    && window.is_focused()
+                    && !window.is_minimized();
+                let starting = if advance_resolution.is_none() {
+                    current_player.as_ref().and_then(|video| {
+                        let action = auto_advance.observe(library.state(), sample?, foreground_automatic, now)?;
+                        Some((video, action))
+                    })
+                } else {
+                    None
+                };
+                if let Some((video, action)) = starting {
+                    if let Err(reason) = transport.perform(video, action) {
+                        eprintln!("Could not start the next video automatically: {reason}");
+                        advance_resolution = auto_advance.manual();
+                    }
+                    true
+                } else if advance_resolution.is_some() {
+                    true
+                } else if auto_advance.pending() {
+                    false
+                } else if let Some(problem) = transport.problem() {
                     player_error = Some(problem.into());
                     load_deadline = None;
                     transport.reset(false);
@@ -855,7 +929,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 #[cfg(any(target_os = "macos", target_os = "linux"))]
                 let overdue = {
                     let lyrics_changed = lyrics.as_mut().is_some_and(|lyrics| lyrics.tick(now));
-                    overdue || expired || lyrics_changed
+                    advance_resolution = auto_advance.resolve(library.state(), None, now);
+                    overdue || expired || lyrics_changed || advance_resolution.is_some()
                 };
                 overdue || metadata_changed || catalog_changed
             }
@@ -889,6 +964,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 add_video.set_enabled(true);
                                 #[cfg(any(target_os = "macos", target_os = "linux"))]
                                 toggle_iframe.set_enabled(preferences.is_some());
+                                #[cfg(any(target_os = "macos", target_os = "linux"))]
+                                toggle_advance.set_enabled(preferences.is_some() && mode.iframe_player);
                                 (catalog, lookup) = start_youtube_clients(&service_events, library.state().current.as_deref());
                                 #[cfg(any(target_os = "macos", target_os = "linux"))]
                                 if mode.iframe_player {
@@ -924,10 +1001,18 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             catalog.submit(&query, Instant::now());
                         }
                     }
-                    Command::Playlist(command) => match playlists.apply(command, &mut library) {
-                        Ok(changed) => reload_player = changed,
-                        Err(reason) => error = Some(reason.to_string()),
-                    },
+                    Command::Playlist(command) => {
+                        #[cfg(any(target_os = "macos", target_os = "linux"))]
+                        let cancel_switch = auto_advance.pending()
+                            && matches!(&command, crate::library::playlists::Command::SelectPlaylistTrack { video, .. }
+                                if library.state().current.as_ref() == Some(video));
+                        #[cfg(target_os = "windows")]
+                        let cancel_switch = false;
+                        match playlists.apply(command, &mut library) {
+                            Ok(changed) => reload_player = changed || cancel_switch,
+                            Err(reason) => error = Some(reason.to_string()),
+                        }
+                    }
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     Command::FindLyrics { title, artist } => {
                         if mode.iframe_player && let Some(lyrics) = &mut lyrics {
@@ -936,7 +1021,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     }
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     command @ (Command::SetPlayback { .. } | Command::Seek { .. }) => {
-                        if let (Some(transport), Some(video)) = (&mut transport, &current_player) {
+                        if auto_advance.pending() {
+                            error = Some("Waiting for the next video to start.".into());
+                        } else if let (Some(transport), Some(video)) = (&mut transport, &current_player) {
                             let action = match command {
                                 Command::SetPlayback { playing: true } => iframe::Action::Play,
                                 Command::SetPlayback { playing: false } => iframe::Action::Pause,
@@ -948,6 +1035,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                     iframe::Action::Play => "play",
                                     iframe::Action::Pause => "pause",
                                     iframe::Action::Seek(_) => "seek",
+                                iframe::Action::Advance { .. } => "advance",
                                 };
                                 println!("PEAR_QUEUE_TRANSPORT_COMMAND {name}");
                             }
@@ -959,14 +1047,61 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             error = Some("Playback controls are unavailable for this video.".into());
                         }
                     }
-                    command => match library.apply(command) {
-                        Ok(changed) => reload_player = changed,
-                        Err(reason) => error = Some(reason.to_string()),
-                    },
+                    command => {
+                        #[cfg(any(target_os = "macos", target_os = "linux"))]
+                        let cancel_switch = auto_advance.pending()
+                            && matches!(&command, Command::Select { id }
+                                if library.state().current.as_ref() == Some(id));
+                        #[cfg(target_os = "windows")]
+                        let cancel_switch = false;
+                        match library.apply(command) {
+                            Ok(changed) => reload_player = changed || cancel_switch,
+                            Err(reason) => error = Some(reason.to_string()),
+                        }
+                    }
                 }
                 true
             }
             _ => return,
+        };
+
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        let update_queue = {
+            if !reload_player && update_queue && advance_resolution.is_none() {
+                advance_resolution = auto_advance.resolve(library.state(), None, Instant::now());
+            }
+            if let Some(resolution) = advance_resolution {
+                use advance::Resolution;
+                let (selection, reuse_player) = match resolution {
+                    Resolution::Playing(id) => (Some(id), true),
+                    Resolution::NeedsPlay(id) => (Some(id), false),
+                    Resolution::KeepCurrent => (None, true),
+                    Resolution::Superseded => (None, false),
+                };
+                reload_player = !reuse_player;
+                if let Some(id) = selection {
+                    match library.apply(Command::Select { id }) {
+                        Ok(_) if reuse_player => {
+                            if let Some(lookup) = &mut lookup {
+                                lookup.select(library.state().current.as_deref());
+                            }
+                            if let Some(transport) = &mut transport {
+                                transport.resend_controls();
+                            }
+                            load_deadline = None;
+                            loading_slow = false;
+                        }
+                        Ok(_) => {}
+                        Err(reason) => {
+                            reload_player = true;
+                            error = Some(reason.to_string());
+                        }
+                    }
+                }
+                true
+            } else {
+                update_queue
+            }
         };
 
         if reload_player {
@@ -974,8 +1109,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             load_deadline = None;
             loading_slow = false;
             #[cfg(any(target_os = "macos", target_os = "linux"))]
-            if let Some(transport) = &mut transport {
-                transport.reset(false);
+            {
+                auto_advance.cancel();
+                if let Some(transport) = &mut transport {
+                    transport.reset(false);
+                }
             }
             if let Some(lookup) = &mut lookup {
                 lookup.select(library.state().current.as_deref());
@@ -999,6 +1137,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         }
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
+        let switching = auto_advance.pending();
+        #[cfg(target_os = "windows")]
+        let switching = false;
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let update_queue = {
             let duration_changed = mode.iframe_player && lyrics.as_mut().is_some_and(|lyrics| {
                 if update_queue || reload_player {
@@ -1011,7 +1153,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     let channel = metadata.map(|metadata| metadata.channel.as_str());
                     lyrics.select(current, title, channel);
                 }
-                lyrics.set_duration(transport.as_ref().and_then(transport::Transport::duration))
+                lyrics.set_duration(
+                    (!switching)
+                        .then(|| transport.as_ref().and_then(transport::Transport::duration))
+                        .flatten(),
+                )
             });
             update_queue || duration_changed
         };
@@ -1023,6 +1169,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             transport.as_ref(),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             lyrics.as_ref().and_then(lyrics_lookup::Lookup::deadline),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            auto_advance.deadline(),
             #[cfg(target_os = "linux")]
             &mut timer,
         );
@@ -1032,7 +1180,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             let player_ready = player_ready || transport.as_ref().is_some_and(transport::Transport::ready);
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             let loading_slow = loading_slow || transport.as_ref().is_some_and(transport::Transport::is_stale);
-            let notice = if library.state().current.is_none()
+            let notice = if switching {
+                Some("Opening the next video…")
+            } else if library.state().current.is_none()
                 || player_error.is_some()
                 || player_ready
             {
@@ -1060,6 +1210,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     preferences_problem,
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     lyrics: lyrics.as_ref().and_then(lyrics_lookup::Lookup::view),
+                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    lyrics_switching: switching,
                 },
                 error.as_deref(),
                 notice,
@@ -1075,7 +1227,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         if approved && controls_ready && let Some(transport) = &mut transport
-            && let Err(reason) = transport.render(&controls, library.state().current.is_some())
+            && let Err(reason) = transport.render(&controls, !switching && library.state().current.is_some())
         {
             eprintln!("Could not update the playback controls: {reason}");
         }

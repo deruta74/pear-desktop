@@ -225,6 +225,7 @@ async function state(
     metadataProblem,
     catalog,
     lyrics,
+    lyricsSwitching,
     savedPlaylists,
     preferencesProblem,
     legal,
@@ -250,6 +251,7 @@ async function state(
         metadataProblem,
         catalog,
         lyrics,
+        lyricsSwitching,
         savedPlaylists,
         preferencesProblem,
         legal,
@@ -1099,6 +1101,31 @@ function lyricsState(overrides = {}) {
     ...overrides,
   };
 }
+
+test('suspends previous lyrics during an automatic video transition and restores them if canceled', async (t) => {
+  const page = await panel(t);
+  const lyrics = lyricsState({
+    result: { kind: 'plain', lines: ['Current recording'] },
+  });
+  const render = (lyricsSwitching) =>
+    state(page, [first, second], first, null, null, undefined, {
+      lyrics,
+      lyricsSwitching,
+    });
+  await render(false);
+  const tab = page.getByRole('button', { name: 'Lyrics', exact: true });
+  await tab.click();
+  await expect(page.getByText('Current recording')).toBeVisible();
+  await render(true);
+  await expect(page.getByText('Current recording')).toHaveCount(0);
+  await expect(page.getByText('Opening the next video…')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Find lyrics' }),
+  ).toBeDisabled();
+  await render(false);
+  await expect(page.getByText('Current recording')).toBeVisible();
+  await expect(tab).toHaveAttribute('aria-pressed', 'true');
+});
 
 test('only looks up explicitly submitted Lyrics and clears old drafts and results on selection change', async (t) => {
   const page = await panel(t);

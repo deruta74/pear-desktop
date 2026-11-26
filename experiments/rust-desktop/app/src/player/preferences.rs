@@ -12,11 +12,13 @@ const MAX_FILE_BYTES: u64 = 4096;
 const UNREADABLE: &str = "Could not read the saved playback preferences.";
 const MALFORMED: &str = "The saved playback preferences contain invalid data.";
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Default, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct SavedPreferences {
     #[serde(default)]
     iframe_player: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    auto_advance: bool,
 }
 
 pub(crate) struct Preferences {
@@ -42,20 +44,29 @@ impl Preferences {
         self.saved.iframe_player
     }
 
+    pub(crate) fn auto_advance(&self) -> bool {
+        self.saved.auto_advance
+    }
+
     pub(crate) fn problem(&self) -> Option<&'static str> {
         self.problem
     }
 
-    pub(crate) fn set_iframe_player(&mut self, enabled: bool) -> io::Result<()> {
+    pub(crate) fn set_playback(
+        &mut self,
+        iframe_player: bool,
+        auto_advance: bool,
+    ) -> io::Result<()> {
         if let Some(problem) = self.problem {
             return Err(io::Error::new(io::ErrorKind::InvalidData, problem));
         }
-        if enabled == self.saved.iframe_player {
+        let saved = SavedPreferences {
+            iframe_player,
+            auto_advance,
+        };
+        if saved == self.saved {
             return Ok(());
         }
-        let saved = SavedPreferences {
-            iframe_player: enabled,
-        };
         let bytes = serde_json::to_vec(&saved).map_err(io::Error::other)?;
         write_atomic(&self.path, &bytes)?;
         self.saved = saved;
@@ -133,12 +144,12 @@ mod tests {
         assert_eq!(preferences.problem(), None);
         assert!(!path.exists());
 
-        preferences.set_iframe_player(true).unwrap();
+        preferences.set_playback(true, false).unwrap();
         assert!(preferences.iframe_player());
         let mut restored = Preferences::load(path.clone());
         assert!(restored.iframe_player());
         assert_eq!(restored.problem(), None);
-        restored.set_iframe_player(false).unwrap();
+        restored.set_playback(false, false).unwrap();
         assert!(!Preferences::load(path).iframe_player());
     }
 
@@ -150,7 +161,7 @@ mod tests {
         let mut preferences = Preferences::load(path.clone());
         assert!(!preferences.iframe_player());
         assert_eq!(preferences.problem(), None);
-        preferences.set_iframe_player(true).unwrap();
+        preferences.set_playback(true, false).unwrap();
         let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
         assert_eq!(saved, serde_json::json!({ "iframe_player": true }));
     }
@@ -174,8 +185,8 @@ mod tests {
             let problem = preferences.problem().unwrap();
             assert!(!problem.contains("private value"));
             assert!(!problem.contains(path.to_str().unwrap()));
-            assert!(preferences.set_iframe_player(false).is_err());
-            assert!(preferences.set_iframe_player(true).is_err());
+            assert!(preferences.set_playback(false, false).is_err());
+            assert!(preferences.set_playback(true, false).is_err());
             assert_eq!(fs::read(&path).unwrap(), original);
         }
     }
@@ -188,7 +199,7 @@ mod tests {
         let mut preferences = Preferences::load(path.clone());
         assert!(!preferences.iframe_player());
         assert!(preferences.problem().is_some());
-        assert!(preferences.set_iframe_player(true).is_err());
+        assert!(preferences.set_playback(true, false).is_err());
         assert!(path.is_dir());
     }
 
@@ -198,18 +209,18 @@ mod tests {
         let path = directory.path();
         let backup = directory.0.join("saved.json");
         let mut preferences = Preferences::load(path.clone());
-        preferences.set_iframe_player(true).unwrap();
+        preferences.set_playback(true, false).unwrap();
         fs::rename(&path, &backup).unwrap();
         fs::create_dir(&path).unwrap();
 
-        assert!(preferences.set_iframe_player(false).is_err());
+        assert!(preferences.set_playback(false, false).is_err());
         assert!(preferences.iframe_player());
         assert_eq!(preferences.problem(), None);
         assert!(Preferences::load(backup.clone()).iframe_player());
 
         fs::remove_dir(&path).unwrap();
         fs::rename(backup, &path).unwrap();
-        preferences.set_iframe_player(false).unwrap();
+        preferences.set_playback(false, false).unwrap();
         assert!(!Preferences::load(path).iframe_player());
     }
 }

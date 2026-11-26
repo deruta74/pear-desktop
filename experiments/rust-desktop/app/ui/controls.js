@@ -53,6 +53,7 @@ let catalogView = null;
 let catalogSearchError = '';
 let catalogAddFeedback = null;
 let renderedLyrics = null;
+let lyricsSwitchingActive = false;
 let lyricsView = null;
 let lyricsError = '';
 let renderedLibrary = null;
@@ -1034,7 +1035,11 @@ function updateLibrary(library, successfulCommand) {
 }
 
 function hasLyricsDuration(lyrics) {
-  return Number.isFinite(lyrics?.duration) && lyrics.duration > 0;
+  return (
+    !lyricsSwitchingActive &&
+    Number.isFinite(lyrics?.duration) &&
+    lyrics.duration > 0
+  );
 }
 
 function mountLyrics() {
@@ -1133,7 +1138,7 @@ function updateLyrics(lyrics, selectionChanged = false) {
     lyrics.pending ||
     (pending?.context === 'lyrics' &&
       pending.current === renderedState?.current);
-  const result = finding ? null : lyrics.result;
+  const result = finding || lyricsSwitchingActive ? null : lyrics.result;
   const resultKey = result ? JSON.stringify(result) : '';
   if (selectionChanged || view.resultKey !== resultKey) {
     view.gap.remove();
@@ -1159,7 +1164,8 @@ function updateLyrics(lyrics, selectionChanged = false) {
   );
   const problem = lyricsError || (!finding && lyrics.problem);
   let message = '';
-  if (problem) message = problem;
+  if (lyricsSwitchingActive) message = 'Opening the next video…';
+  else if (problem) message = problem;
   else if (finding) message = 'Finding lyrics…';
   else if (!hasDuration) message = 'Waiting for video duration…';
   else if (result?.kind === 'instrumental') message = 'Instrumental track.';
@@ -1329,6 +1335,7 @@ window.renderPearState = (
     metadataProblem,
     catalog,
     lyrics,
+    lyricsSwitching,
     savedPlaylists,
     preferencesProblem,
     legal,
@@ -1462,7 +1469,9 @@ window.renderPearState = (
       .join(' ');
   }
   if (selectionChanged) renderedTransport = null;
-  if (selectionChanged || playerProblem) cancelLyricsClock();
+  lyricsSwitchingActive = Boolean(lyricsSwitching);
+  if (selectionChanged || playerProblem || lyricsSwitchingActive)
+    cancelLyricsClock();
   const catalogWasFocused = updateCatalog(catalog);
   const lyricsWasFocused = updateLyrics(lyrics, selectionChanged);
   const libraryWasFocused = updateLibrary(

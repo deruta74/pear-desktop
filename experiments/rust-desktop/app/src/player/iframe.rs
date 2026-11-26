@@ -104,14 +104,7 @@ impl Page {
         if !is_wrapper(view) {
             return Err("The local IFrame player is unavailable.".into());
         }
-        let command = match action {
-            Action::Play => "window.pearIframePlayer?.play()".into(),
-            Action::Pause => "window.pearIframePlayer?.pause()".into(),
-            Action::Seek(seconds) if seconds <= MAX_SECONDS => {
-                format!("window.pearIframePlayer?.seek({seconds})")
-            }
-            Action::Seek(_) => return Err("The IFrame seek position is out of range.".into()),
-        };
+        let command = action.command()?;
         view.evaluate_script(&wrapper_eval(&command))?;
         Ok(())
     }
@@ -141,6 +134,24 @@ pub(super) enum Action {
     Play,
     Pause,
     Seek(u32),
+    Advance { from: String, to: String },
+}
+
+impl Action {
+    fn command(self) -> Result<String> {
+        Ok(match self {
+            Self::Play => "window.pearIframePlayer?.play()".into(),
+            Self::Pause => "window.pearIframePlayer?.pause()".into(),
+            Self::Seek(seconds) if seconds <= MAX_SECONDS => {
+                format!("window.pearIframePlayer?.seek({seconds})")
+            }
+            Self::Seek(_) => return Err("The IFrame seek position is out of range.".into()),
+            Self::Advance { from, to } if from != to && valid_id(&from) && valid_id(&to) => {
+                format!("window.pearIframePlayer?.advance({from:?},{to:?})")
+            }
+            Self::Advance { .. } => return Err("Invalid YouTube video IDs for advance.".into()),
+        })
+    }
 }
 
 #[derive(Deserialize)]
@@ -148,6 +159,9 @@ pub(super) enum Action {
 pub(super) struct Snapshot {
     pub(super) ready: bool,
     pub(super) has_played: bool,
+    pub(super) video_id: Option<String>,
+    #[serde(default)]
+    pub(super) source_replayed: bool,
     #[serde(deserialize_with = "Deserialize::deserialize")]
     pub(super) state: Option<i32>,
     #[serde(deserialize_with = "Deserialize::deserialize")]
@@ -169,9 +183,19 @@ impl Snapshot {
             return None;
         }
         let snapshot: Self = serde_json::from_str(json).ok()?;
+        let has_playback = snapshot.has_played
+            || snapshot.state.is_some()
+            || snapshot.position.is_some()
+            || snapshot.position_ms.is_some()
+            || snapshot.playback_rate.is_some()
+            || snapshot.duration.is_some();
         if snapshot
             .state
             .is_some_and(|state| !matches!(state, -1 | 0 | 1 | 2 | 3 | 5))
+            || snapshot
+                .video_id
+                .as_deref()
+                .is_some_and(|id| !valid_id(id) || !snapshot.ready)
             || snapshot
                 .error
                 .is_some_and(|error| !matches!(error, -1 | 2 | 5 | 100 | 101 | 150 | 153))
@@ -195,13 +219,12 @@ impl Snapshot {
                 .position
                 .zip(snapshot.duration)
                 .is_some_and(|(position, duration)| position > duration)
-            || (!snapshot.ready
-                && (snapshot.has_played
-                    || snapshot.state.is_some()
-                    || snapshot.position.is_some()
-                    || snapshot.position_ms.is_some()
-                    || snapshot.playback_rate.is_some()
-                    || snapshot.duration.is_some()))
+            || (!snapshot.ready && has_playback)
+            || (snapshot.source_replayed
+                && (!snapshot.ready
+                    || snapshot.video_id.is_none()
+                    || has_playback
+                    || snapshot.error.is_some()))
             || (snapshot.state == Some(1) && (!snapshot.has_played || snapshot.ended))
             || (snapshot.ended && !snapshot.has_played)
         {
@@ -283,6 +306,85 @@ mod tests {
             .replace("\"state\":1", "\"state\":0")
             .replace("\"ended\":false", "\"ended\":true");
         assert!(Snapshot::parse(&ended).unwrap().ended);
+    }
+
+    #[test]
+    fn validates_optional_video_identity_in_snapshots() {
+        let with_id = |json: &str, id: Option<&str>| {
+            let mut snapshot: serde_json::Value = serde_json::from_str(json).unwrap();
+            snapshot["videoId"] = serde_json::json!(id);
+            snapshot.to_string()
+        };
+        assert_eq!(Snapshot::parse(PLAYING).unwrap().video_id, None);
+        assert_eq!(
+            Snapshot::parse(&with_id(PLAYING, None)).unwrap().video_id,
+            None
+        );
+        assert_eq!(
+            Snapshot::parse(&with_id(PLAYING, Some(ID)))
+                .unwrap()
+                .video_id
+                .as_deref(),
+            Some(ID)
+        );
+        assert!(Snapshot::parse(&with_id(STARTING, Some(ID))).is_none());
+        assert!(Snapshot::parse(&with_id(PLAYING, Some("M7lc1UVf!VE"))).is_none());
+        assert!(Snapshot::parse(&with_id(PLAYING, Some("https://youtu.be/M7lc1UVf-VE"))).is_none());
+    }
+
+    #[test]
+    fn accepts_replay_signal_only_with_ready_identity_and_no_stale_state() {
+        assert!(!Snapshot::parse(PLAYING).unwrap().source_replayed);
+
+        let replay = serde_json::json!({
+            "ready": true,
+            "videoId": ID,
+            "sourceReplayed": true,
+            "hasPlayed": false,
+            "state": null,
+            "position": null,
+            "duration": null,
+            "ended": false,
+            "error": null,
+            "blocked": false,
+        });
+        assert!(
+            Snapshot::parse(&replay.to_string())
+                .unwrap()
+                .source_replayed
+        );
+        for (key, value) in [
+            ("videoId", serde_json::Value::Null),
+            ("ready", serde_json::json!(false)),
+            ("state", serde_json::json!(2)),
+            ("hasPlayed", serde_json::json!(true)),
+            ("position", serde_json::json!(1)),
+            ("duration", serde_json::json!(20)),
+            ("playbackRate", serde_json::json!(1.0)),
+            ("error", serde_json::json!(100)),
+        ] {
+            let mut invalid = replay.clone();
+            invalid[key] = value;
+            assert!(Snapshot::parse(&invalid.to_string()).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn builds_advance_commands_only_for_distinct_valid_ids() {
+        let command = |from: &str, to: &str| {
+            Action::Advance {
+                from: from.into(),
+                to: to.into(),
+            }
+            .command()
+        };
+        assert_eq!(
+            command(ID, "jNQXAC9IVRw").unwrap(),
+            r#"window.pearIframePlayer?.advance("M7lc1UVf-VE","jNQXAC9IVRw")"#,
+        );
+        assert!(command("not a video", ID).is_err());
+        assert!(command(ID, "jNQXAC9IVR\"").is_err());
+        assert!(command(ID, ID).is_err());
     }
 
     #[test]

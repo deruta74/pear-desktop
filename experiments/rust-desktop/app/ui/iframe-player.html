@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-KyCnlAcjuii3zygZ4DBOURs31MWteJxjgLmGarnF2Tg=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-b8tHb++1vs6XMmEs14W/LUAlskEkDwP2cB1Zab/Odh4=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
   <title>YouTube player</title>
   <style>
     html, body { width: 100%; height: 100%; margin: 0; background: #000; }
@@ -24,6 +24,7 @@
       if (!isWrapper()) return;
 
       const frame = document.getElementById('player');
+      const initialSrc = frame.src;
       const maxSeconds = 31 * 24 * 60 * 60;
       const states = [-1, 0, 1, 2, 3, 5];
       const errorCodes = [2, 5, 100, 101, 150, 153];
@@ -34,6 +35,8 @@
       let ended = false;
       let error = null;
       let blocked = false;
+      let playedVideoId = null;
+      let pendingAdvance = null;
 
       const fail = () => { error ??= -1; };
 
@@ -49,16 +52,7 @@
         try {
           player = new YT.Player(frame, { events: {
             onReady: () => { ready = true; },
-            onStateChange: ({ data }) => {
-              if (!states.includes(data)) return;
-              state = data;
-              if (data === 1) {
-                hasPlayed = true;
-                ended = false;
-                blocked = false;
-              }
-              if (data === 0 && hasPlayed) ended = true;
-            },
+            onStateChange: ({ data }) => observeState(data),
             onError: ({ data }) => { error ??= errorCodes.includes(data) ? data : -1; },
             onAutoplayBlocked: () => { blocked = true; },
           }});
@@ -67,33 +61,104 @@
         }
       };
 
+      function validVideoId(id) {
+        return typeof id === 'string' && id.length === 11 && !/[^A-Za-z0-9_-]/.test(id);
+      }
+
+      function reportedVideoId() {
+        try {
+          const url = new URL(player.getVideoUrl());
+          if (url.origin !== 'https://www.youtube.com' || url.pathname !== '/watch'
+              || url.username || url.password) return null;
+          const ids = url.searchParams.getAll('v');
+          return ids.length === 1 && validVideoId(ids[0]) ? ids[0] : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function observeState(data, videoId = data === 1 ? reportedVideoId() : null) {
+        if (!states.includes(data)) return;
+        if (pendingAdvance !== null) {
+          if (data !== 1 || videoId !== pendingAdvance.from) pendingAdvance.sourcePlayback = null;
+          // Events identify the player, so only the requested video can end the handoff.
+          if (data !== 1 || videoId !== pendingAdvance.to) return;
+          pendingAdvance = null;
+        }
+        state = data;
+        if (data === 1) {
+          hasPlayed = true;
+          playedVideoId = videoId;
+          ended = false;
+          blocked = false;
+        }
+        if (data === 0 && hasPlayed) ended = true;
+      }
+
+      function frameVisible() {
+        if (!frame.isConnected || document.visibilityState !== 'visible') return false;
+        const box = frame.getBoundingClientRect();
+        const width = Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+        const height = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0));
+        return box.width >= 200 && box.height >= 200 && width * height > box.width * box.height / 2;
+      }
+
       function boundedSeconds(value) {
         return Number.isFinite(value) && value >= 0 && value <= maxSeconds ? value : null;
       }
 
+      function observeAdvance(videoId) {
+        const pending = pendingAdvance;
+        const playing = (videoId === pending.from || videoId === pending.to)
+          && player.getPlayerState() === 1;
+        if (playing && videoId === pending.to) {
+          // The identity may arrive after the state-change event.
+          observeState(1, videoId);
+          return false;
+        }
+
+        const position = playing ? boundedSeconds(player.getCurrentTime()) : null;
+        if (position === null) {
+          pending.sourcePlayback = null;
+          return false;
+        }
+        const previous = pending.sourcePlayback;
+        // An isolated PLAYING observation can belong to a stale event.
+        const replayed = previous !== null && position >= previous.position
+          && (previous.replayed || position - previous.position >= 0.1);
+        pending.sourcePlayback = { position, replayed };
+        return replayed;
+      }
+
       function snapshot() {
         if (!isWrapper()) return null;
+        const videoId = ready ? reportedVideoId() : null;
         let position = null;
         let positionMs = null;
         let playbackRate = null;
         let duration = null;
+        let sourceReplayed = false;
         if (ready && error === null) {
           try {
-            const length = boundedSeconds(player.getDuration());
-            const time = boundedSeconds(player.getCurrentTime());
-            const rate = player.getPlaybackRate();
-            if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) playbackRate = rate;
-            if (length > 0) duration = Math.ceil(length);
-            if (time !== null) {
-              positionMs = Math.floor(Math.min(time, duration ?? maxSeconds) * 1000);
-              position = Math.floor(positionMs / 1000);
+            if (pendingAdvance !== null) sourceReplayed = observeAdvance(videoId);
+            if (pendingAdvance === null) {
+              if (state === 1 && videoId !== null) playedVideoId = videoId;
+              const length = boundedSeconds(player.getDuration());
+              const time = boundedSeconds(player.getCurrentTime());
+              const rate = player.getPlaybackRate();
+              if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) playbackRate = rate;
+              if (length > 0) duration = Math.ceil(length);
+              if (time !== null) {
+                positionMs = Math.floor(Math.min(time, duration ?? maxSeconds) * 1000);
+                position = Math.floor(positionMs / 1000);
+              }
             }
           } catch {
             fail();
           }
         }
         return {
-          ready, hasPlayed: ready && hasPlayed, state: ready ? state : null,
+          ready, videoId, sourceReplayed, hasPlayed: ready && hasPlayed, state: ready ? state : null,
           position, positionMs, playbackRate, duration, ended: ready && ended, error, blocked,
         };
       }
@@ -108,8 +173,24 @@
         }
       }
 
+      function advance(from, to) {
+        if (!validVideoId(from) || !validVideoId(to) || from === to) return;
+        command(() => {
+          if (pendingAdvance !== null || !ended || state !== 0 || playedVideoId !== from
+              || reportedVideoId() !== from || player.getPlayerState() !== 0 || !frameVisible()
+              || player.getIframe() !== frame || frame.src !== initialSrc) return;
+          pendingAdvance = { from, to, sourcePlayback: null };
+          hasPlayed = false;
+          playedVideoId = null;
+          state = null;
+          ended = false;
+          player.loadVideoById({ videoId: to });
+        });
+      }
+
       Object.defineProperty(window, 'pearIframePlayer', { value: Object.freeze({
         snapshot,
+        advance,
         play: () => command(() => player.playVideo()),
         pause: () => command(() => player.pauseVideo()),
         seek: (seconds) => {
