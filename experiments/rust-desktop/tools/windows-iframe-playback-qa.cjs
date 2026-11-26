@@ -56,6 +56,77 @@ function playerState(panel) {
     });
 }
 
+function mediaState(media) {
+    return media.evaluate((element, fixture) => ({
+        available: element.isConnected && location.href === fixture &&
+            !element.closest('#movie_player.ad-showing, #movie_player.ad-interrupting') &&
+            element.readyState >= 2 && !element.seeking && !element.error,
+        time: element.currentTime,
+        duration: element.duration,
+        source: element.currentSrc,
+        paused: element.paused,
+        ended: element.ended,
+    }), embed.href);
+}
+
+function healthyMedia(sample) {
+    return sample.available && !sample.ended && sample.source &&
+        Number.isFinite(sample.time) && Number.isFinite(sample.duration) &&
+        sample.time >= 0 && sample.duration - sample.time > 2;
+}
+
+async function confirmPause(panel, frame) {
+    const media = await frame.locator('#movie_player video.html5-main-video').elementHandle();
+    const before = await mediaState(media);
+    if (!healthyMedia(before) || before.paused) return ['inconclusive', 'pear-pause-media-unavailable'];
+
+    const pause = panel.getByRole('button', { name: 'Pause video', exact: true });
+    await pause.click({ timeout: 2_500 });
+    let lastTime = before.time;
+    let movingFrom = null;
+    let keptAdvancing = false;
+    let stationary = null;
+    const outcome = await until(6_000, async () => {
+        const sample = await mediaState(media);
+        if (!healthyMedia(sample) || sample.source !== before.source ||
+            sample.duration !== before.duration || sample.time < lastTime - 0.1) {
+            return ['inconclusive', 'pear-pause-media-unavailable'];
+        }
+        lastTime = sample.time;
+        if (panel.url() !== controls) return ['inconclusive', 'pear-pause-observation-lost'];
+        const ui = await playerState(panel);
+        if (!Number.isFinite(ui.position)) {
+            stationary = null;
+            movingFrom = null;
+            keptAdvancing = false;
+            return null;
+        }
+        if (!sample.paused) {
+            stationary = null;
+            movingFrom ??= sample.time;
+            keptAdvancing = sample.time - movingFrom >= 0.75;
+            return null;
+        }
+        movingFrom = null;
+        keptAdvancing = false;
+        if (!ui.paused) {
+            stationary = null;
+            return null;
+        }
+        stationary ??= { time: sample.time, position: ui.position, since: performance.now() };
+        if (Math.abs(sample.time - stationary.time) > 0.075 || ui.position !== stationary.position) {
+            stationary = null;
+            return null;
+        }
+        return performance.now() - stationary.since >= 1_250
+            ? ['pass', 'visible-play-timeline-and-pause']
+            : null;
+    });
+    return outcome ?? (keptAdvancing
+        ? ['fail', 'pear-pause-media-kept-advancing']
+        : ['inconclusive', 'pear-pause-not-confirmed']);
+}
+
 async function run(port) {
     const { chromium } = require('playwright-core');
     let browser;
@@ -101,22 +172,10 @@ async function run(port) {
             return sample.position >= first + 2;
         });
         if (!advancing) return ['inconclusive', stage];
-        stage = 'pear-pause-click';
-        const pause = panel.getByRole('button', { name: 'Pause video', exact: true });
-        await pause.click({ timeout: 2_500 });
-        stage = 'pear-pause-not-confirmed';
-        const paused = await until(6_000, async () => {
-            const sample = await playerState(panel);
-            return sample.paused && Number.isFinite(sample.position) && sample;
-        });
-        if (!paused) return ['fail', stage];
-        await delay(1_250);
-        const settled = await playerState(panel);
-        return settled.paused && settled.position === paused.position
-            ? ['pass', 'visible-play-timeline-and-pause']
-            : ['fail', stage];
+        stage = 'pear-pause-observation-lost';
+        return await confirmPause(panel, frame);
     } catch {
-        return [stage.startsWith('pear-pause') ? 'fail' : 'inconclusive', stage];
+        return ['inconclusive', stage];
     } finally {
         if (browser) await browser.close().catch(() => {});
     }

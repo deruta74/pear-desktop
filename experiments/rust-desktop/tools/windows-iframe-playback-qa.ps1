@@ -29,6 +29,20 @@ function Get-OwnedWebView([int] $processId) {
         $candidate.CommandLine.Contains($webviewProfile, [StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-OwnedIPv4Listener([int] $port) {
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
+    if ($listeners.LocalAddress | Where-Object { $_ -cnotin '127.0.0.1', '::1' }) {
+        throw 'non-loopback-binding'
+    }
+    $ipv4 = @($listeners | Where-Object { $_.LocalAddress -ceq '127.0.0.1' })
+    if ($ipv4.Count -eq 0) { return $null }
+    $owners = @($listeners.OwningProcess | Sort-Object -Unique)
+    if ($ipv4.Count -ne 1 -or $owners.Count -ne 1 -or !(Get-OwnedWebView $ipv4[0].OwningProcess)) {
+        throw 'unexpected-listener-owner'
+    }
+    return $ipv4[0].OwningProcess
+}
+
 try {
     $null = New-Item -ItemType Directory -Path $root, $profile
     $stage = 'diagnostic-source'
@@ -87,17 +101,8 @@ try {
         $queueReady = $lines -ccontains 'PEAR_QUEUE_READY'
         $transportReady = $lines -ccontains 'PEAR_QUEUE_TRANSPORT_READY'
         if ($null -eq $listenerOwner) {
-            $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
-            if ($listeners.Count -gt 0) {
-                $stage = 'endpoint-ownership'
-                $owners = @($listeners.OwningProcess | Sort-Object -Unique)
-                if ($owners.Count -ne 1 -or !(Get-OwnedWebView $owners[0])) { throw 'owner' }
-                $listenerOwner = $owners[0]
-                if ($listeners.LocalAddress | Where-Object { $_ -cnotin '127.0.0.1', '::1' }) {
-                    $stage = 'endpoint-binding'
-                    throw 'binding'
-                }
-            }
+            $stage = 'endpoint-ownership'
+            $listenerOwner = Get-OwnedIPv4Listener $port
         }
         if ($queueReady -and $transportReady -and $null -ne $listenerOwner) { break }
         Start-Sleep -Milliseconds 250
@@ -135,6 +140,8 @@ public static class PearIframePlaybackWindow {
         throw 'window'
     }
 
+    $stage = 'endpoint-revalidation'
+    if ($preview.HasExited -or (Get-OwnedIPv4Listener $port) -ne $listenerOwner) { throw 'listener-changed' }
     $stage = 'probe-output'
     $lines = @(& node.exe $script $port 2>$null)
     $probeExit = $LASTEXITCODE
@@ -149,27 +156,52 @@ public static class PearIframePlaybackWindow {
     $status = if ($exitCode -eq 2) { 'inconclusive' } else { 'fail' }
     $report = "PEAR_WINDOWS_IFRAME_PLAYBACK status=$status reason=$stage"
 } finally {
+    $cleanupFailed = $false
     try {
         if ($null -ne $preview) {
-            if (!$preview.HasExited -and (!$preview.CloseMainWindow() -or !$preview.WaitForExit(3000))) {
-                if (!$preview.HasExited) { $preview.Kill($true) }
+            try {
+                if (!$preview.HasExited -and (!$preview.CloseMainWindow() -or !$preview.WaitForExit(3000))) {
+                    if (!$preview.HasExited) { $preview.Kill($true) }
+                }
+                if (!$preview.WaitForExit(5000)) { throw 'process-cleanup' }
+            } catch {
+                if (!$preview.HasExited) { throw }
+            } finally {
+                $preview.Dispose()
             }
-            if (!$preview.WaitForExit(5000)) { throw 'process-cleanup' }
-            $preview.Dispose()
         }
+    } catch {
+        $cleanupFailed = $true
+    }
+    try {
         if ($null -ne $listenerOwner -and (Get-OwnedWebView $listenerOwner)) {
-            Stop-Process -Id $listenerOwner -Force
+            try {
+                Stop-Process -Id $listenerOwner -Force
+            } catch {
+                if (Get-OwnedWebView $listenerOwner) { throw }
+            }
         }
+    } catch {
+        $cleanupFailed = $true
+    }
+    try {
         if ($registeredWorktree) {
             & git -C $repo worktree remove --force $source *> $null
             if ($LASTEXITCODE -ne 0) { throw 'worktree-cleanup' }
         }
+    } catch {
+        $cleanupFailed = $true
+    }
+    try {
         for ($attempt = 0; $attempt -lt 3 -and (Test-Path -LiteralPath $root); $attempt++) {
             Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
             if (Test-Path -LiteralPath $root) { Start-Sleep -Milliseconds 300 }
         }
         if (Test-Path -LiteralPath $root) { throw 'profile-cleanup' }
     } catch {
+        $cleanupFailed = $true
+    }
+    if ($cleanupFailed) {
         $report = 'PEAR_WINDOWS_IFRAME_PLAYBACK status=fail reason=cleanup'
         $exitCode = 1
     }
