@@ -40,6 +40,9 @@ fn windows_smtc_native_smoke() -> Result<()> {
             return Ok(());
         }
     };
+    // Keep an apartment reference for the observer's COM handles after backend teardown.
+    unsafe { RoInitialize(RO_INIT_SINGLETHREADED) }?;
+    let _observer_apartment = Apartment;
     let controls = backend.controls.clone();
     let display = backend.display.clone();
     assert!(!controls.IsEnabled()?);
@@ -47,7 +50,11 @@ fn windows_smtc_native_smoke() -> Result<()> {
 
     let mut state = State {
         generation: 1,
-        title: "Synthetic One.wav".into(),
+        metadata: Arc::new(crate::local_audio::metadata::Metadata {
+            title: "Synthetic One".into(),
+            artist: Some("Pear QA".into()),
+            album: Some("Preview".into()),
+        }),
         duration_ms: 5_000,
         position_ms: 750,
         position_revision: 0,
@@ -68,12 +75,15 @@ fn windows_smtc_native_smoke() -> Result<()> {
     assert!(controls.IsNextEnabled()?);
     assert_eq!(display.Type()?, MediaPlaybackType::Music);
     let music = display.MusicProperties()?;
-    assert_eq!(music.Title()?, HSTRING::from(state.title.as_str()));
-    assert!(music.Artist()?.is_empty());
-    assert!(music.AlbumTitle()?.is_empty());
+    assert_eq!(music.Title()?, HSTRING::from("Synthetic One"));
+    assert_eq!(music.Artist()?, HSTRING::from("Pear QA"));
+    assert_eq!(music.AlbumTitle()?, HSTRING::from("Preview"));
 
     state.generation += 1;
-    state.title = "Synthetic Two.wav".into();
+    state.metadata = Arc::new(crate::local_audio::metadata::Metadata {
+        title: "Synthetic Two.wav".into(),
+        ..Default::default()
+    });
     state.status = Status::Paused;
     state.can_previous = true;
     state.can_next = false;
@@ -83,10 +93,10 @@ fn windows_smtc_native_smoke() -> Result<()> {
     assert!(!controls.IsPauseEnabled()?);
     assert!(controls.IsPreviousEnabled()?);
     assert!(!controls.IsNextEnabled()?);
-    assert_eq!(
-        display.MusicProperties()?.Title()?,
-        HSTRING::from(state.title.as_str())
-    );
+    let music = display.MusicProperties()?;
+    assert_eq!(music.Title()?, HSTRING::from("Synthetic Two.wav"));
+    assert!(music.Artist()?.is_empty());
+    assert!(music.AlbumTitle()?.is_empty());
 
     backend.update(None);
     assert!(!controls.IsEnabled()?);
