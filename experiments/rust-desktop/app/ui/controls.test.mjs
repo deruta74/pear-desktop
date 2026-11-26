@@ -342,7 +342,8 @@ for (const direction of [-1, 1]) {
   test(`experimental ${direction < 0 ? 'Back' : 'Forward'} momentum cannot resume through a quick reversal candidate`, async (t) => {
     const { page, show, screen, wheel, swipe, pointAtHeader } =
       await swipeFixture(t);
-    for (const view of ['Search', 'Lyrics', 'Library']) await show(view).click();
+    for (const view of ['Search', 'Lyrics', 'Library'])
+      await show(view).click();
     if (direction > 0) {
       const back = page.getByRole('button', { name: 'Back', exact: true });
       await back.click();
