@@ -1,5 +1,6 @@
 //! Session-only account browsing for the local Library.
 use std::{
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -136,8 +137,11 @@ pub(super) enum Outcome {
 }
 
 impl Panel {
-    pub(super) fn from_env() -> Option<Self> {
-        match oauth::ClientConfig::from_env() {
+    pub(super) fn from_client_file(
+        override_path: Option<&Path>,
+        saved_path: Option<&Path>,
+    ) -> Option<Self> {
+        match oauth::ClientConfig::configured(override_path, saved_path) {
             Ok(None) => None,
             Ok(Some(config)) => Some(Self::configured(config)),
             Err(error) => Some(Self {

@@ -18,7 +18,7 @@ mod callback;
 #[cfg(test)]
 mod tests;
 
-const CLIENT_FILE: &str = "PEAR_YOUTUBE_OAUTH_CLIENT_FILE";
+pub(super) const CLIENT_FILE_ENV: &str = "PEAR_YOUTUBE_OAUTH_CLIENT_FILE";
 const AUTHORIZATION_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const REVOCATION_ENDPOINT: &str = "https://oauth2.googleapis.com/revoke";
@@ -84,9 +84,13 @@ impl ClientConfig {
         }
     }
 
-    pub(super) fn from_env() -> Result<Option<Self>, Error> {
-        std::env::var_os(CLIENT_FILE)
-            .map(|path| Self::read_file(Path::new(&path)))
+    pub(super) fn configured(
+        override_path: Option<&Path>,
+        saved_path: Option<&Path>,
+    ) -> Result<Option<Self>, Error> {
+        override_path
+            .or(saved_path)
+            .map(Self::read_file)
             .transpose()
     }
 
@@ -109,7 +113,7 @@ impl ClientConfig {
         Ok(file)
     }
 
-    fn read_file(path: &Path) -> Result<Self, Error> {
+    pub(super) fn read_file(path: &Path) -> Result<Self, Error> {
         let mut bytes = Zeroizing::new(Vec::new());
         Self::open_file(path)?
             .take(MAX_CONFIG_BYTES + 1)

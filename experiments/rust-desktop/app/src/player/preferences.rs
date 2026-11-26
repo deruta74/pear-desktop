@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{iframe::AudioOutput, metadata::read_google_key_file};
+use super::{account_oauth::ClientConfig, iframe::AudioOutput, metadata::read_google_key_file};
 use crate::library::write_atomic;
 
 const MAX_FILE_BYTES: u64 = 4096;
@@ -24,6 +24,8 @@ struct SavedPreferences {
     output: AudioOutput,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     youtube_key_file: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    youtube_oauth_client_file: Option<PathBuf>,
 }
 
 pub(crate) struct Preferences {
@@ -83,6 +85,30 @@ impl Preferences {
             ..self.saved.clone()
         })
         .map_err(|_| "Could not save the YouTube Data API key file setting.")
+    }
+
+    pub(super) fn youtube_oauth_client_file(&self) -> Option<&Path> {
+        self.saved.youtube_oauth_client_file.as_deref()
+    }
+
+    pub(super) fn set_youtube_oauth_client_file(
+        &mut self,
+        path: Option<PathBuf>,
+    ) -> Result<(), &'static str> {
+        if let Some(problem) = self.problem {
+            return Err(problem);
+        }
+        if path
+            .as_deref()
+            .is_some_and(|path| ClientConfig::read_file(path).is_err())
+        {
+            return Err("Choose a readable OAuth client JSON file for a Google Desktop app.");
+        }
+        self.save(SavedPreferences {
+            youtube_oauth_client_file: path,
+            ..self.saved.clone()
+        })
+        .map_err(|_| "Could not save the Google Desktop OAuth client file setting.")
     }
 
     pub(crate) fn set_playback(
@@ -218,6 +244,130 @@ mod tests {
     }
 
     const SYNTHETIC_GOOGLE_KEY: &str = "AIza01234567890123456789012345678901234";
+    const SYNTHETIC_OAUTH_CLIENT: &[u8] = br#"{"installed":{"client_id":"test.apps.googleusercontent.com","client_secret":"synthetic-client-secret"}}"#;
+
+    #[test]
+    fn loads_playback_settings_alongside_the_saved_oauth_client_path() {
+        let directory = TestDirectory::new();
+        let path = directory.path();
+        fs::write(
+            &path,
+            br#"{"iframe_player":true,"auto_advance":true,"youtube_oauth_client_file":"client.json"}"#,
+        )
+        .unwrap();
+
+        let preferences = Preferences::load(path);
+        assert_eq!(preferences.problem(), None);
+        assert!(preferences.iframe_player() && preferences.auto_advance());
+    }
+
+    #[test]
+    fn saves_only_the_oauth_path_and_preserves_existing_settings_when_it_is_forgotten() {
+        let directory = TestDirectory::new();
+        let client_file = directory.0.join("client.json");
+        let key_file = directory.0.join("key.txt");
+        fs::write(&client_file, SYNTHETIC_OAUTH_CLIENT).unwrap();
+        fs::write(&key_file, SYNTHETIC_GOOGLE_KEY).unwrap();
+        let path = directory.path();
+        let mut preferences = Preferences::load(path.clone());
+        preferences
+            .set_youtube_key_file(Some(key_file.clone()))
+            .unwrap();
+        preferences
+            .set_playback(true, true, AudioOutput::default())
+            .unwrap();
+        assert_eq!(preferences.youtube_oauth_client_file(), None);
+        preferences
+            .set_youtube_oauth_client_file(Some(client_file.clone()))
+            .unwrap();
+
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(!saved.contains("synthetic-client-secret"));
+        assert!(!saved.contains("test.apps.googleusercontent.com"));
+        let mut restored = Preferences::load(path.clone());
+        assert_eq!(
+            restored.youtube_oauth_client_file(),
+            Some(client_file.as_path())
+        );
+        assert_eq!(restored.youtube_key_file(), Some(key_file.as_path()));
+        assert!(restored.iframe_player() && restored.auto_advance());
+
+        restored.set_youtube_oauth_client_file(None).unwrap();
+        let restored = Preferences::load(path);
+        assert_eq!(restored.youtube_oauth_client_file(), None);
+        assert_eq!(restored.youtube_key_file(), Some(key_file.as_path()));
+        assert!(restored.iframe_player() && restored.auto_advance());
+        assert!(fs::read(client_file).unwrap() == SYNTHETIC_OAUTH_CLIENT);
+    }
+
+    #[test]
+    fn rejects_invalid_oauth_file_choices_without_replacing_the_saved_path() {
+        let directory = TestDirectory::new();
+        let client_file = directory.0.join("client.json");
+        fs::write(&client_file, SYNTHETIC_OAUTH_CLIENT).unwrap();
+        let path = directory.path();
+        let mut preferences = Preferences::load(path.clone());
+        preferences
+            .set_youtube_oauth_client_file(Some(client_file.clone()))
+            .unwrap();
+        let original = fs::read(&path).unwrap();
+        let invalid = directory.0.join("private-invalid.json");
+        let mut oversized = SYNTHETIC_OAUTH_CLIENT.to_vec();
+        oversized.resize(16 * 1024 + 1, b' ');
+        for bytes in [
+            b"{ private-value".as_slice(),
+            br#"{"web":{"client_id":"test.apps.googleusercontent.com"}}"#,
+            oversized.as_slice(),
+        ] {
+            fs::write(&invalid, bytes).unwrap();
+            let problem = preferences
+                .set_youtube_oauth_client_file(Some(invalid.clone()))
+                .unwrap_err();
+            assert!(!problem.contains("private-invalid.json"));
+            assert!(!problem.contains("private-value"));
+        }
+        for path in [
+            directory.0.clone(),
+            directory.0.join("missing.json"),
+            PathBuf::from("relative.json"),
+        ] {
+            assert!(
+                preferences
+                    .set_youtube_oauth_client_file(Some(path))
+                    .is_err()
+            );
+        }
+        assert_eq!(
+            preferences.youtube_oauth_client_file(),
+            Some(client_file.as_path())
+        );
+        assert_eq!(fs::read(path).unwrap(), original);
+    }
+
+    #[test]
+    fn prefers_the_oauth_launch_override_and_rereads_the_saved_file_on_launch() {
+        let directory = TestDirectory::new();
+        let file = directory.0.join("client.json");
+        let missing = directory.0.join("missing.json");
+        fs::write(&file, SYNTHETIC_OAUTH_CLIENT).unwrap();
+        let mut preferences = Preferences::load(directory.path());
+        preferences
+            .set_youtube_oauth_client_file(Some(file.clone()))
+            .unwrap();
+        let saved = preferences.youtube_oauth_client_file();
+        assert!(matches!(ClientConfig::configured(None, None), Ok(None)));
+        assert!(matches!(ClientConfig::configured(None, saved), Ok(Some(_))));
+        assert!(ClientConfig::configured(Some(&missing), saved).is_err());
+
+        fs::write(&file, b"invalid after selection").unwrap();
+        assert!(ClientConfig::configured(None, saved).is_err());
+        let override_file = directory.0.join("override.json");
+        fs::write(&override_file, SYNTHETIC_OAUTH_CLIENT).unwrap();
+        assert!(matches!(
+            ClientConfig::configured(Some(&override_file), saved),
+            Ok(Some(_))
+        ));
+    }
 
     #[test]
     fn remembers_only_the_key_file_location_and_keeps_playback_preferences() {
@@ -376,6 +526,7 @@ mod tests {
                     .is_err()
             );
             assert!(preferences.set_youtube_key_file(None).is_err());
+            assert!(preferences.set_youtube_oauth_client_file(None).is_err());
             assert_eq!(fs::read(&path).unwrap(), original);
         }
     }

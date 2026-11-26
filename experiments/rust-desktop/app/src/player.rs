@@ -4,8 +4,8 @@ mod account_catalog;
 mod account_oauth;
 mod advance;
 mod catalog;
-mod catalog_setup;
 mod consent;
+mod credential_setup;
 mod iframe;
 mod lyrics;
 mod lyrics_lookup;
@@ -594,6 +594,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut preferences =
         (!mode.smoke).then(|| preferences::Preferences::load(data_dir.join("preferences.json")));
     let catalog_key_override = std::env::var_os("PEAR_YOUTUBE_API_KEY_FILE").map(PathBuf::from);
+    let oauth_client_override = std::env::var_os(account_oauth::CLIENT_FILE_ENV).map(PathBuf::from);
     let mut preferences_problem = preferences
         .as_ref()
         .and_then(preferences::Preferences::problem);
@@ -616,7 +617,12 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut library = Library::load(queue_path)?;
     let mut playlists = playlists::Panel::load(data_dir.join("playlists.json"));
     let mut account = if approved && !mode.smoke {
-        account::Panel::from_env()
+        account::Panel::from_client_file(
+            oauth_client_override.as_deref(),
+            preferences
+                .as_ref()
+                .and_then(preferences::Preferences::youtube_oauth_client_file),
+        )
     } else {
         None
     };
@@ -655,19 +661,12 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let legal = MenuItem::new("Terms and Privacy", true, None);
     let app_menu = Submenu::with_items("Pear Desktop", true, &[&quit])?;
     let local_audio = MenuItem::new("Open Local Audio Window", true, None);
-    let choose_catalog_key = MenuItem::new(
-        "Set YouTube Data API Key File…",
-        approved && preferences.is_some(),
-        None,
-    );
-    let forget_catalog_key = MenuItem::new(
-        "Forget YouTube Data API Key File",
-        approved
-            && preferences
-                .as_ref()
-                .and_then(preferences::Preferences::youtube_key_file)
-                .is_some(),
-        None,
+    let setup_preferences = preferences.as_ref().filter(|_| approved);
+    let catalog_key_menu =
+        credential_setup::SetupMenu::new(credential_setup::FileKind::ApiKey, setup_preferences);
+    let oauth_client_menu = credential_setup::SetupMenu::new(
+        credential_setup::FileKind::OAuthClient,
+        setup_preferences,
     );
     let file_menu = Submenu::with_items(
         "File",
@@ -676,8 +675,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             &add_video,
             &open_music,
             &PredefinedMenuItem::separator(),
-            &choose_catalog_key,
-            &forget_catalog_key,
+            &catalog_key_menu.choose,
+            &catalog_key_menu.forget,
+            &oauth_client_menu.choose,
+            &oauth_client_menu.forget,
             &PredefinedMenuItem::separator(),
             &local_audio,
         ],
@@ -939,16 +940,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 true
             }
             Event::UserEvent(PlayerEvent::Menu(event))
-                if event.id == *choose_catalog_key.id() || event.id == *forget_catalog_key.id() =>
+                if catalog_key_menu.matches(&event.id) || oauth_client_menu.matches(&event.id) =>
             {
                 let Some(preferences) = preferences.as_mut().filter(|_| approved) else {
                     return;
                 };
-                let forget = event.id == *forget_catalog_key.id();
-                if !forget || preferences.youtube_key_file().is_some() {
-                    catalog_setup::update(&window, preferences, forget, catalog_key_override.is_some());
-                    forget_catalog_key.set_enabled(preferences.youtube_key_file().is_some());
-                }
+                let (menu, launch_override) = if catalog_key_menu.matches(&event.id) {
+                    (&catalog_key_menu, catalog_key_override.is_some())
+                } else {
+                    (&oauth_client_menu, oauth_client_override.is_some())
+                };
+                menu.update(&event.id, &window, preferences, launch_override);
                 return;
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *reload.id() => {
@@ -1229,16 +1231,19 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 add_video.set_enabled(true);
                                 toggle_iframe.set_enabled(preferences.is_some());
                                 toggle_advance.set_enabled(preferences.is_some() && mode.iframe_player);
-                                choose_catalog_key.set_enabled(preferences.is_some());
+                                catalog_key_menu.refresh(preferences.as_ref());
+                                oauth_client_menu.refresh(preferences.as_ref());
                                 let saved_key = preferences.as_ref().and_then(preferences::Preferences::youtube_key_file);
-                                forget_catalog_key.set_enabled(saved_key.is_some());
                                 (catalog, lookup, catalog_key_problem) = start_youtube_clients(
                                     &service_events,
                                     library.state().current.as_deref(),
                                     catalog_key_override.as_deref(),
                                     saved_key,
                                 );
-                                account = account::Panel::from_env();
+                                account = account::Panel::from_client_file(
+                                    oauth_client_override.as_deref(),
+                                    preferences.as_ref().and_then(preferences::Preferences::youtube_oauth_client_file),
+                                );
                                 if mode.iframe_player {
                                     lyrics = lyrics_worker();
                                 }

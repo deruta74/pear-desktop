@@ -130,11 +130,15 @@ To enable **Library → YouTube account**, enable YouTube Data API v3 in a
 Google Cloud project, configure its OAuth consent screen, and create an OAuth
 client of type **Desktop app**. If the project is in testing, add the intended
 Google Account as a test user. Download the Desktop client JSON to a private
-location outside the repository. Set `PEAR_YOUTUBE_OAUTH_CLIENT_FILE` to its
-absolute path before launching Pear. The API key used for public search is
+location outside the repository. In Pear, choose **File → Set Google Desktop
+OAuth Client File…**, select the JSON file, and reopen Pear. Pear remembers its
+location. To remove the saved setting, choose **File → Forget Google Desktop
+OAuth Client File** and reopen Pear. The API key used for public search is
 independent of account access. [Google Desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)
 
-On macOS, run the bundled executable directly to pass the environment variable.
+For development or testing, `PEAR_YOUTUBE_OAUTH_CLIENT_FILE` takes priority over
+the file selected in the menu. On macOS, run the bundled executable directly to
+pass the environment variable.
 
 ```sh
 app="$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
