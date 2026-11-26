@@ -13,6 +13,7 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
 $root = Join-Path $env:RUNNER_TEMP "pear-visual-$([guid]::NewGuid().ToString('N'))"
 $source = Join-Path $root 'source'
 $fixtureProfile = Join-Path $root 'profile'
+$checkpoints = Join-Path $fixtureProfile 'visual-checkpoints'
 $webViewProfile = Join-Path $fixtureProfile 'WebView2'
 # Chromium can append EBWebView inside the configured WebView2 folder.
 $profileArgument = [regex]::Escape($webViewProfile) + '(?:\\EBWebView)?'
@@ -26,10 +27,28 @@ $preview = $null
 $registeredSource = $false
 $stage = 'setup'
 $published = $false
+$checkpointFiles = [ordered]@{
+    entry = 'entry'
+    controlsRequest = 'controls-request'
+    controlsFinished = 'controls-finished'
+    loopEntered = 'loop-entered'
+    queueReady = 'queue-ready'
+    wrapperFinished = 'wrapper-finished'
+    transportReady = 'transport-ready'
+    playbackAdvanced = 'playback-advanced'
+}
+$stdoutMarkers = [ordered]@{
+    entry = 'PEAR_WINDOWS_VISUAL_ENTRY'
+    queueReady = 'PEAR_QUEUE_READY'
+    wrapperFinished = 'PEAR_WINDOWS_VISUAL_WRAPPER_FINISHED'
+    transportReady = 'PEAR_QUEUE_TRANSPORT_READY'
+    playbackAdvanced = 'PEAR_WINDOWS_VISUAL_PLAYBACK_ADVANCED'
+}
 $report = [ordered]@{
     fixture = 'official-youtube-demo'
     windowVerified = $false
     profileVerified = $false
+    webViewVersion = 'unavailable'
     queueReady = $false
     wrapperFinished = $false
     transportReady = $false
@@ -37,6 +56,10 @@ $report = [ordered]@{
     click = 'unavailable'
     playback = 'inconclusive'
     settle = 'unavailable'
+    readyBy25 = $null
+    at25 = $null
+    native = [ordered]@{}
+    stdout = [ordered]@{ observed = $false; prefixLimitReached = $false }
     clientWidth = 0
     clientHeight = 0
     capture = 'unavailable'
@@ -52,10 +75,53 @@ function Get-FixtureWebViewProcess([int] $parentId, [int] $session) {
 }
 
 function Update-Readiness {
-    $markers = @(Get-Content -LiteralPath $stdout -TotalCount 128)
-    $report.queueReady = $markers -ccontains 'PEAR_QUEUE_READY'
-    $report.wrapperFinished = $markers -ccontains 'PEAR_WINDOWS_VISUAL_WRAPPER_FINISHED'
-    $report.transportReady = $markers -ccontains 'PEAR_QUEUE_TRANSPORT_READY'
+    $markers = @(if (Test-Path -LiteralPath $stdout -PathType Leaf) {
+        Get-Content -LiteralPath $stdout -TotalCount 128
+    })
+    $report.stdout.observed = $markers.Count -gt 0
+    $report.stdout.prefixLimitReached = $markers.Count -eq 128
+    foreach ($name in $stdoutMarkers.Keys) {
+        $report.stdout[$name] = $markers -ccontains $stdoutMarkers[$name]
+    }
+    foreach ($name in $checkpointFiles.Keys) {
+        $report.native[$name] = Test-Path -LiteralPath (Join-Path $checkpoints $checkpointFiles[$name]) -PathType Leaf
+    }
+    foreach ($name in 'queueReady', 'wrapperFinished', 'transportReady') {
+        $report[$name] = $report.stdout[$name] -or $report.native[$name]
+    }
+}
+
+function Get-MissingFixtureReadinessStage {
+    if ($report.queueReady -and $report.wrapperFinished -and $report.transportReady) { return 'ready' }
+    if (!$report.native.loopEntered -and !$report.queueReady -and !$report.transportReady) {
+        if (!$report.native.entry) {
+            if ($report.stdout.entry) { return 'startup-checkpoints-missing' }
+            return 'benchmark-entry-unobserved'
+        }
+        if (!$report.native.controlsRequest) { return 'pre-loop-before-controls-request' }
+        return 'pre-loop-after-controls-request'
+    }
+    if (!$report.queueReady) {
+        if (!$report.native.controlsFinished) { return 'controls-navigation-not-finished' }
+        return 'controls-ipc-not-ready'
+    }
+    if (!$report.wrapperFinished) { return 'wrapper-navigation-not-finished' }
+    return 'transport-not-ready'
+}
+
+function Get-FixtureWebViewVersion([uint] $processId) {
+    try {
+        $process = [Diagnostics.Process]::GetProcessById([int]$processId)
+        try {
+            $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($process.MainModule.FileName).ProductVersion
+            if ($version -cmatch '\A[0-9]{1,6}(?:\.[0-9]{1,6}){3}\z') { return $version }
+        } finally {
+            $process.Dispose()
+        }
+    } catch {
+        # The process may exit or deny metadata access before this optional read.
+    }
+    return 'unavailable'
 }
 
 function Get-FixtureClientImage {
@@ -110,7 +176,7 @@ function Test-PlayGlyph([Drawing.Bitmap] $bitmap) {
 
 try {
     if (Test-Path -LiteralPath $artifact) { throw 'stale-image' }
-    $null = New-Item -ItemType Directory -Path $root, $fixtureProfile
+    $null = New-Item -ItemType Directory -Path $root, $fixtureProfile, $checkpoints
     $stage = 'fixture-source'
     & git -C $repo cat-file -e "${base}^{commit}" *> $null
     if ($LASTEXITCODE -ne 0) {
@@ -138,6 +204,7 @@ try {
     $exe = Join-Path $targetDir "$target/debug/pear-desktop-preview.exe"
     $environment = @{
         PEAR_PREVIEW_QUEUE_DIR = $fixtureProfile
+        PEAR_WINDOWS_VISUAL_DIAGNOSTIC = '1'
         PEAR_YOUTUBE_API_KEY_FILE = $null
         PEAR_YOUTUBE_OAUTH_CLIENT_FILE = $null
         PEAR_PREVIEW_EXPERIMENTAL_PANEL_SWIPE = $null
@@ -162,38 +229,58 @@ try {
     $preview = Start-Process @launchArguments
 
     $stage = 'settle'
-    $captureAfter = [TimeSpan]::FromSeconds(25)
+    $captureAfter = 55
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    $transportSeen = $false
-    while ($clock.Elapsed -lt $captureAfter -and !$preview.HasExited) {
+    $readySeen = $false
+    do {
         Update-Readiness
-        if (!$transportSeen -and $report.transportReady) {
-            $transportSeen = $true
-            $captureAfter = [TimeSpan]::FromSeconds([Math]::Min(25, $clock.Elapsed.TotalSeconds + 3))
+        $readinessStage = Get-MissingFixtureReadinessStage
+        $elapsedSeconds = $clock.Elapsed.TotalSeconds
+        if (!$readySeen -and $readinessStage -ceq 'ready') {
+            $readySeen = $true
+            $report.readyBy25 = $elapsedSeconds -lt 25
+            $captureAfter = [Math]::Min(55, $elapsedSeconds + 3)
         }
+        if ($elapsedSeconds -ge 25 -and $null -eq $report.at25) {
+            if (!$readySeen) { $report.readyBy25 = $false }
+            $report.at25 = [ordered]@{
+                stage = $readinessStage
+                queueReady = $report.queueReady
+                wrapperFinished = $report.wrapperFinished
+                transportReady = $report.transportReady
+            }
+        }
+        if ($preview.HasExited -or $elapsedSeconds -ge $captureAfter) { break }
         Start-Sleep -Milliseconds 200
-    }
-    Update-Readiness
+    } while ($true)
     $report.settle = if ($preview.HasExited) { 'process-exited' }
-        elseif ($transportSeen) { 'after-transport' } else { 'bounded-wait' }
+        elseif (!$readySeen) { 'deadline' }
+        elseif ($report.readyBy25) { 'ready-by-25s' } else { 'ready-after-25s' }
 
-    $stage = 'proof'
     $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
-    if ($preview.HasExited -or $preview.SessionId -ne $session) {
-        throw 'process-unavailable'
+    if ($preview.HasExited) {
+        $stage = "preview-exited-$readinessStage"
+        throw 'preview-exited'
     }
+    $stage = 'preview-session'
+    if ($preview.SessionId -ne $session) { throw 'unexpected-session' }
     $preview.Refresh()
     $window = $preview.MainWindowHandle
     $bounds = [PearFixtureWindow]::GetVerifiedClient($window, $preview.Id)
     $report.windowVerified = $bounds.Right -gt 0
-    $browserProcesses = @(Get-FixtureWebViewProcess $preview.Id $session)
-    $report.profileVerified = $browserProcesses.Count -eq 1
-    if (!$report.windowVerified -or !$report.profileVerified -or !$report.wrapperFinished -or
-        !$report.queueReady -or !$report.transportReady) {
-        throw 'insufficient-fixture-evidence'
-    }
     $report.clientWidth = $bounds.Right
     $report.clientHeight = $bounds.Bottom
+    $browserProcesses = @(Get-FixtureWebViewProcess $preview.Id $session)
+    $report.profileVerified = $browserProcesses.Count -eq 1
+    if ($report.profileVerified) { $report.webViewVersion = Get-FixtureWebViewVersion $browserProcesses[0] }
+    $stage = 'window-ownership'
+    if (!$report.windowVerified) { throw 'unverified-window' }
+    $stage = 'isolated-profile'
+    if (!$report.profileVerified) { throw 'unverified-profile' }
+    if ($readinessStage -cne 'ready') {
+        $stage = $readinessStage
+        throw 'insufficient-fixture-evidence'
+    }
 
     $stage = 'play-glyph'
     if ($bounds.Right -ne [PearFixtureWindow]::KnownClientWidth -or
@@ -218,7 +305,8 @@ try {
     $stage = 'playback-clock'
     $clock.Restart()
     while ($clock.Elapsed.TotalSeconds -lt 25 -and !$preview.HasExited) {
-        if ((Get-Content -LiteralPath $stdout -TotalCount 128) -ccontains 'PEAR_WINDOWS_VISUAL_PLAYBACK_ADVANCED') {
+        Update-Readiness
+        if ($report.stdout.playbackAdvanced -or $report.native.playbackAdvanced) {
             $report.playback = 'advanced'
             break
         }

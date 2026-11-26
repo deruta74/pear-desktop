@@ -1,6 +1,6 @@
 --- a/experiments/rust-desktop/app/src/player.rs
 +++ b/experiments/rust-desktop/app/src/player.rs
-@@ -351,6 +351,13 @@
+@@ -351,6 +351,15 @@
              move |builder| {
                  let builder =
                      isolated_builder(builder).with_on_page_load_handler(move |event, url| {
@@ -9,15 +9,37 @@
 +                            && matches!(event, PageLoadEvent::Finished)
 +                            && iframe::Page::is_wrapper_url(&url)
 +                        {
++                            #[cfg(feature = "benchmark")]
++                            record_windows_visual_checkpoint("wrapper-finished");
 +                            println!("PEAR_WINDOWS_VISUAL_WRAPPER_FINISHED");
 +                        }
                          if matches!(event, PageLoadEvent::Started)
                              && iframe::Page::is_wrapper_url(&url)
                          {
-@@ -592,6 +599,26 @@
-         }
-     };
+@@ -500,6 +509,8 @@
+         script.push_str("document.getElementById('video-source').disabled === false;");
+         controls.evaluate_script_with_callback(&script, |result| {
+             if result == "true" {
++                #[cfg(all(target_os = "windows", feature = "benchmark"))]
++                record_windows_visual_checkpoint("queue-ready");
+                 println!("PEAR_QUEUE_READY");
+             } else {
+                 eprintln!("Queue smoke check failed: the link field is disabled.");
+@@ -594,7 +605,48 @@
      (catalog, lookup, key_problem)
+ }
+
++#[cfg(all(target_os = "windows", feature = "benchmark"))]
++fn record_windows_visual_checkpoint(name: &str) {
++    if std::env::var_os("PEAR_WINDOWS_VISUAL_DIAGNOSTIC").is_none_or(|value| value != "1") {
++        return;
++    }
++    if let Some(dir) = std::env::var_os("PEAR_PREVIEW_QUEUE_DIR").map(PathBuf::from)
++        && dir.is_absolute()
++    {
++        // These files duplicate fixed diagnostic events without relying on stdout.
++        let _ = fs::write(dir.join("visual-checkpoints").join(name), []);
++    }
 +}
 +
 +#[cfg(all(target_os = "windows", feature = "benchmark"))]
@@ -38,10 +60,45 @@
 +    }
 +    *last = position;
 +    *samples >= 3 && position - *first >= 2_000
- }
-
++}
++
  pub fn run(mode: LaunchMode) -> Result<()> {
-@@ -833,6 +860,14 @@
++    #[cfg(all(target_os = "windows", feature = "benchmark"))]
++    if mode.smoke {
++        use std::io::Write;
++
++        record_windows_visual_checkpoint("entry");
++        let mut stdout = std::io::stdout().lock();
++        let _ = writeln!(stdout, "PEAR_WINDOWS_VISUAL_ENTRY").and_then(|_| stdout.flush());
++    }
+     let (queue_path, queue_lock) = queue_path_and_lock()?;
+     let data_dir = queue_path
+         .parent()
+@@ -757,6 +809,12 @@
+             } else {
+                 builder
+             };
++            #[cfg(all(target_os = "windows", feature = "benchmark"))]
++            let builder = builder.with_on_page_load_handler(move |event, url| {
++                if mode.smoke && matches!(event, PageLoadEvent::Finished) && url == CONTROLS_URL {
++                    record_windows_visual_checkpoint("controls-finished");
++                }
++            });
+             builder
+                 .with_custom_protocol("pear-queue".into(), |_, request| controls_response(request))
+                 .with_navigation_handler(|url| url == CONTROLS_URL)
+@@ -770,6 +828,10 @@
+         true,
+     )?;
+     controls.load_url(CONTROLS_URL)?;
++    #[cfg(all(target_os = "windows", feature = "benchmark"))]
++    if mode.smoke {
++        record_windows_visual_checkpoint("controls-request");
++    }
+     let loader = event_loop.create_proxy();
+     let load = move |layout: &Layout,
+                      window: &Window,
+@@ -833,6 +895,14 @@
          (None, None, None)
      };
      let mut transport = mode.iframe_player.then(transport::Transport::default);
@@ -56,7 +113,18 @@
      #[cfg(target_os = "macos")]
      let mut native_media = native_media::Session::new(event_loop.create_proxy());
      let mut auto_advance = advance::Advance::default();
-@@ -1155,6 +1190,18 @@
+@@ -853,6 +923,10 @@
+
+     event_loop.run(move |event, _, flow| {
+         let _keep_alive = (&menu, &queue_lock);
++        #[cfg(all(target_os = "windows", feature = "benchmark"))]
++        if mode.smoke && matches!(&event, Event::NewEvents(StartCause::Init)) {
++            record_windows_visual_checkpoint("loop-entered");
++        }
+         if let (Some(deadline), Some(panel)) = (account_shutdown_deadline, &mut account) {
+             if let Event::UserEvent(PlayerEvent::Account(stamp, outcome)) = event {
+                 receive_account_outcome(panel, stamp, outcome, &service_events);
+@@ -1155,6 +1229,19 @@
                      save_options = true;
                  }
                  let sample = transport.observed_at(now);
@@ -69,13 +137,23 @@
 +                        .and_then(|state| state.position_ms);
 +                    visual_playing = update_visual_playback_proof(&mut visual_positions, position);
 +                    if visual_playing {
++                        record_windows_visual_checkpoint("playback-advanced");
 +                        println!("PEAR_WINDOWS_VISUAL_PLAYBACK_ADVANCED");
 +                    }
 +                }
                  advance_resolution = auto_advance.resolve(library.state(), sample, now);
                  let foreground_automatic = automatic
                      && window.is_visible()
-@@ -1204,6 +1251,12 @@
+@@ -1186,6 +1273,8 @@
+                 } else if previous_status != (transport.ready(), transport.is_stale()) {
+                     if transport.ready() {
+                         if mode.smoke {
++                            #[cfg(all(target_os = "windows", feature = "benchmark"))]
++                            record_windows_visual_checkpoint("transport-ready");
+                             println!("PEAR_QUEUE_TRANSPORT_READY");
+                         }
+                         load_deadline = None;
+@@ -1204,6 +1293,12 @@
                  if let (Some(transport), Some(video)) = (&mut transport, &current_player)
                      && let Some(sequence) = transport.begin(now)
                  {
