@@ -114,6 +114,22 @@ impl Queue {
         self.start_existing(index, 1, OpenRequest::Select { play })
     }
 
+    pub(super) fn neighbors(&self) -> (Option<usize>, Option<usize>) {
+        let Some(index) = self.selected else {
+            return (None, None);
+        };
+        (
+            index.checked_sub(1),
+            (index + 1 < self.entries.len()).then_some(index + 1),
+        )
+    }
+
+    pub(super) fn step(&mut self, next: bool, play: bool) -> Option<PathBuf> {
+        let (previous_index, next_index) = self.neighbors();
+        let index = if next { next_index } else { previous_index }?;
+        self.select(self.revision, index, play)
+    }
+
     pub(super) fn shuffle_upcoming(&mut self, revision: u32) -> bool {
         if self.opening() || revision != self.revision {
             return false;

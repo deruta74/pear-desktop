@@ -1,5 +1,6 @@
 mod engine;
 mod equalizer;
+mod media;
 mod presets;
 mod queue;
 
@@ -91,15 +92,18 @@ enum AudioCommand {
 
 enum AudioEvent {
     Command(AudioCommand),
+    Media(media::Request),
     DropFiles(Vec<PathBuf>),
     Menu(MenuEvent),
     Prepared(std::result::Result<(String, engine::PreparedAudio), engine::EngineOpenError>),
-    Opened(std::result::Result<Track, engine::EngineOpenError>),
+    Opened(std::result::Result<(String, engine::Engine), engine::EngineOpenError>),
 }
 
 struct Track {
     name: String,
     engine: engine::Engine,
+    generation: u64,
+    stopped: bool,
 }
 
 #[derive(Serialize)]
@@ -328,7 +332,12 @@ pub(crate) fn run() -> Result<()> {
     #[cfg(target_os = "windows")]
     crate::verify_private_session(&view)?;
     view.load_url(DOCUMENT)?;
+    let media_events = event_loop.create_proxy();
+    let mut media = media::Backend::new(move |request| {
+        let _ = media_events.send_event(AudioEvent::Media(request));
+    });
     let mut track: Option<Track> = None;
+    let mut track_generation = 0_u64;
     let mut volume = 1.0;
     let mut speed = 1.0;
     let mut reverb = ReverbSettings::default();
@@ -349,11 +358,13 @@ pub(crate) fn run() -> Result<()> {
                 event: WindowEvent::CloseRequested,
                 ..
             } if window_id == window.id() => {
+                media.take();
                 track.take();
                 *flow = ControlFlow::Exit;
                 return;
             }
             Event::UserEvent(AudioEvent::Menu(event)) if event.id == *quit.id() => {
+                media.take();
                 track.take();
                 *flow = ControlFlow::Exit;
                 return;
@@ -362,6 +373,36 @@ pub(crate) fn run() -> Result<()> {
                 Some(AudioCommand::Open {})
             }
             Event::UserEvent(AudioEvent::Command(command)) => Some(command),
+            Event::UserEvent(AudioEvent::Media(request)) => {
+                let Some(current) = track
+                    .as_mut()
+                    .filter(|track| track.generation == request.generation && !queue.opening())
+                else {
+                    return;
+                };
+                use media::Command::*;
+                match request.command {
+                    Play => {
+                        current.stopped = false;
+                        current.engine.set_playing(true);
+                    }
+                    Pause => current.engine.set_playing(false),
+                    Toggle => {
+                        current.stopped = false;
+                        current.engine.set_playing(!current.engine.is_playing());
+                    }
+                    Stop => {
+                        current.stopped = true;
+                        current.engine.set_playing(false);
+                        current.engine.seek_ms(0);
+                    }
+                    Previous | Next => {
+                        requested_path =
+                            queue.step(request.command == Next, current.engine.is_playing());
+                    }
+                }
+                Some(AudioCommand::Ready {})
+            }
             Event::UserEvent(AudioEvent::DropFiles(paths)) if !queue.opening() => {
                 dropped_files = Some(paths);
                 Some(AudioCommand::Open {})
@@ -375,8 +416,8 @@ pub(crate) fn run() -> Result<()> {
                 if std::thread::Builder::new()
                     .name("pear-audio-output".into())
                     .spawn(move || {
-                        let result = engine::Engine::open_prepared(audio)
-                            .map(|engine| Track { name, engine });
+                        let result =
+                            engine::Engine::open_prepared(audio).map(|engine| (name, engine));
                         let _ = result_events.send_event(AudioEvent::Opened(result));
                     })
                     .is_err()
@@ -395,12 +436,12 @@ pub(crate) fn run() -> Result<()> {
             }
             Event::UserEvent(AudioEvent::Opened(result)) => {
                 match result {
-                    Ok(mut next) => {
+                    Ok((name, mut engine)) => {
                         let (play, skipped) = queue.finish();
-                        next.engine.set_volume(volume);
-                        next.engine.set_speed(speed);
-                        next.engine.set_reverb(reverb);
-                        error = equalizer.apply(&mut next.engine).err().map(str::to_owned);
+                        engine.set_volume(volume);
+                        engine.set_speed(speed);
+                        engine.set_reverb(reverb);
+                        error = equalizer.apply(&mut engine).err().map(str::to_owned);
                         if error.is_some() {
                             equalizer.disable();
                         } else if skipped > 0 {
@@ -410,8 +451,14 @@ pub(crate) fn run() -> Result<()> {
                                 format!("Skipped {skipped} unreadable audio files.")
                             });
                         }
-                        next.engine.set_playing(play);
-                        track = Some(next);
+                        engine.set_playing(play);
+                        track_generation += 1;
+                        track = Some(Track {
+                            name,
+                            engine,
+                            generation: track_generation,
+                            stopped: false,
+                        });
                     }
                     Err(problem) => {
                         queue.output_failed();
@@ -421,6 +468,10 @@ pub(crate) fn run() -> Result<()> {
                 Some(AudioCommand::Ready {})
             }
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => None,
+            Event::LoopDestroyed => {
+                media.take();
+                return;
+            }
             _ => return,
         };
         let send_settings = matches!(action, Some(AudioCommand::Ready {}));
@@ -468,12 +519,19 @@ pub(crate) fn run() -> Result<()> {
                 queue.set_repeat(revision, mode);
             }
             Some(action) => {
-                if let Some(Track { engine, .. }) = &mut track {
+                if let Some(Track {
+                    engine, stopped, ..
+                }) = &mut track
+                {
                     match action {
                         AudioCommand::SetPlaying { playing } if !queue.opening() => {
+                            if playing {
+                                *stopped = false;
+                            }
                             engine.set_playing(playing);
                         }
                         AudioCommand::Seek { position_ms } if !queue.opening() => {
+                            *stopped = false;
                             engine.seek_ms(position_ms);
                         }
                         AudioCommand::SetVolume { volume: value }
@@ -590,6 +648,38 @@ pub(crate) fn run() -> Result<()> {
         let opening = queue.opening();
         if opening != was_opening {
             open.set_enabled(!opening);
+        }
+        if let Some(media) = &mut media {
+            media.update(
+                track
+                    .as_ref()
+                    .zip(transport.as_ref())
+                    .map(|(track, snapshot)| {
+                        let (previous, next) = queue.neighbors();
+                        let status = if snapshot.playing {
+                            media::Status::Playing
+                        } else if track.stopped
+                            || snapshot.error.is_some()
+                            || snapshot.position_ms >= snapshot.duration_ms
+                        {
+                            media::Status::Stopped
+                        } else {
+                            media::Status::Paused
+                        };
+                        media::State {
+                            generation: track.generation,
+                            title: track.name.clone(),
+                            duration_ms: snapshot.duration_ms,
+                            position_ms: snapshot.position_ms,
+                            speed,
+                            volume,
+                            status,
+                            can_previous: previous.is_some(),
+                            can_next: next.is_some(),
+                            can_control: !opening && snapshot.error.is_none(),
+                        }
+                    }),
+            );
         }
         deadline = transport
             .as_ref()
