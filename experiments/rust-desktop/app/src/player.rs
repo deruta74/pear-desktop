@@ -1,23 +1,16 @@
 //! The desktop queue separates its local controls from the remote video.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod advance;
 mod catalog;
 mod consent;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod iframe;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod lyrics;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod lyrics_lookup;
 mod metadata;
 mod metadata_lookup;
 mod platform;
 mod playlists;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod preferences;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod speed_menu;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod transport;
 use std::{
     borrow::Cow,
@@ -27,7 +20,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 use muda::CheckMenuItem;
 use muda::{
     Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
@@ -47,7 +39,6 @@ use wry::{
     http::{Request, Response, header},
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 use wry::PageLoadEvent;
 #[cfg(target_os = "macos")]
 use wry::WebViewBuilderExtDarwin;
@@ -72,9 +63,7 @@ const CONTROLS_CSP: &str = "default-src 'none'; script-src pear-queue:; style-sr
 const CONTROLS_CSP: &str = "default-src 'none'; script-src https://pear-queue.app.local; style-src https://pear-queue.app.local; img-src https://i.ytimg.com/vi/; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const MAX_IPC_BYTES: usize = 4096;
 const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 const IFRAME_MENU_LABEL: &str = "Experimental Playback Controls";
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 const AUTO_ADVANCE_LABEL: &str = "Play Next Automatically";
 
 const EMPTY_PLAYER: &str = r#"<!doctype html><html lang="en"><meta charset="utf-8">
@@ -93,11 +82,8 @@ enum PlayerEvent {
     VideoProblem(u64, &'static str),
     Metadata(String, metadata_lookup::Response),
     SearchResults(u64, catalog::Response),
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     TransportCommitted(u64),
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     TransportSample(u64, u64, String),
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     LyricsResult(u64, lyrics_lookup::Response),
 }
 
@@ -123,13 +109,10 @@ struct QueueView<'a> {
     catalog: Option<&'a catalog::View>,
     saved_playlists: playlists::View<'a>,
     legal: LegalView<'a>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     preferences_problem: Option<&'static str>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     lyrics: Option<&'a lyrics_lookup::View>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     lyrics_switching: bool,
 }
@@ -145,9 +128,7 @@ struct LegalView<'a> {
 #[derive(Clone, Copy)]
 pub struct LaunchMode {
     smoke: bool,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     iframe_player: bool,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     audio_output: iframe::AudioOutput,
 }
 
@@ -160,10 +141,6 @@ pub fn launch_mode() -> Result<Option<LaunchMode>> {
     let smoke = iframe_smoke
         || (cfg!(feature = "benchmark") && args.len() == 1 && args[0] == "--queue-smoke");
     let iframe_player = iframe_smoke || (args.len() == 1 && args[0] == "--iframe-player");
-    #[cfg(target_os = "windows")]
-    if iframe_player {
-        return Err("The IFrame API player preview currently requires macOS or Linux.".into());
-    }
     #[cfg(target_os = "macos")]
     {
         let bundled = NSBundle::mainBundle()
@@ -187,9 +164,7 @@ pub fn launch_mode() -> Result<Option<LaunchMode>> {
     }
     Ok((queue || smoke || iframe_player).then_some(LaunchMode {
         smoke,
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         iframe_player,
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         audio_output: iframe::AudioOutput::default(),
     }))
 }
@@ -311,22 +286,42 @@ fn show_video(
     let report_problem = move |message| {
         let _ = problem_events.send_event(PlayerEvent::VideoProblem(generation, message));
     };
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     if mode.iframe_player {
         let page = Arc::new(iframe::Page::new(id)?);
+        #[cfg(not(target_os = "windows"))]
         let navigation = page.clone();
+        #[cfg(target_os = "windows")]
+        let html = page.html(&iframe::wrapper_url(), mode.audio_output)?;
         let view = layout.build(
             window,
             move |builder| {
-                let builder = isolated_builder(builder)
-                    .with_navigation_handler(move |candidate| navigation.permits(&candidate))
-                    .with_on_page_load_handler(move |event, url| {
+                let builder =
+                    isolated_builder(builder).with_on_page_load_handler(move |event, url| {
                         if matches!(event, PageLoadEvent::Started)
                             && iframe::Page::is_wrapper_url(&url)
                         {
                             let _ = events.send_event(PlayerEvent::TransportCommitted(generation));
                         }
                     });
+                #[cfg(not(target_os = "windows"))]
+                let builder = builder
+                    .with_navigation_handler(move |candidate| navigation.permits(&candidate));
+                #[cfg(target_os = "windows")]
+                let builder = {
+                    use wry::WebViewBuilderExtWindows;
+
+                    builder
+                        .with_https_scheme(true)
+                        .with_custom_protocol(
+                            iframe::WINDOWS_WRAPPER_SCHEME.into(),
+                            move |_, request| {
+                                iframe::Page::windows_wrapper_response(&request, &html)
+                            },
+                        )
+                        .with_navigation_handler(|url| {
+                            iframe::Page::permits_windows_top_level(&url)
+                        })
+                };
                 #[cfg(target_os = "macos")]
                 let builder = builder
                     .with_allow_link_preview(false)
@@ -342,6 +337,14 @@ fn show_video(
         )?;
         #[cfg(target_os = "linux")]
         platform::observe_video(&view, &iframe::wrapper_url(), report_problem);
+        #[cfg(target_os = "windows")]
+        {
+            platform::restrict_video_frames(&view, move |url| page.permits_frame(url))?;
+            let url = iframe::wrapper_url();
+            platform::observe_video(&view, &url, false, report_problem)?;
+            view.load_url(&url)?;
+        }
+        #[cfg(not(target_os = "windows"))]
         page.load(&view, mode.audio_output)?;
         return Ok(view);
     }
@@ -444,13 +447,12 @@ fn player_flow(
     load: Option<Instant>,
     metadata: Option<Instant>,
     catalog: Option<Instant>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))] transport: Option<&transport::Transport>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))] lyrics: Option<Instant>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))] advance: Option<Instant>,
+    transport: Option<&transport::Transport>,
+    lyrics: Option<Instant>,
+    advance: Option<Instant>,
     #[cfg(target_os = "linux")] timer: &mut platform::DeadlineTimer,
 ) -> ControlFlow {
     let deadlines = load.into_iter().chain(metadata).chain(catalog);
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let deadlines = deadlines
         .chain(transport.and_then(transport::Transport::deadline))
         .chain(lyrics)
@@ -500,24 +502,18 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut approved = mode.smoke || consent.accepted();
     let mut show_legal = !approved;
     let mut legal_problem = None;
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut mode = mode;
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut preferences =
         (!mode.smoke).then(|| preferences::Preferences::load(data_dir.join("preferences.json")));
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut preferences_problem = preferences
         .as_ref()
         .and_then(preferences::Preferences::problem);
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut automatic = preferences
         .as_ref()
         .is_some_and(preferences::Preferences::auto_advance);
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut preferred_iframe = preferences
         .as_ref()
         .is_some_and(preferences::Preferences::iframe_player);
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         mode.iframe_player |= preferred_iframe;
         mode.audio_output = preferences.as_ref().map_or_else(
@@ -566,27 +562,21 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let app_menu = Submenu::with_items("Pear Desktop", true, &[&quit])?;
     let file_menu = Submenu::with_items("File", true, &[&add_video, &open_music])?;
     let view_menu = Submenu::with_items("View", true, &[&toggle_queue, &reload])?;
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let toggle_iframe = CheckMenuItem::new(
         IFRAME_MENU_LABEL,
         approved && preferences.is_some(),
         mode.iframe_player,
         None,
     );
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     view_menu.append(&toggle_iframe)?;
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let toggle_advance = CheckMenuItem::new(
         AUTO_ADVANCE_LABEL,
         approved && preferences.is_some() && mode.iframe_player,
         automatic,
         None,
     );
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     view_menu.append(&toggle_advance)?;
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut speed_menu = speed_menu::SpeedMenu::new();
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     view_menu.append(speed_menu.submenu())?;
     let edit_menu = Submenu::with_items(
         "Edit",
@@ -663,11 +653,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     } else {
         (None, None)
     };
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut transport = mode.iframe_player.then(transport::Transport::default);
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut auto_advance = advance::Advance::default();
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let lyrics_worker = {
         let events = event_loop.create_proxy();
         move || match lyrics_lookup::Lookup::new(events.clone()) {
@@ -678,13 +665,11 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
         }
     };
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let mut lyrics = if approved && mode.iframe_player && !mode.smoke {
         lyrics_worker()
     } else {
         None
     };
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let results = event_loop.create_proxy();
     #[cfg(target_os = "linux")]
     let mut timer = platform::DeadlineTimer::default();
@@ -695,11 +680,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             load_deadline,
             lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
             catalog.as_ref().and_then(catalog::Catalog::deadline),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             transport.as_ref(),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             lyrics.as_ref().and_then(lyrics_lookup::Lookup::deadline),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             auto_advance.deadline(),
             #[cfg(target_os = "linux")]
             &mut timer,
@@ -709,9 +691,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         let mut acknowledged_sequence = None;
         let mut focus_add_field = false;
         let mut verify_controls = false;
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let mut advance_resolution = None;
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let mut save_options = false;
         let update_queue = match event {
             Event::WindowEvent {
@@ -719,7 +699,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             } if window_id == window.id() => {
                 match event {
                     WindowEvent::CloseRequested => *flow = ControlFlow::Exit,
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
                     WindowEvent::Focused(false) => auto_advance.disarm(),
                     WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                         if let Err(error) = layout.arrange(
@@ -756,7 +735,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 reload_player = true;
                 true
             }
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::Menu(event))
                 if event.id == *toggle_iframe.id() || event.id == *toggle_advance.id() =>
             {
@@ -813,7 +791,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         Ok(()) => {
                             queue_visible = show;
                             toggle_queue.set_text(if show { "Hide Queue" } else { "Show Queue" });
-                            #[cfg(any(target_os = "macos", target_os = "linux"))]
                             if let Err(reason) = controls.evaluate_script(&format!(
                                     "window.setPearPanelVisible?.({show});"
                                 ))
@@ -844,7 +821,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 true
             }
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::Menu(event)) => {
                 let Some(rate) = speed_menu.requested(&event.id) else { return };
                 if approved
@@ -878,7 +854,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::UserEvent(PlayerEvent::VideoProblem(id, message)) if id == generation => {
                 load_deadline = None;
                 player_error = Some(message.into());
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 if let Some(transport) = &mut transport {
                     transport.reset(false);
                 }
@@ -890,18 +865,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::UserEvent(PlayerEvent::SearchResults(revision, response)) => catalog
                 .as_mut()
                 .is_some_and(|catalog| catalog.receive(revision, response, Instant::now())),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::LyricsResult(revision, response)) => lyrics
                 .as_mut()
                 .is_some_and(|lyrics| lyrics.receive(revision, response, Instant::now())),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::TransportCommitted(id)) if id == generation => {
                 if let Some(transport) = &mut transport {
                     transport.reset(true);
                 }
                 false
             }
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             Event::UserEvent(PlayerEvent::TransportSample(id, sequence, response)) if id == generation => {
                 let Some(transport) = &mut transport else { return };
                 let previous_status = (transport.ready(), transport.is_stale());
@@ -962,9 +934,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 let now = Instant::now();
                 let metadata_changed = lookup.as_mut().is_some_and(|lookup| lookup.tick(now));
                 let catalog_changed = catalog.as_mut().is_some_and(|catalog| catalog.tick(now));
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 let expired = transport.as_mut().is_some_and(|transport| transport.expire(now));
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 if let (Some(transport), Some(video)) = (&mut transport, &current_player)
                     && let Some(sequence) = transport.begin(now)
                 {
@@ -981,11 +951,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     load_deadline = None;
                     loading_slow = true;
                     #[cfg(target_os = "windows")]
-                    if mode.smoke && let Some(player) = &current_player {
+                    if mode.smoke && !mode.iframe_player && let Some(player) = &current_player {
                         platform::diagnose_video(player);
                     }
                 }
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 let overdue = {
                     let lyrics_changed = lyrics.as_mut().is_some_and(|lyrics| lyrics.tick(now));
                     advance_resolution = auto_advance.resolve(library.state(), None, now);
@@ -1021,12 +990,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 reload.set_enabled(true);
                                 toggle_queue.set_enabled(true);
                                 add_video.set_enabled(true);
-                                #[cfg(any(target_os = "macos", target_os = "linux"))]
                                 toggle_iframe.set_enabled(preferences.is_some());
-                                #[cfg(any(target_os = "macos", target_os = "linux"))]
                                 toggle_advance.set_enabled(preferences.is_some() && mode.iframe_player);
                                 (catalog, lookup) = start_youtube_clients(&service_events, library.state().current.as_deref());
-                                #[cfg(any(target_os = "macos", target_os = "linux"))]
                                 if mode.iframe_player {
                                     lyrics = lyrics_worker();
                                 }
@@ -1082,24 +1048,19 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                     Command::Playlist(command) => {
-                        #[cfg(any(target_os = "macos", target_os = "linux"))]
                         let cancel_switch = auto_advance.pending()
                             && matches!(&command, crate::library::playlists::Command::SelectPlaylistTrack { video, .. }
                                 if library.state().current.as_ref() == Some(video));
-                        #[cfg(target_os = "windows")]
-                        let cancel_switch = false;
                         match playlists.apply(command, &mut library) {
                             Ok(changed) => reload_player = changed || cancel_switch,
                             Err(reason) => error = Some(reason.to_string()),
                         }
                     }
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
                     Command::FindLyrics { title, artist } => {
                         if mode.iframe_player && let Some(lyrics) = &mut lyrics {
                             lyrics.submit(&title, &artist, Instant::now());
                         }
                     }
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
                     command @ (Command::SetPlayback { .. }
                         | Command::Seek { .. }
                         | Command::SetVolume { .. }
@@ -1136,12 +1097,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         }
                     }
                     command => {
-                        #[cfg(any(target_os = "macos", target_os = "linux"))]
                         let cancel_switch = auto_advance.pending()
                             && matches!(&command, Command::Select { id }
                                 if library.state().current.as_ref() == Some(id));
-                        #[cfg(target_os = "windows")]
-                        let cancel_switch = false;
                         match library.apply(command) {
                             Ok(changed) => reload_player = changed || cancel_switch,
                             Err(reason) => error = Some(reason.to_string()),
@@ -1153,7 +1111,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             _ => return,
         };
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         if save_options && let Some(preferences) = &mut preferences {
             if let Err(reason) = preferences.set_playback(preferred_iframe, automatic, mode.audio_output) {
                 eprintln!("Could not save playback preferences: {reason}");
@@ -1167,7 +1124,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
         }
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let update_queue = {
             let update_queue = update_queue || save_options;
             if !reload_player && update_queue && advance_resolution.is_none() {
@@ -1211,7 +1167,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             generation += 1;
             load_deadline = None;
             loading_slow = false;
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
                 auto_advance.cancel();
                 if let Some(transport) = &mut transport {
@@ -1239,11 +1194,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
         }
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let switching = auto_advance.pending();
-        #[cfg(target_os = "windows")]
-        let switching = false;
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let update_queue = {
             let duration_changed = mode.iframe_player && lyrics.as_mut().is_some_and(|lyrics| {
                 if update_queue || reload_player {
@@ -1268,11 +1219,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             load_deadline,
             lookup.as_ref().and_then(metadata_lookup::Lookup::deadline),
             catalog.as_ref().and_then(catalog::Catalog::deadline),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             transport.as_ref(),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             lyrics.as_ref().and_then(lyrics_lookup::Lookup::deadline),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             auto_advance.deadline(),
             #[cfg(target_os = "linux")]
             &mut timer,
@@ -1280,9 +1228,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         if controls_ready && update_queue {
             open_music.set_enabled(approved && library.state().current.is_some());
             let player_ready = titled_generation == Some(generation);
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             let player_ready = player_ready || transport.as_ref().is_some_and(transport::Transport::ready);
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             let loading_slow = loading_slow || transport.as_ref().is_some_and(transport::Transport::is_stale);
             let notice = if switching {
                 Some("Opening the next video…")
@@ -1311,11 +1257,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                         revision: consent::REVISION,
                         problem: legal_problem,
                     },
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
                     preferences_problem,
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
                     lyrics: lyrics.as_ref().and_then(lyrics_lookup::Lookup::view),
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
                     lyrics_switching: switching,
                 },
                 error.as_deref(),
@@ -1330,7 +1273,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         if focus_add_field && let Err(reason) = focus_add(&controls) {
             eprintln!("Could not focus the video field: {reason}");
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
             let sample = if approved && !switching {
                 transport.as_ref().and_then(transport::Transport::snapshot)
@@ -1341,7 +1283,6 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 eprintln!("Could not update the playback speed menu: {reason}");
             }
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         if approved && controls_ready && let Some(transport) = &mut transport
             && let Err(reason) = transport.render(&controls, !switching && library.state().current.is_some())
         {

@@ -20,7 +20,9 @@ pub(super) use linux::{DeadlineTimer, Layout, observe_video};
 #[cfg(target_os = "macos")]
 pub(super) use macos::Layout;
 #[cfg(target_os = "windows")]
-pub(super) use windows::{Layout, diagnose_video, load_video_with_referer, observe_video};
+pub(super) use windows::{
+    Layout, diagnose_video, load_video_with_referer, observe_video, restrict_video_frames,
+};
 
 pub(super) const APP_ID: &str = "com.pear-desktop.rust-preview";
 pub(super) const PANEL_WIDTH: i32 = 384;

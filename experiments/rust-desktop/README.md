@@ -22,7 +22,7 @@ The local controls and the official player use separate private WebViews. Only t
 
 **Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
 
-### Experimental playback controls on macOS and Linux
+### Experimental playback controls
 
 Choose **View → Experimental Playback Controls** to switch players. The selection reloads the current video and is remembered across launches. The command-line flag opens the experimental player for the current launch.
 
@@ -31,7 +31,7 @@ app="$(experiments/rust-desktop/tools/bundle-macos.sh preview)"
 "$app/Contents/MacOS/pear-desktop-preview" --iframe-player
 ```
 
-On Linux, use the same `--iframe-player` flag through Cargo.
+On Linux and Windows, use the same `--iframe-player` flag through Cargo.
 
 ```sh
 cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --iframe-player
@@ -47,9 +47,11 @@ With the experimental player active, **View → Play Next Automatically** can ad
 
 On macOS, the example video was paused, scrubbed to another position, and resumed from the queue panel. Automatic advance started the next video in the same player and saved it as the current item. On Ubuntu ARM64, the example video played and the Pear timeline advanced. The test window stayed ready while idle after adding a GTK timer for playback and request deadlines.
 
+Windows uses the same local wrapper and a native WebView2 frame navigation guard. Playback and audio in this mode still need verification in an interactive Windows session.
+
 ### Synced lyrics
 
-In `--iframe-player` on macOS or Linux, start the video and open **Lyrics**. Check the track name and artist, then select **Find lyrics**. Pear sends those two fields and the video duration to LRCLIB when you submit. Synced lines follow playback and highlight individual words where LRCLIB supplies timing. The animated dots appear during the current timed rest, and reduced motion keeps them still. Lyrics stay in memory and clear when you change the video. [LRCLIB API](https://lrclib.net/docs)
+In `--iframe-player`, start the video and open **Lyrics**. Check the track name and artist, then select **Find lyrics**. Pear sends those two fields and the video duration to LRCLIB when you submit. Synced lines follow playback and highlight individual words where LRCLIB supplies timing. The animated dots appear during the current timed rest, and reduced motion keeps them still. Lyrics stay in memory and clear when you change the video. [LRCLIB API](https://lrclib.net/docs)
 
 ### Video details and optional search
 
