@@ -68,18 +68,47 @@ pub(super) struct Page {
     embed_url: Url,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct PublicPlaylist(String);
+
+impl PublicPlaylist {
+    pub(super) fn from_link(source: &str) -> Result<Self> {
+        // Keep the same accepted share-link forms as the Data API browser.
+        super::metadata::playlist_id(source)
+            .map(Self)
+            .ok_or_else(|| "Enter a public YouTube or YouTube Music playlist link.".into())
+    }
+
+    pub(super) fn browser_url(&self) -> String {
+        format!("https://www.youtube.com/playlist?list={}", self.0)
+    }
+}
+
 impl Page {
     pub(super) fn new(id: &str) -> Result<Self> {
         if !valid_id(id) {
             return Err("Invalid YouTube video ID.".into());
         }
-        let mut embed_url = Url::parse(&format!("https://www.youtube.com/embed/{id}"))?;
+        let embed_url = Url::parse(&format!("https://www.youtube.com/embed/{id}"))?;
+        Ok(Self::with_player_options(embed_url))
+    }
+
+    pub(super) fn playlist(playlist: &PublicPlaylist) -> Result<Self> {
+        let mut embed_url = Url::parse("https://www.youtube.com/embed")?;
+        embed_url
+            .query_pairs_mut()
+            .append_pair("listType", "playlist")
+            .append_pair("list", &playlist.0);
+        Ok(Self::with_player_options(embed_url))
+    }
+
+    fn with_player_options(mut embed_url: Url) -> Self {
         embed_url
             .query_pairs_mut()
             .append_pair("enablejsapi", "1")
             .append_pair("origin", &wrapper_origin())
             .append_pair("autoplay", "0");
-        Ok(Self { embed_url })
+        Self { embed_url }
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -375,6 +404,35 @@ mod tests {
     const WRAPPER: &str = "https://com.pear-desktop.rust-preview/iframe-player.html";
     const PLAYING: &str = r#"{"ready":true,"hasPlayed":true,"state":1,"position":172,"duration":320,"ended":false,"error":null,"blocked":false}"#;
     const STARTING: &str = r#"{"ready":false,"hasPlayed":false,"state":null,"position":null,"duration":null,"ended":false,"error":null,"blocked":false}"#;
+
+    #[test]
+    fn playlist_uses_only_the_validated_id_in_the_exact_embed_and_fallback_urls() {
+        let playlist = PublicPlaylist::from_link(
+            "https://music.youtube.com/playlist?list=PLC77007E23FF423C6&autoplay=1",
+        )
+        .unwrap();
+        let expected = "https://www.youtube.com/embed?listType=playlist&list=PLC77007E23FF423C6&enablejsapi=1&origin=https%3A%2F%2Fcom.pear-desktop.rust-preview&autoplay=0";
+        let page = Page::playlist(&playlist).unwrap();
+        assert!(page.permits_frame(expected));
+        assert!(!page.permits_frame(&format!("{expected}&autoplay=1")));
+        assert!(!page.permits_frame(EMBED));
+        assert!(
+            page.html(WRAPPER, AudioOutput::default())
+                .unwrap()
+                .contains("frame-src https://www.youtube.com/embed;")
+        );
+        assert_eq!(
+            playlist.browser_url(),
+            "https://www.youtube.com/playlist?list=PLC77007E23FF423C6"
+        );
+        for invalid in [
+            "https://youtube.com.evil.example/playlist?list=PLC77007E23FF423C6",
+            "https://www.youtube.com/playlist?list=PLC77007E23FF423C6&list=PL0123456789",
+            "https://www.youtube.com/watch?v=M7lc1UVf-VE",
+        ] {
+            assert!(PublicPlaylist::from_link(invalid).is_err(), "{invalid}");
+        }
+    }
 
     #[cfg(not(target_os = "windows"))]
     #[test]

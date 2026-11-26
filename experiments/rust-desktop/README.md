@@ -18,9 +18,11 @@ Paste one link or ID per line to add several videos together. Enter submits, and
 
 Open **Library** to save the current queue as a local playlist. Open a saved playlist to rename it, choose a track, or add its tracks to the queue while the current video plays. The library stores playlists in `playlists.json` next to `queue.json`.
 
+In **Queue**, open **Play a YouTube playlist** and paste a public YouTube or YouTube Music playlist link. Choose **Play playlist in Pear**, then press Play in the visible YouTube player. This works without a YouTube Data API key. Use the embedded player’s controls for the playlist. Choose **Return to queue** to restore the selected queue video, or select another queue entry to switch directly. **Open in browser** opens the same playlist if playback is unavailable in Pear. On macOS, this feature uses the bundled app.
+
 The local controls and the official player use separate private WebViews. Only the bundled controls can send queue commands to Rust. The player loads the selected embed with the native app's Referer and uses the website's controls and media requests. It can play videos whose owners allow embedding in the current region.
 
-**Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
+**Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
 
 ### Experimental playback controls
 
@@ -37,7 +39,7 @@ On Linux and Windows, use the same `--iframe-player` flag through Cargo.
 cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-desktop-preview -- --iframe-player
 ```
 
-Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. Both players share the local queue and playlists. The experimental player shows saved titles and looks up details for the selected video.
+Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. Press **Space** while the queue panel is focused outside an input or button to pause or resume. Both players share the local queue and playlists. The experimental player shows saved titles and looks up details for the selected video.
 
 With the experimental player active, **View → Play Next Automatically** can advance the queue when the current video ends and the window is in the foreground. The option starts off. If YouTube blocks the transition, Pear opens the next video for you to start with its Play button.
 
@@ -59,7 +61,7 @@ Pear shows the title, channel and artwork for the selected video when YouTube su
 
 To enable in-app search, store a developer key restricted to YouTube Data API v3 in a private text file and set `PEAR_YOUTUBE_API_KEY_FILE` to that file's path. Pear then uses the Data API for video details and music search. Search requests use the configured project's API quota and run when you submit a query. Lookup results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
 
-With a key configured, paste a public YouTube or YouTube Music playlist link into Search to browse its first page of up to 50 items. Pear displays the available videos in playlist order and opens the one you choose in YouTube Music. Playlist results stay in memory and do not change the local queue. [Playlist items API](https://developers.google.com/youtube/v3/docs/playlistItems/list)
+With a key configured, paste a public YouTube or YouTube Music playlist link into Search to browse its first page of up to 50 items. Pear displays the available videos in playlist order and opens the one you choose in YouTube Music. Playlist results stay in memory. [Playlist items API](https://developers.google.com/youtube/v3/docs/playlistItems/list)
 
 Without a key, **Search** opens the submitted query or public playlist link in YouTube Music in the system browser. **File → Open in YouTube Music** opens the currently selected video there.
 

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::library::write_atomic;
 
-pub(super) const REVISION: u32 = 1;
+pub(super) const REVISION: u32 = 2;
 const MAX_FILE_BYTES: u64 = 1024;
 
 #[derive(Deserialize, Serialize)]
@@ -122,6 +122,18 @@ mod tests {
         assert!(Consent::load(path.clone()).accepted());
         let stored: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
         assert_eq!(stored, serde_json::json!({ "revision": REVISION }));
+    }
+
+    #[test]
+    fn requires_the_playlist_disclosure_for_profiles_on_the_original_revision() {
+        let directory = TestDirectory::new();
+        let path = directory.path();
+        let original_marker = r#"{"revision":1}"#;
+        fs::write(&path, original_marker).unwrap();
+
+        let consent = Consent::load(path.clone());
+        assert!(!consent.accepted());
+        assert_eq!(fs::read_to_string(path).unwrap(), original_marker);
     }
 
     #[test]

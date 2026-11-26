@@ -230,6 +230,7 @@ async function state(
     savedPlaylists,
     preferencesProblem,
     legal,
+    publicPlaylist,
   } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
@@ -257,6 +258,7 @@ async function state(
         savedPlaylists,
         preferencesProblem,
         legal,
+        publicPlaylist,
       },
       error,
       notice,
@@ -281,6 +283,85 @@ const readyTransport = {
   duration: 140,
   blocked: false,
 };
+
+test('uses Space for playback only outside editable controls and after the official first play', async (t) => {
+  const page = await panel(t);
+  await state(page, [first], first);
+  const heading = page.getByRole('heading', { name: 'Pear', exact: true });
+  await transport(page, { ...readyTransport, hasPlayed: false });
+  await heading.click();
+  await page.keyboard.press('Space');
+  expect(await messages(page)).toHaveLength(1);
+
+  await transport(page, { ...readyTransport, playing: true });
+  const link = page.getByRole('textbox', { name: 'YouTube link or video ID' });
+  await link.fill('My link draft');
+  await page.keyboard.press('Space');
+  await expect(link).toHaveValue('My link draft ');
+  expect(await messages(page)).toHaveLength(1);
+
+  await heading.click();
+  await page.keyboard.press('Space');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'set_playback', playing: false },
+  });
+});
+
+test('opens a public playlist without catalog access and returns to the saved queue', async (t) => {
+  const page = await panel(t);
+  const entries = [first, second];
+  const url = 'https://music.youtube.com/playlist?list=PLC77007E23FF423C6';
+  const play = page.getByRole('button', { name: 'Play video' });
+  const returnToQueue = page.getByRole('button', { name: 'Return to queue' });
+  const metadataProblem = 'YouTube rejected the configured API key.';
+  const queueMetadataProblem = page.locator('#metadata-problem');
+  await state(page, entries, first, null, null, 1, { metadataProblem });
+  await expect(queueMetadataProblem).toHaveText(metadataProblem);
+  await transport(page, readyTransport);
+  await expect(play).toBeVisible();
+  await page.getByText('Play a YouTube playlist', { exact: true }).click();
+  await page.getByLabel('Public playlist link').fill(url);
+  await page.getByRole('button', { name: 'Play playlist in Pear' }).click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'play_public_playlist',
+    source: url,
+  });
+  await state(page, entries, first, null, null, 2, {
+    publicPlaylist: true,
+    metadataProblem,
+  });
+  await expect(returnToQueue).toBeVisible();
+  await expect(queueMetadataProblem).toBeEmpty();
+  await expect(play).toBeHidden();
+  await transport(page, readyTransport);
+  await expect(play).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: `Select ${first}` }),
+  ).toHaveAttribute('aria-current', 'true');
+  await returnToQueue.click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'return_to_queue',
+  });
+  await state(page, entries, first, null, null, 3, { metadataProblem });
+  await expect(returnToQueue).toBeHidden();
+  await expect(queueMetadataProblem).toHaveText(metadataProblem);
+  await expect(play).toBeHidden();
+  await transport(page, readyTransport);
+  await expect(play).toBeVisible();
+
+  await state(page, entries, first, null, null, null, { publicPlaylist: true });
+  await page.getByRole('button', { name: `Select ${first}` }).click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'select',
+    id: first,
+  });
+  await state(page, entries, first);
+  await expect(returnToQueue).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: `Select ${second}` }),
+  ).toBeVisible();
+});
 
 test('makes available audio output controls usable before the first play', async (t) => {
   const page = await panel(t);

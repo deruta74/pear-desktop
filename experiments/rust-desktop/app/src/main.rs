@@ -1,3 +1,8 @@
+#![cfg_attr(
+    all(target_os = "windows", not(feature = "benchmark")),
+    windows_subsystem = "windows"
+)]
+
 mod page;
 
 mod library;
@@ -184,17 +189,50 @@ fn run() -> Result<()> {
     });
 }
 
+fn startup_failed(error: impl std::fmt::Display, guidance: &'static str) -> ! {
+    #[cfg(all(target_os = "windows", not(feature = "benchmark")))]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+
+        // Only these fixed strings reach the native dialog. Startup errors may contain
+        // local paths or dependency messages that are unsuitable for display here.
+        let _ = error;
+        let title: Vec<u16> = TITLE.encode_utf16().chain([0]).collect();
+        let message: Vec<u16> = guidance.encode_utf16().chain([0]).collect();
+        // Both strings are NUL-terminated and live until the unowned dialog closes.
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                message.as_ptr(),
+                title.as_ptr(),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
+    #[cfg(not(all(target_os = "windows", not(feature = "benchmark"))))]
+    {
+        let _ = guidance;
+        eprintln!("{TITLE}: {error}");
+    }
+    std::process::exit(1)
+}
+
 fn main() {
     let result = match player::launch_mode() {
         Ok(Some(mode)) => player::run(mode),
         Ok(None) if cfg!(feature = "benchmark") => run(),
-        Ok(None) => Err("Unexpected argument".into()),
+        Ok(None) => startup_failed(
+            "Unexpected argument",
+            "Unexpected argument. Launch Pear Desktop Rust Preview without arguments, or use --queue or --iframe-player.",
+        ),
         Err(error) => Err(error),
     };
 
     if let Err(error) = result {
-        eprintln!("{TITLE}: {error}");
-        std::process::exit(1);
+        startup_failed(
+            error,
+            "Pear Desktop Rust Preview could not start. Close any other preview window and try again. If the problem continues, make sure Microsoft Edge WebView2 Runtime is installed and up to date.",
+        );
     }
 }
 

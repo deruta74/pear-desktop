@@ -58,6 +58,10 @@ pub enum Command {
     OpenPlaylistVideo {
         id: String,
     },
+    PlayPublicPlaylist {
+        source: String,
+    },
+    ReturnToQueue {},
     FindLyrics {
         title: String,
         artist: String,
@@ -232,6 +236,8 @@ impl Library {
             | Command::Search { .. }
             | Command::OpenMusicSearch { .. }
             | Command::OpenPlaylistVideo { .. }
+            | Command::PlayPublicPlaylist { .. }
+            | Command::ReturnToQueue {}
             | Command::Playlist(_) => {
                 return Ok(false);
             }
