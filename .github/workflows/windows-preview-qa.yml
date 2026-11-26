@@ -1,4 +1,4 @@
-name: Windows Rust preview QA
+name: Rust preview native QA
 
 on:
   push:
@@ -328,4 +328,159 @@ jobs:
         with:
           name: pear-rust-preview-windows-x64
           path: ${{ runner.temp }}/pear-windows-qa/pear-desktop-preview.exe
+          if-no-files-found: error
+
+  native-preview-linux:
+    if: github.repository == 'deruta74/pear-desktop'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CARGO_TERM_COLOR: never
+      LC_ALL: C
+    defaults:
+      run:
+        shell: bash
+        working-directory: experiments/rust-desktop
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.22.0
+          package-manager-cache: false
+      - name: Install native build and display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev xvfb xauth x11-utils dbus-daemon
+      - name: Build and test the Rust preview on Linux x64
+        run: |
+          test "$(uname -m)" = x86_64
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/pear-rust-linux-target"
+          printf 'CARGO_TARGET_DIR=%s\n' "$CARGO_TARGET_DIR" >> "$GITHUB_ENV"
+          artifact_dir="$RUNNER_TEMP/pear-linux-qa"
+          mkdir -p "$artifact_dir"
+          exec > >(tee -a "$artifact_dir/qa.log") 2>&1
+          target=x86_64-unknown-linux-gnu
+          toolchain="stable-$target"
+          git rev-parse HEAD
+          node --version
+          dpkg-query -W libgtk-3-0t64 libwebkit2gtk-4.1-0 libssl3t64
+          rustup toolchain install "$toolchain" --profile minimal
+          rustup run "$toolchain" rustc --version
+          rustup run "$toolchain" cargo test --locked --target "$target" --workspace --all-features
+          rustup run "$toolchain" cargo build --locked --target "$target" --release -p pear-desktop-preview
+      - name: Inspect the release binary and stage the Linux package
+        run: |
+          artifact_dir="$RUNNER_TEMP/pear-linux-qa"
+          package_dir="$artifact_dir/pear-rust-preview-linux-x64"
+          mkdir -p "$package_dir"
+          exe="$package_dir/pear-desktop-preview"
+          install -m 0755 "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/release/pear-desktop-preview" "$exe"
+          readelf -h "$exe" | tee "$artifact_dir/release.elf.txt"
+          grep -Eq '^ *Class: +ELF64$' "$artifact_dir/release.elf.txt"
+          grep -Eq '^ *Machine: +Advanced Micro Devices X86-64$' "$artifact_dir/release.elf.txt"
+          ldd "$exe" | tee "$artifact_dir/release.ldd.txt"
+          if grep -Eq '=>[[:space:]]+not found' "$artifact_dir/release.ldd.txt"; then
+            exit 1
+          fi
+          for dependency in libgtk-3.so.0 libwebkit2gtk-4.1.so.0 libssl.so.3; do
+            grep -Fq "$dependency => /" "$artifact_dir/release.ldd.txt"
+          done
+          hash=$(sha256sum "$exe")
+          printf 'PEAR_LINUX_PACKAGE_SHA256 %s\n' "${hash%% *}" | tee -a "$artifact_dir/qa.log"
+          cp README.md "$package_dir/README.md"
+          cat > "$package_dir/START.md" <<'START'
+          # Run Pear Desktop Rust Preview on Ubuntu 24.04 x64
+
+          Install the runtime libraries, extract the archive, and start the app from a desktop session.
+
+          ```sh
+          sudo apt install libgtk-3-0t64 libwebkit2gtk-4.1-0 libssl3t64
+          tar -xzf pear-rust-preview-linux-x64.tar.gz
+          cd pear-rust-preview-linux-x64
+          ./pear-desktop-preview
+          ```
+
+          Review the terms and privacy policy before enabling YouTube services.
+          START
+      - name: Verify packaged first launch under Xvfb without arguments
+        timeout-minutes: 2
+        run: |
+          artifact_dir="$RUNNER_TEMP/pear-linux-qa"
+          exe="$artifact_dir/pear-rust-preview-linux-x64/pear-desktop-preview"
+          profile=$(mktemp -d "$RUNNER_TEMP/pear-linux-first-launch.XXXXXX")
+          trap 'rm -rf -- "$profile"' EXIT
+          printf '%s\n' '{"entries":["M7lc1UVf-VE"],"current":"M7lc1UVf-VE","titles":{}}' > "$profile/queue.json"
+          sha256sum "$profile/queue.json" > "$profile/fixture.sha256"
+          timeout --kill-after=5s 50s dbus-run-session -- xvfb-run -a bash -s -- "$exe" "$profile" "$artifact_dir" <<'SMOKE'
+          set -euo pipefail
+          exe=$1
+          profile=$2
+          artifact_dir=$3
+          env -u PEAR_YOUTUBE_API_KEY_FILE \
+            PEAR_PREVIEW_QUEUE_DIR="$profile" XDG_CACHE_HOME="$profile/cache" \
+            XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data" GDK_BACKEND=x11 \
+            "$exe" > "$artifact_dir/first-launch.stdout.log" 2> "$artifact_dir/first-launch.stderr.log" &
+          preview_pid=$!
+          cleanup() {
+            kill -TERM "$preview_pid" 2>/dev/null || true
+            for _ in {1..20}; do
+              kill -0 "$preview_pid" 2>/dev/null || break
+              sleep 0.1
+            done
+            kill -KILL "$preview_pid" 2>/dev/null || true
+            wait "$preview_pid" || true
+          }
+          trap cleanup EXIT
+          trap 'trap - EXIT; cleanup; exit 124' TERM
+
+          for _ in {1..120}; do
+            kill -0 "$preview_pid"
+            test ! -e "$profile/consent.json"
+            xwininfo -root -tree > "$profile/windows.txt"
+            if test -f "$profile/queue.lock" && grep -Fq '"Pear Desktop Rust Preview"' "$profile/windows.txt"; then
+              sleep 1
+              kill -0 "$preview_pid"
+              xwininfo -root -tree > "$profile/windows.txt"
+              grep -Fq '"Pear Desktop Rust Preview"' "$profile/windows.txt"
+              exit 0
+            fi
+            sleep 0.25
+          done
+          echo 'The packaged preview did not open a window and create queue.lock.' >&2
+          exit 1
+          SMOKE
+          sha256sum --check --status "$profile/fixture.sha256"
+          test ! -e "$profile/consent.json"
+          echo 'PEAR_LINUX_PACKAGE_SMOKE queue_lock=true window=true fixture_unchanged=true consent_created=false' |
+            tee -a "$artifact_dir/qa.log"
+      - name: Package the verified Linux preview
+        run: |
+          artifact_dir="$RUNNER_TEMP/pear-linux-qa"
+          cd "$artifact_dir"
+          package=pear-rust-preview-linux-x64
+          tar -czf "$package.tar.gz" "$package"
+          tar -tzf "$package.tar.gz"
+          tar -xOf "$package.tar.gz" "$package/pear-desktop-preview" | cmp - "$package/pear-desktop-preview"
+          sha256sum "$package.tar.gz" | tee "$package.tar.gz.sha256"
+      - name: Upload Linux QA logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: pear-rust-linux-qa-logs
+          path: |
+            ${{ runner.temp }}/pear-linux-qa/qa.log
+            ${{ runner.temp }}/pear-linux-qa/release.elf.txt
+            ${{ runner.temp }}/pear-linux-qa/release.ldd.txt
+            ${{ runner.temp }}/pear-linux-qa/first-launch.stdout.log
+            ${{ runner.temp }}/pear-linux-qa/first-launch.stderr.log
+      - name: Upload the verified Linux x64 package
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: pear-rust-preview-linux-x64
+          path: |
+            ${{ runner.temp }}/pear-linux-qa/pear-rust-preview-linux-x64.tar.gz
+            ${{ runner.temp }}/pear-linux-qa/pear-rust-preview-linux-x64.tar.gz.sha256
           if-no-files-found: error
