@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-8XD95nd53djct/0SlX/RATT+7qB6Yy1oV7m/F39bdjs=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-vL37oukc/beKco5DiMoTa6y5FC7IeqKFWVw4Rg3YXWU=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
   <title>YouTube player</title>
   <style>
     html, body { width: 100%; height: 100%; margin: 0; background: #000; }
@@ -205,7 +205,9 @@
           try {
             if (pendingAdvance !== null) sourceReplayed = observeAdvance(videoId);
             if (pendingAdvance === null) {
-              if (state === 1 && videoId !== null) playedVideoId = videoId;
+              // Recover a missing identity only while the official player still confirms PLAYING.
+              if (playedVideoId === null && state === 1 && videoId !== null
+                  && optionalValue(() => player.getPlayerState()) === 1) playedVideoId = videoId;
               const length = boundedSeconds(player.getDuration());
               const time = boundedSeconds(player.getCurrentTime());
               const rate = optionalValue(() => player.getPlaybackRate());
@@ -226,7 +228,8 @@
           }
         }
         return {
-          ready, videoId, sourceReplayed, hasPlayed: ready && hasPlayed, state: ready ? state : null,
+          ready, videoId, sourceReplayed, nativePlaybackConfirmed: canControlNativePlayback(videoId),
+          hasPlayed: ready && hasPlayed, state: ready ? state : null,
           volume, muted,
           position, positionMs, playbackRate, playbackRates, duration, ended: ready && ended, error, blocked,
         };
@@ -251,6 +254,21 @@
         }
       }
 
+      function canControlNativePlayback(videoId) {
+        return ready && hasPlayed && !blocked && error === null && pendingAdvance === null
+          && validVideoId(videoId) && playedVideoId === videoId
+          && [0, 1, 2, 3].includes(optionalValue(() => player.getPlayerState()));
+      }
+
+      function setPlayback(playing, expectedId) {
+        command(() => {
+          if (expectedId !== undefined
+              && (reportedVideoId() !== expectedId || !canControlNativePlayback(expectedId))) return;
+          if (playing) player.playVideo();
+          else player.pauseVideo();
+        });
+      }
+
       function advance(from, to) {
         if (!validVideoId(from) || !validVideoId(to) || from === to) return;
         command(() => {
@@ -269,8 +287,8 @@
       Object.defineProperty(window, 'pearIframePlayer', { value: Object.freeze({
         snapshot,
         advance,
-        play: () => command(() => player.playVideo()),
-        pause: () => command(() => player.pauseVideo()),
+        play: (expectedId) => setPlayback(true, expectedId),
+        pause: (expectedId) => setPlayback(false, expectedId),
         setVolume: (volume) => {
           if (validVolume(volume)) optionalCommand(canSetVolume, () => player.setVolume(volume), () => {
             volumeSetterFailed = true;

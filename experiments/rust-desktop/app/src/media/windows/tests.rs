@@ -64,6 +64,7 @@ fn windows_smtc_native_smoke() -> Result<()> {
         status: Status::Playing,
         can_previous: false,
         can_next: true,
+        can_stop: true,
         can_control: true,
     };
     backend.update(Some(state.clone()));

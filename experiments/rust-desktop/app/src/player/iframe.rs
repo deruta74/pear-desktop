@@ -264,11 +264,19 @@ fn wrapper_eval(script: &str) -> String {
 pub(super) enum Action {
     Play,
     Pause,
+    #[cfg(any(target_os = "macos", test))]
+    NativePlayback {
+        expected_id: String,
+        playing: bool,
+    },
     Seek(u32),
     SetVolume(u8),
     SetMuted(bool),
     SetRate(f64),
-    Advance { from: String, to: String },
+    Advance {
+        from: String,
+        to: String,
+    },
 }
 
 impl Action {
@@ -276,6 +284,16 @@ impl Action {
         Ok(match self {
             Self::Play => "window.pearIframePlayer?.play()".into(),
             Self::Pause => "window.pearIframePlayer?.pause()".into(),
+            #[cfg(any(target_os = "macos", test))]
+            Self::NativePlayback {
+                expected_id,
+                playing,
+            } if valid_id(&expected_id) => {
+                let method = if playing { "play" } else { "pause" };
+                format!("window.pearIframePlayer?.{method}({expected_id:?})")
+            }
+            #[cfg(any(target_os = "macos", test))]
+            Self::NativePlayback { .. } => return Err("Invalid YouTube video ID.".into()),
             Self::Seek(seconds) if seconds <= MAX_SECONDS => {
                 format!("window.pearIframePlayer?.seek({seconds})")
             }
@@ -308,6 +326,8 @@ pub(super) struct Snapshot {
     pub(super) has_played: bool,
     pub(super) video_id: Option<String>,
     #[serde(default)]
+    native_playback_confirmed: bool,
+    #[serde(default)]
     pub(super) source_replayed: bool,
     #[serde(default, deserialize_with = "deserialize_volume")]
     pub(super) volume: Option<u8>,
@@ -329,6 +349,17 @@ pub(super) struct Snapshot {
 }
 
 impl Snapshot {
+    #[cfg(any(target_os = "macos", test))]
+    pub(super) fn allows_playback_for(&self, expected_id: &str) -> bool {
+        self.native_playback_confirmed
+            && self.ready
+            && self.has_played
+            && self.video_id.as_deref() == Some(expected_id)
+            && !self.blocked
+            && self.error.is_none()
+            && !self.source_replayed
+    }
+
     pub(super) fn parse(json: &str) -> Option<Self> {
         if json.len() > MAX_SNAPSHOT_BYTES {
             return None;
@@ -347,6 +378,13 @@ impl Snapshot {
                 .video_id
                 .as_deref()
                 .is_some_and(|id| !valid_id(id) || !snapshot.ready)
+            || (snapshot.native_playback_confirmed
+                && (!snapshot.ready
+                    || !snapshot.has_played
+                    || snapshot.video_id.is_none()
+                    || snapshot.blocked
+                    || snapshot.error.is_some()
+                    || snapshot.source_replayed))
             || snapshot
                 .error
                 .is_some_and(|error| !matches!(error, -1 | 2 | 5 | 100 | 101 | 150 | 153))
@@ -605,6 +643,36 @@ mod tests {
     }
 
     #[test]
+    fn native_playback_requires_confirmation_for_the_reported_video() {
+        let mut sample: serde_json::Value = serde_json::from_str(PLAYING).unwrap();
+        sample["videoId"] = serde_json::json!(ID);
+        sample["state"] = serde_json::json!(2);
+        let unconfirmed = Snapshot::parse(&sample.to_string()).unwrap();
+        assert!(unconfirmed.has_played);
+        assert!(!unconfirmed.allows_playback_for(ID));
+
+        sample["nativePlaybackConfirmed"] = serde_json::json!(true);
+        let confirmed = Snapshot::parse(&sample.to_string()).unwrap();
+        assert!(confirmed.allows_playback_for(ID));
+        assert!(!confirmed.allows_playback_for("jNQXAC9IVRw"));
+
+        for (field, value) in [
+            ("videoId", serde_json::Value::Null),
+            ("hasPlayed", serde_json::json!(false)),
+            ("blocked", serde_json::json!(true)),
+            ("error", serde_json::json!(100)),
+            ("sourceReplayed", serde_json::json!(true)),
+        ] {
+            let mut conflicting = sample.clone();
+            conflicting[field] = value;
+            assert!(
+                Snapshot::parse(&conflicting.to_string()).is_none(),
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
     fn accepts_replay_signal_only_with_ready_identity_and_no_stale_state() {
         assert!(!Snapshot::parse(PLAYING).unwrap().source_replayed);
 
@@ -700,6 +768,34 @@ mod tests {
         assert_eq!(
             Action::SetMuted(false).command().unwrap(),
             "window.pearIframePlayer?.setMuted(false)"
+        );
+    }
+
+    #[test]
+    fn native_transport_commands_include_a_validated_expected_video_id() {
+        let command = |expected_id: &str, playing| {
+            Action::NativePlayback {
+                expected_id: expected_id.into(),
+                playing,
+            }
+            .command()
+        };
+        assert_eq!(
+            command(ID, true).unwrap(),
+            r#"window.pearIframePlayer?.play("M7lc1UVf-VE")"#,
+        );
+        assert_eq!(
+            command(ID, false).unwrap(),
+            r#"window.pearIframePlayer?.pause("M7lc1UVf-VE")"#,
+        );
+        assert!(command("M7lc1UVf-\"E", true).is_err());
+        assert_eq!(
+            Action::Play.command().unwrap(),
+            "window.pearIframePlayer?.play()"
+        );
+        assert_eq!(
+            Action::Pause.command().unwrap(),
+            "window.pearIframePlayer?.pause()"
         );
     }
 

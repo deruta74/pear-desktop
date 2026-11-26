@@ -14,7 +14,7 @@ use objc2_media_player::{
     MPRemoteCommandCenter, MPRemoteCommandEvent, MPRemoteCommandHandlerStatus,
 };
 
-use super::{Command, Request, State, Status};
+use super::{Command, Metadata, Request, State, Status};
 
 const POSITION_DRIFT_MS: u64 = 500;
 const COMMANDS: [Command; 6] = [
@@ -42,7 +42,7 @@ impl From<&State> for Route {
                 control && !playing,
                 control && playing,
                 control,
-                control,
+                control && state.can_stop,
                 control && state.can_previous,
                 control && state.can_next,
             ],
@@ -52,6 +52,7 @@ impl From<&State> for Route {
 
 struct Anchor {
     generation: u64,
+    metadata: Arc<Metadata>,
     duration_ms: u64,
     position_ms: u64,
     position_revision: u32,
@@ -64,6 +65,7 @@ impl Anchor {
     fn capture(state: &State, time: Instant) -> Self {
         Self {
             generation: state.generation,
+            metadata: Arc::clone(&state.metadata),
             duration_ms: state.duration_ms,
             position_ms: state.position_ms,
             position_revision: state.position_revision,
@@ -75,6 +77,7 @@ impl Anchor {
 
     fn needs_update(&self, state: &State, time: Instant) -> bool {
         if self.generation != state.generation
+            || self.metadata != state.metadata
             || self.position_revision != state.position_revision
             || self.duration_ms != state.duration_ms
             || self.speed != state.speed
@@ -259,7 +262,6 @@ impl Drop for Backend {
 }
 #[cfg(test)]
 mod tests {
-    use super::super::{Metadata, Status};
     use super::*;
     use std::time::Duration;
 
@@ -278,6 +280,7 @@ mod tests {
             status,
             can_previous: false,
             can_next: true,
+            can_stop: true,
             can_control: true,
         }
     }
@@ -322,6 +325,15 @@ mod tests {
     }
 
     #[test]
+    fn refreshes_paused_track_details_when_metadata_becomes_available() {
+        let now = Instant::now();
+        let mut paused = state(Status::Paused);
+        let anchor = Anchor::capture(&paused, now);
+        Arc::make_mut(&mut paused.metadata).artist = Some("Test artist".into());
+        assert!(anchor.needs_update(&paused, now));
+    }
+
+    #[test]
     fn enables_only_the_available_commands() {
         let mut item = state(Status::Playing);
         assert_eq!(
@@ -334,6 +346,11 @@ mod tests {
         assert_eq!(
             Route::from(&item).available,
             [true, false, true, true, true, false]
+        );
+        item.can_stop = false;
+        assert_eq!(
+            Route::from(&item).available,
+            [true, false, true, false, true, false]
         );
         item.can_control = false;
         assert_eq!(Route::from(&item).available, [false; COMMANDS.len()]);

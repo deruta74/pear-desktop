@@ -16,6 +16,7 @@ fn native_commands_follow_the_current_generation_and_capabilities() {
         status: Status::Paused,
         can_previous: false,
         can_next: true,
+        can_stop: true,
         can_control: true,
     };
     let play = Request {
@@ -55,6 +56,7 @@ fn windows_controls_only_dispatch_available_buttons_for_the_current_track() {
         status: Status::Paused,
         can_previous: false,
         can_next: true,
+        can_stop: true,
         can_control: true,
     };
     let request = |state: &State, command| windows_request(Some(state), command);
@@ -69,6 +71,9 @@ fn windows_controls_only_dispatch_available_buttons_for_the_current_track() {
     assert_eq!(request(&state, Command::Previous), None);
     assert!(request(&state, Command::Next).is_some());
     assert!(request(&state, Command::Stop).is_some());
+    state.can_stop = false;
+    assert_eq!(request(&state, Command::Stop), None);
+    state.can_stop = true;
 
     state.status = Status::Playing;
     assert_eq!(request(&state, Command::Play), None);

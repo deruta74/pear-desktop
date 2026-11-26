@@ -738,6 +738,7 @@ pub(crate) fn run(initial_files: Vec<PathBuf>) -> Result<()> {
                             status,
                             can_previous: previous.is_some(),
                             can_next: next.is_some(),
+                            can_stop: true,
                             can_control: !opening && snapshot.error.is_none(),
                         }
                     }),

@@ -337,6 +337,7 @@ mod tests {
             status: Status::Playing,
             can_previous: false,
             can_next: true,
+            can_stop: true,
             can_control: true,
         };
         let fields = |state: &State| {
@@ -405,6 +406,7 @@ mod tests {
             status: Status::Playing,
             can_previous: false,
             can_next: true,
+            can_stop: true,
             can_control: true,
         };
         let mut tick = original.clone();

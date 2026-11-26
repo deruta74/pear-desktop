@@ -11,6 +11,8 @@ mod lyrics;
 mod lyrics_lookup;
 mod metadata;
 mod metadata_lookup;
+#[cfg(target_os = "macos")]
+mod native_media;
 mod platform;
 #[cfg(target_os = "linux")]
 pub(crate) use platform::DeadlineTimer;
@@ -84,6 +86,8 @@ enum PlayerEvent {
     SearchResults(u64, catalog::Response),
     TransportCommitted(u64),
     TransportSample(u64, u64, String),
+    #[cfg(target_os = "macos")]
+    SystemMedia(crate::media::Request),
     LyricsResult(u64, lyrics_lookup::Response),
     Account(u32, account::Outcome),
 }
@@ -829,6 +833,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         (None, None, None)
     };
     let mut transport = mode.iframe_player.then(transport::Transport::default);
+    #[cfg(target_os = "macos")]
+    let mut native_media = native_media::Session::new(event_loop.create_proxy());
     let mut auto_advance = advance::Advance::default();
     auto_advance.set_repeat_queue(repeat_queue);
     let make_lyrics_lookup = {
@@ -880,6 +886,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             _ => false,
         };
         if quit_requested {
+            #[cfg(target_os = "macos")]
+            native_media.update(None);
             account_shutdown_deadline = account.as_mut().and_then(|panel| panel.begin_shutdown(Instant::now()));
             *flow = if let Some(deadline) = account_shutdown_deadline {
                 window.set_visible(false);
@@ -1225,6 +1233,18 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     receive_account_outcome(panel, stamp, outcome, &service_events)
                 })
             }
+            #[cfg(target_os = "macos")]
+            Event::UserEvent(PlayerEvent::SystemMedia(request)) => {
+                if approved && mode.iframe_player && !mode.smoke
+                    && public_playlist.is_none() && !auto_advance.pending() && player_error.is_none()
+                    && let Some(id) = library.state().current.as_deref()
+                    && let Some(playing) = native_media.requested_playback(request, generation, id)
+                    && let (Some(transport), Some(video)) = (&mut transport, &current_player)
+                {
+                    let _ = transport.perform_native_playback(video, id, playing, Instant::now());
+                }
+                false
+            }
             Event::UserEvent(PlayerEvent::Command(message)) => {
                 acknowledged_sequence = Some(message.sequence);
                 // Appending entries can succeed without changing the selection.
@@ -1412,6 +1432,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 let name = match &action {
                                     iframe::Action::Play => "play",
                                     iframe::Action::Pause => "pause",
+                                    #[cfg(any(target_os = "macos", test))]
+                                    iframe::Action::NativePlayback { .. } => "native playback",
                                     iframe::Action::Seek(_) => "seek",
                                 iframe::Action::Advance { .. } => "advance",
                                     iframe::Action::SetVolume(_) => "volume",
@@ -1540,6 +1562,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
 
         let update_queue = update_queue || account_expired;
         if reload_player {
+            #[cfg(target_os = "macos")]
+            native_media.update(None);
             generation += 1;
             load_deadline = None;
             loading_slow = false;
@@ -1677,6 +1701,35 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             && let Err(reason) = transport.render(&controls, !switching && library.state().current.is_some())
         {
             eprintln!("Could not update the playback controls: {reason}");
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let item = if approved && mode.iframe_player && !mode.smoke && !switching
+                && public_playlist.is_none() && player_error.is_none() && current_player.is_some()
+            {
+                let now = Instant::now();
+                let queue = library.state();
+                queue.current.as_deref().and_then(|video_id| {
+                    let transport = transport.as_ref()?;
+                    let (sample, sampled_at) = transport.fresh_snapshot(now)?;
+                    let metadata = lookup.as_ref().and_then(metadata_lookup::Lookup::metadata);
+                    let title = metadata.map(|metadata| metadata.title.as_str())
+                        .or_else(|| queue.titles.get(video_id).map(String::as_str))
+                        .unwrap_or(video_id);
+                    Some(native_media::Item {
+                        player_generation: generation,
+                        video_id,
+                        title,
+                        artist: metadata.map(|metadata| metadata.channel.as_str()),
+                        sample,
+                        sample_age: now.duration_since(sampled_at),
+                        can_control: transport.native_playback_available(video_id, now),
+                    })
+                })
+            } else {
+                None
+            };
+            native_media.update(item);
         }
     });
 }

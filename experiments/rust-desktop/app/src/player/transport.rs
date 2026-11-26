@@ -124,6 +124,46 @@ impl Transport {
         self.snapshot.as_ref()
     }
 
+    #[cfg(any(target_os = "macos", test))]
+    pub(super) fn fresh_snapshot(&self, now: Instant) -> Option<(&Snapshot, Instant)> {
+        let sampled_at = self.sampled_at?;
+        let age = now.checked_duration_since(sampled_at)?;
+        self.snapshot
+            .as_ref()
+            .filter(|_| age < POLL_TIMEOUT)
+            .map(|snapshot| (snapshot, sampled_at))
+    }
+
+    #[cfg(any(target_os = "macos", test))]
+    pub(super) fn native_playback_available(&self, expected_id: &str, now: Instant) -> bool {
+        !self.refresh_controls
+            && self
+                .fresh_snapshot(now)
+                .is_some_and(|(state, _)| state.allows_playback_for(expected_id))
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn perform_native_playback(
+        &mut self,
+        view: &WebView,
+        expected_id: &str,
+        playing: bool,
+        now: Instant,
+    ) -> Result<()> {
+        if !self.native_playback_available(expected_id, now) {
+            return Err("Native playback controls are unavailable for this video.".into());
+        }
+        Page::perform(
+            view,
+            Action::NativePlayback {
+                expected_id: expected_id.to_owned(),
+                playing,
+            },
+        )?;
+        self.refresh_after_command(now);
+        Ok(())
+    }
+
     pub(super) fn confirmed_output(&mut self, time: Instant) -> AudioOutput {
         let (volume, muted) = self
             .observed_at(time)
@@ -250,6 +290,87 @@ mod tests {
     use super::*;
 
     const PAUSED: &str = r#"{"ready":true,"hasPlayed":true,"state":2,"position":10,"duration":20,"ended":false,"error":null,"blocked":false}"#;
+    const VIDEO_ID: &str = "M7lc1UVf-VE";
+
+    fn native_playback_sample() -> serde_json::Value {
+        let mut sample: serde_json::Value = serde_json::from_str(PAUSED).unwrap();
+        sample["videoId"] = serde_json::json!(VIDEO_ID);
+        sample["nativePlaybackConfirmed"] = serde_json::json!(true);
+        sample
+    }
+
+    #[test]
+    fn native_playback_requires_a_fresh_sample_before_the_poll_expires() {
+        let now = Instant::now();
+        let transport = Transport {
+            snapshot: Snapshot::parse(&native_playback_sample().to_string()),
+            sampled_at: Some(now),
+            ..Transport::default()
+        };
+        assert!(transport.fresh_snapshot(now + POLL_INTERVAL).is_some());
+        assert!(transport.fresh_snapshot(now + POLL_TIMEOUT).is_none());
+        assert!(transport.native_playback_available(VIDEO_ID, now + POLL_INTERVAL));
+        assert!(!transport.native_playback_available(VIDEO_ID, now + POLL_TIMEOUT));
+    }
+
+    #[test]
+    fn native_playback_is_ineligible_until_a_post_command_sample_arrives() {
+        let mut transport = Transport::default();
+        transport.reset(true);
+        let now = Instant::now();
+        let sample = native_playback_sample().to_string();
+        let sequence = transport.begin(now).unwrap();
+        assert!(transport.receive(sequence, &sample, now));
+        assert!(transport.native_playback_available(VIDEO_ID, now));
+
+        let command = now + POLL_INTERVAL;
+        let before = transport.begin(command).unwrap();
+        transport.refresh_after_command(command);
+        assert!(!transport.receive(before, &sample, command));
+        assert!(!transport.native_playback_available(VIDEO_ID, command));
+
+        let refresh = command + COMMAND_REFRESH;
+        let sequence = transport.begin(refresh).unwrap();
+        assert!(transport.receive(sequence, "null", refresh));
+        assert!(!transport.native_playback_available(VIDEO_ID, refresh));
+        let refresh = refresh + POLL_INTERVAL;
+        let sequence = transport.begin(refresh).unwrap();
+        assert!(transport.receive(sequence, &sample, refresh));
+        assert!(transport.native_playback_available(VIDEO_ID, refresh));
+    }
+
+    #[test]
+    fn native_playback_requires_the_matching_previously_played_video() {
+        let now = Instant::now();
+        let mut sample = native_playback_sample();
+        let mut transport = Transport {
+            snapshot: Snapshot::parse(&sample.to_string()),
+            sampled_at: Some(now),
+            ..Transport::default()
+        };
+        assert!(transport.native_playback_available(VIDEO_ID, now));
+        assert!(!transport.native_playback_available("jNQXAC9IVRw", now));
+        for (field, value) in [
+            ("videoId", serde_json::Value::Null),
+            ("hasPlayed", serde_json::json!(false)),
+            ("blocked", serde_json::json!(true)),
+            ("error", serde_json::json!(100)),
+        ] {
+            let mut ineligible = sample.clone();
+            ineligible["nativePlaybackConfirmed"] = serde_json::json!(false);
+            ineligible[field] = value;
+            transport.snapshot = Some(Snapshot::parse(&ineligible.to_string()).unwrap());
+            assert!(
+                !transport.native_playback_available(VIDEO_ID, now),
+                "{field}"
+            );
+        }
+
+        sample["ended"] = serde_json::json!(true);
+        sample["state"] = serde_json::json!(0);
+        transport.snapshot = Some(Snapshot::parse(&sample.to_string()).unwrap());
+        assert!(transport.native_playback_available(VIDEO_ID, now));
+    }
 
     #[test]
     fn transport_tracks_buffering_after_playback_without_a_visible_panel() {

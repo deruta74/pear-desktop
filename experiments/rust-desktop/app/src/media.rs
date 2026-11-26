@@ -60,6 +60,7 @@ pub(crate) struct State {
     pub(crate) status: Status,
     pub(crate) can_previous: bool,
     pub(crate) can_next: bool,
+    pub(crate) can_stop: bool,
     pub(crate) can_control: bool,
 }
 
@@ -71,6 +72,7 @@ impl State {
             && match request.command {
                 Command::Previous => self.can_previous,
                 Command::Next => self.can_next,
+                Command::Stop => self.can_stop,
                 _ => true,
             }
     }
