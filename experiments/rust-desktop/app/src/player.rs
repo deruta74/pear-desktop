@@ -9,6 +9,7 @@ mod lyrics_lookup;
 mod metadata;
 mod metadata_lookup;
 mod platform;
+mod playlists;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod transport;
 use std::{
@@ -105,6 +106,7 @@ struct QueueView<'a> {
     metadata_problem: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     catalog: Option<&'a catalog::View>,
+    saved_playlists: playlists::View<'a>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     lyrics: Option<&'a lyrics_lookup::View>,
@@ -417,6 +419,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         .ok_or("Queue directory is unavailable")?
         .to_owned();
     let mut library = Library::load(queue_path)?;
+    let mut playlists = playlists::Panel::load(data_dir.join("playlists.json"));
     let mut event_loop_builder = EventLoopBuilder::<PlayerEvent>::with_user_event();
     platform::configure_event_loop(&mut event_loop_builder)?;
     let event_loop = event_loop_builder.build();
@@ -744,6 +747,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             catalog.submit(&query, Instant::now());
                         }
                     }
+                    Command::Playlist(command) => match playlists.apply(command, &mut library) {
+                        Ok(changed) => reload_player = changed,
+                        Err(reason) => error = Some(reason.to_string()),
+                    },
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     Command::FindLyrics { title, artist } => {
                         if let Some(lyrics) = &mut lyrics {
@@ -862,6 +869,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     metadata: lookup.as_ref().and_then(metadata_lookup::Lookup::metadata),
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
                     catalog: catalog.as_ref().map(catalog::Catalog::view),
+                    saved_playlists: playlists.view(),
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     lyrics: lyrics.as_ref().and_then(lyrics_lookup::Lookup::view),
                 },
@@ -926,6 +934,32 @@ mod tests {
             assert!(controls_command(&command(rejected, payload.clone())).is_none());
         }
         assert!(controls_command(&command(CONTROLS_URL, " ".repeat(MAX_IPC_BYTES + 1))).is_none());
+    }
+
+    #[test]
+    fn accepts_known_playlist_commands_without_extra_fields() {
+        let command = |payload: &str| {
+            let request = Request::builder()
+                .uri(CONTROLS_URL)
+                .body(format!(r#"{{"sequence":1,"command":{payload}}}"#))
+                .unwrap();
+            controls_command(&request)
+        };
+        assert!(matches!(
+            command(r#"{"type":"save_playlist","name":"Evening"}"#),
+            Some(ControlMessage {
+                command: Command::Playlist(crate::library::playlists::Command::SavePlaylist { name }),
+                ..
+            }) if name == "Evening"
+        ));
+        for invalid in [
+            r#"{"type":"save_playlist","name":"Evening","id":1}"#,
+            r#"{"type":"close_playlist","also_remove":true}"#,
+            r#"{"type":"select_playlist_track","id":1}"#,
+            r#"{"type":"append_playlist","id":-1}"#,
+        ] {
+            assert!(command(invalid).is_none(), "{invalid}");
+        }
     }
 
     #[test]

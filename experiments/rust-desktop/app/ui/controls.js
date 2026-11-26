@@ -27,6 +27,7 @@ const filter = document.getElementById('queue-filter');
 const viewSwitcherTemplate = document.getElementById('view-switcher-template');
 const catalogTemplate = document.getElementById('catalog-template');
 const lyricsTemplate = document.getElementById('lyrics-template');
+const libraryTemplate = document.getElementById('library-template');
 const panel = catalogTemplate.parentElement;
 const encoder = new TextEncoder();
 // The native transport polls once per second.
@@ -45,6 +46,9 @@ let catalogAddFeedback = null;
 let renderedLyrics = null;
 let lyricsView = null;
 let lyricsError = '';
+let renderedLibrary = null;
+let libraryView = null;
+let libraryFeedback = null;
 let lyricsClock = null;
 let lyricCueTimer = null;
 let lyricCueDeadline = null;
@@ -63,6 +67,11 @@ function commandProblem(message, context) {
     updateLyrics(renderedLyrics);
     return;
   }
+  if (context === 'library') {
+    libraryFeedback = { message, error: true };
+    updateLibrary(renderedLibrary);
+    return;
+  }
   if (context === 'search') catalogSearchError = message;
   else catalogAddFeedback = { message, error: true };
   updateCatalog(renderedCatalog);
@@ -71,6 +80,12 @@ function commandProblem(message, context) {
 function primaryInput() {
   if (activeView === 'search') return catalogView?.query ?? source;
   if (activeView === 'lyrics') return lyricsView?.track ?? source;
+  if (activeView === 'library' && libraryView) {
+    if (renderedLibrary?.selected) return libraryView.title;
+    return libraryView.saveName.disabled
+      ? libraryView.heading
+      : libraryView.saveName;
+  }
   return source;
 }
 
@@ -83,6 +98,8 @@ function interruptsLyricsClock(command) {
       return true;
     case 'select':
       return command.id !== renderedState?.current;
+    case 'select_playlist_track':
+      return command.video !== renderedState?.current;
     case 'remove':
       return command.id === renderedState?.current;
     default:
@@ -97,6 +114,7 @@ function send(command, context = 'queue') {
   if (context === 'search' || context === 'result-add')
     catalogAddFeedback = null;
   if (context === 'lyrics') lyricsError = '';
+  if (context === 'library') libraryFeedback = null;
   const sequence = nextSequence;
   const message = JSON.stringify({ sequence, command });
   if (message.length > 4096 || encoder.encode(message).length > 4096) {
@@ -142,6 +160,7 @@ function send(command, context = 'queue') {
   }
   if (catalogView) updateCatalog(renderedCatalog);
   if (lyricsView) updateLyrics(renderedLyrics);
+  if (libraryView) updateLibrary(renderedLibrary);
 }
 
 function formatTime(seconds) {
@@ -411,21 +430,24 @@ function updateQueue(entries, current, entryTitles) {
 function updateViews() {
   if (
     (activeView === 'search' && !catalogView) ||
-    (activeView === 'lyrics' && !lyricsView)
+    (activeView === 'lyrics' && !lyricsView) ||
+    (activeView === 'library' && !libraryView)
   ) {
     activeView = 'queue';
   }
 
-  const hasOptionalView = Boolean(catalogView || lyricsView);
+  const hasOptionalView = Boolean(catalogView || lyricsView || libraryView);
   const active = document.activeElement;
   let restoreFocus = false;
   if (hasOptionalView && !viewSwitcher) {
     viewSwitcher =
       viewSwitcherTemplate.content.firstElementChild.cloneNode(true);
-    const [queueButton, searchButton, lyricsButton] = viewSwitcher.children;
+    const [queueButton, searchButton, lyricsButton, libraryButton] =
+      viewSwitcher.children;
     queueButton.addEventListener('click', focusQueueAdd);
     searchButton.addEventListener('click', () => showView('search'));
     lyricsButton.addEventListener('click', () => showView('lyrics'));
+    libraryButton.addEventListener('click', () => showView('library'));
     panel.querySelector('.panel-header').append(viewSwitcher);
   } else if (!hasOptionalView && viewSwitcher) {
     restoreFocus = viewSwitcher.contains(active);
@@ -435,23 +457,31 @@ function updateViews() {
   panel.toggleAttribute('data-view-switcher', hasOptionalView);
 
   if (viewSwitcher) {
-    const [queueButton, searchButton, lyricsButton] = viewSwitcher.children;
+    const [queueButton, searchButton, lyricsButton, libraryButton] =
+      viewSwitcher.children;
+    const names = ['Queue'];
+    if (catalogView) names.push('search');
+    if (lyricsView) names.push('lyrics');
+    if (libraryView) names.push('library');
+    const lastName = names.pop();
     viewSwitcher.setAttribute(
       'aria-label',
-      catalogView && lyricsView
-        ? 'Queue, search and lyrics'
-        : catalogView
-          ? 'Queue and search'
-          : 'Queue and lyrics',
+      `${names.join(', ')} and ${lastName}`,
     );
     searchButton.hidden = !catalogView;
     lyricsButton.hidden = !lyricsView;
+    libraryButton.hidden = !libraryView;
     restoreFocus =
       (active === searchButton && searchButton.hidden) ||
-      (active === lyricsButton && lyricsButton.hidden);
+      (active === lyricsButton && lyricsButton.hidden) ||
+      (active === libraryButton && libraryButton.hidden);
     queueButton.setAttribute('aria-pressed', String(activeView === 'queue'));
     searchButton.setAttribute('aria-pressed', String(activeView === 'search'));
     lyricsButton.setAttribute('aria-pressed', String(activeView === 'lyrics'));
+    libraryButton.setAttribute(
+      'aria-pressed',
+      String(activeView === 'library'),
+    );
   }
 
   form.hidden = queuePanel.hidden = activeView !== 'queue';
@@ -466,6 +496,7 @@ function updateViews() {
       lyricsView.form.hidden || !lyricsView.lines.childElementCount;
     if (lyricsView.form.hidden) lyricsView.gap.removeAttribute('data-running');
   }
+  if (libraryView) libraryView.element.hidden = activeView !== 'library';
   if (restoreFocus) primaryInput().focus();
   updateLyricsTiming();
 }
@@ -614,6 +645,302 @@ function updateCatalog(catalog) {
   );
   if (view.addFeedback.textContent !== addMessage) {
     view.addFeedback.textContent = addMessage;
+  }
+  return false;
+}
+
+function playlistName(input) {
+  const name = input.value.trim();
+  if (name && [...name].length <= 80) return name;
+  commandProblem('Enter a playlist name from 1 to 80 characters.', 'library');
+  input.focus();
+  return null;
+}
+
+function mountLibrary() {
+  const element = libraryTemplate.content.firstElementChild.cloneNode(true);
+  const get = (id) => element.querySelector(`#${id}`);
+  const view = {
+    element,
+    browser: get('playlist-browser'),
+    heading: get('playlist-heading'),
+    saveForm: get('save-playlist'),
+    saveName: get('save-playlist-name'),
+    save: get('save-playlist-button'),
+    detail: get('playlist-detail'),
+    back: get('close-playlist'),
+    title: get('playlist-title'),
+    actions: get('playlist-actions'),
+    append: get('append-playlist'),
+    rename: get('edit-playlist'),
+    remove: get('delete-playlist'),
+    renameForm: get('rename-playlist'),
+    renameName: get('rename-playlist-name'),
+    saveRename: get('rename-playlist-button'),
+    cancelRename: get('cancel-rename'),
+    confirm: get('confirm-playlist-removal'),
+    cancelRemoval: get('cancel-removal'),
+    removePermanently: get('remove-playlist-button'),
+    problem: get('library-problem'),
+    feedback: get('library-feedback'),
+    empty: get('library-empty'),
+    list: get('saved-playlists'),
+    tracks: get('playlist-tracks'),
+    mode: null,
+    listScroll: 0,
+  };
+
+  view.saveForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (pending || view.save.disabled) return;
+    const name = playlistName(view.saveName);
+    if (name) send({ type: 'save_playlist', name }, 'library');
+  });
+  view.renameForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (pending || view.saveRename.disabled) return;
+    const name = playlistName(view.renameName);
+    if (name)
+      send(
+        { type: 'rename_playlist', id: renderedLibrary.selected.id, name },
+        'library',
+      );
+  });
+  view.list.addEventListener('click', (event) => {
+    const row = event.target.closest('button[data-id]');
+    if (row)
+      send({ type: 'open_playlist', id: Number(row.dataset.id) }, 'library');
+  });
+  view.tracks.addEventListener('click', (event) => {
+    const row = event.target.closest('button[data-id]');
+    if (row)
+      send(
+        {
+          type: 'select_playlist_track',
+          id: renderedLibrary.selected.id,
+          video: row.dataset.id,
+        },
+        'library',
+      );
+  });
+  view.back.addEventListener('click', () =>
+    send({ type: 'close_playlist' }, 'library'),
+  );
+  view.append.addEventListener('click', () =>
+    send(
+      { type: 'append_playlist', id: renderedLibrary.selected.id },
+      'library',
+    ),
+  );
+  view.removePermanently.addEventListener('click', () =>
+    send(
+      { type: 'remove_playlist', id: renderedLibrary.selected.id },
+      'library',
+    ),
+  );
+
+  function changeMode(mode, focus) {
+    if (pending) return;
+    view.mode = mode;
+    libraryFeedback = null;
+    updateLibrary(renderedLibrary);
+    focus.focus();
+  }
+  view.rename.addEventListener('click', () => {
+    if (pending) return;
+    view.renameName.value = renderedLibrary.selected.name;
+    changeMode('rename', view.renameName);
+  });
+  view.remove.addEventListener('click', () =>
+    changeMode('remove', view.cancelRemoval),
+  );
+  view.cancelRename.addEventListener('click', () =>
+    changeMode(null, view.rename),
+  );
+  view.cancelRemoval.addEventListener('click', () =>
+    changeMode(null, view.remove),
+  );
+  element.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !view.mode || pending) return;
+    event.preventDefault();
+    changeMode(null, view.mode === 'rename' ? view.rename : view.remove);
+  });
+
+  libraryTemplate.before(element);
+  return view;
+}
+
+function libraryText(element, text) {
+  if (element.textContent !== text) element.textContent = text;
+}
+
+function syncPlaylistRows(list, entries, isTrack = false) {
+  const rows = new Map(
+    Array.from(list.children, (row) => [row.firstElementChild.dataset.id, row]),
+  );
+  const focused = list.contains(document.activeElement)
+    ? document.activeElement
+    : null;
+  for (const [index, entry] of entries.entries()) {
+    const id = String(entry.id);
+    let row = rows.get(id);
+    if (!row) {
+      row = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.id = id;
+      button.className = 'playlist-row-button';
+      const title = document.createElement('span');
+      title.className = 'queue-title';
+      title.dir = 'auto';
+      const info = document.createElement('span');
+      info.className = 'playlist-row-detail';
+      if (!isTrack) {
+        info.id = `saved-playlist-count-${id}`;
+        button.setAttribute('aria-describedby', info.id);
+      }
+      button.append(title, info);
+      row.append(button);
+    }
+    rows.delete(id);
+    if (row !== list.children[index])
+      list.insertBefore(row, list.children[index] ?? null);
+
+    const button = row.firstElementChild;
+    const [title, info] = button.children;
+    const label = isTrack ? `Select ${entry.name}` : entry.name;
+    if (button.getAttribute('aria-label') !== label)
+      button.setAttribute('aria-label', label);
+    if (button.title !== entry.name) button.title = entry.name;
+    if (entry.current) button.setAttribute('aria-current', 'true');
+    else button.removeAttribute('aria-current');
+    libraryText(title, entry.name);
+    libraryText(info, entry.detail);
+    info.hidden = !entry.detail;
+  }
+  for (const row of rows.values()) row.remove();
+  if (focused?.isConnected && focused !== document.activeElement)
+    focused.focus({ preventScroll: true });
+}
+
+function updateLibrary(library, successfulCommand) {
+  const oldLibrary = renderedLibrary;
+  renderedLibrary = library ?? null;
+  if (!library) {
+    libraryFeedback = null;
+    if (!libraryView) return false;
+    const wasFocused = libraryView.element.contains(document.activeElement);
+    libraryView.element.remove();
+    libraryView = null;
+    return wasFocused;
+  }
+
+  libraryView ??= mountLibrary();
+  const view = libraryView;
+  const { lists, selected, canSave, problem } = library;
+  const oldId = oldLibrary?.selected?.id ?? null;
+  const selectionChanged = (selected?.id ?? null) !== oldId;
+  const focused = document.activeElement;
+  const hadFocus =
+    !view.element.hidden &&
+    (view.element.contains(focused) || focused === document.body);
+  const finishedRename =
+    successfulCommand?.type === 'rename_playlist' &&
+    view.renameName.value.trim() === successfulCommand.name;
+  if (selectionChanged || finishedRename) view.mode = null;
+  if (selectionChanged && !view.list.hidden && !view.element.hidden)
+    view.listScroll = view.list.scrollTop;
+
+  view.browser.hidden = Boolean(selected);
+  view.detail.hidden = !selected;
+  view.actions.hidden = view.mode !== null;
+  view.renameForm.hidden = view.mode !== 'rename';
+  view.confirm.hidden = view.mode !== 'remove';
+  const queueHasTracks = Boolean(renderedState?.entries.length);
+  view.saveName.disabled = view.renameName.disabled = !canSave;
+  view.rename.disabled =
+    view.remove.disabled =
+    view.saveRename.disabled =
+    view.removePermanently.disabled =
+      !canSave;
+  view.save.disabled = !canSave || !queueHasTracks;
+  view.append.disabled = !selected?.entries.length;
+  if (
+    successfulCommand?.type === 'save_playlist' &&
+    view.saveName.value.trim() === successfulCommand.name
+  ) {
+    view.saveName.value = '';
+  }
+
+  if (selected) {
+    libraryText(view.title, selected.name);
+    view.title.title = selected.name;
+  }
+  syncPlaylistRows(
+    view.list,
+    lists.map(({ id, name, count }) => ({
+      id,
+      name,
+      detail: `${count} ${count === 1 ? 'video' : 'videos'}`,
+    })),
+  );
+  syncPlaylistRows(
+    view.tracks,
+    (selected?.entries ?? []).map((id) => {
+      const current = id === renderedState?.current;
+      return {
+        id,
+        name: videoTitle(selected.titles, id) || id,
+        current,
+        detail: current ? 'Selected' : '',
+      };
+    }),
+    true,
+  );
+  view.list.hidden = Boolean(selected) || !lists.length;
+  view.tracks.hidden = !selected?.entries.length;
+  const empty = selected ? !selected.entries.length : !lists.length && !problem;
+  view.empty.hidden = !empty;
+  libraryText(
+    view.empty,
+    selected ? 'No videos in this playlist.' : 'No saved playlists yet.',
+  );
+
+  for (const button of view.element.querySelectorAll('button')) {
+    if (pending && !button.disabled) {
+      if (!button.hasAttribute('aria-disabled'))
+        button.setAttribute('aria-disabled', 'true');
+    } else {
+      button.removeAttribute('aria-disabled');
+    }
+  }
+  libraryText(view.problem, problem ?? '');
+  view.feedback.classList.toggle('error', Boolean(libraryFeedback?.error));
+  libraryText(
+    view.feedback,
+    libraryFeedback?.message ||
+      (canSave && !selected && !queueHasTracks
+        ? 'Add a video to the queue before saving a playlist.'
+        : ''),
+  );
+
+  if (selectionChanged && selected) {
+    view.tracks.scrollTop = 0;
+    if (hadFocus) view.title.focus({ preventScroll: true });
+  } else if (selectionChanged) {
+    view.list.scrollTop = view.listScroll;
+    if (hadFocus) {
+      const oldIndex = oldLibrary.lists.findIndex(({ id }) => id === oldId);
+      const index = lists.findIndex(({ id }) => id === oldId);
+      const nearest = Math.min(oldIndex, lists.length - 1);
+      const row =
+        view.list.children[index >= 0 ? index : nearest]?.firstElementChild;
+      (row ?? primaryInput()).focus({
+        preventScroll: Boolean(row && index >= 0),
+      });
+    }
+  } else if (finishedRename && hadFocus) {
+    view.rename.focus();
   }
   return false;
 }
@@ -906,7 +1233,16 @@ function updateLyricsTiming() {
 }
 
 window.renderPearState = (
-  { entries, current, titles, metadata, metadataProblem, catalog, lyrics },
+  {
+    entries,
+    current,
+    titles,
+    metadata,
+    metadataProblem,
+    catalog,
+    lyrics,
+    savedPlaylists,
+  },
   error = null,
   notice = null,
   acknowledgedSequence = null,
@@ -996,6 +1332,17 @@ window.renderPearState = (
       confirmation = `Moved to position ${movedIndex + 1} of ${entries.length}.`;
     }
   }
+  if (!error && context === 'library') {
+    if (command.type === 'save_playlist') confirmation = 'Playlist saved.';
+    if (command.type === 'rename_playlist') confirmation = 'Playlist renamed.';
+    if (command.type === 'remove_playlist') confirmation = 'Playlist removed.';
+    if (command.type === 'append_playlist') {
+      const added = entries.length - acknowledged.entryCount;
+      if (added > 1) confirmation = `Added ${added} videos to the queue.`;
+      else if (added === 1) confirmation = 'Added 1 video to the queue.';
+      else confirmation = 'All playlist videos are already in the queue.';
+    }
+  }
 
   if (context === 'search') {
     catalogSearchError = error ?? '';
@@ -1006,6 +1353,8 @@ window.renderPearState = (
     };
   } else if (context === 'lyrics') {
     lyricsError = acknowledged.current === current ? (error ?? '') : '';
+  } else if (context === 'library') {
+    libraryFeedback = { message: error || confirmation, error: Boolean(error) };
   } else if (acknowledged || error !== null) {
     errorText.textContent = error ?? '';
   }
@@ -1016,8 +1365,13 @@ window.renderPearState = (
   if (selectionChanged || playerProblem) cancelLyricsClock();
   const catalogWasFocused = updateCatalog(catalog);
   const lyricsWasFocused = updateLyrics(lyrics, selectionChanged);
+  const libraryWasFocused = updateLibrary(
+    savedPlaylists,
+    context === 'library' && !error ? command : null,
+  );
   updateViews();
-  if (catalogWasFocused || lyricsWasFocused) primaryInput().focus();
+  if (catalogWasFocused || lyricsWasFocused || libraryWasFocused)
+    primaryInput().focus();
   const problem = playerProblem ?? '';
   const problemChanged = playerProblemText.textContent !== problem;
   if (problemChanged) playerProblemText.textContent = problem;

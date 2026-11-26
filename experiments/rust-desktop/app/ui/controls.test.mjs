@@ -74,7 +74,15 @@ async function state(
   error = null,
   notice = null,
   sequence,
-  { titles, playerProblem, metadata, metadataProblem, catalog, lyrics } = {},
+  {
+    titles,
+    playerProblem,
+    metadata,
+    metadataProblem,
+    catalog,
+    lyrics,
+    savedPlaylists,
+  } = {},
 ) {
   if (sequence === undefined) sequence = (await messages(page)).at(-1).sequence;
   return page.evaluate(
@@ -96,6 +104,7 @@ async function state(
         metadataProblem,
         catalog,
         lyrics,
+        savedPlaylists,
       },
       error,
       notice,
@@ -1176,6 +1185,239 @@ test('fits a complete lyric line at the minimum panel size with all views and lo
   await expect(
     page.getByRole('slider', { name: 'Playback position' }),
   ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    384,
+  );
+});
+
+function savedPlaylists(overrides = {}) {
+  return {
+    lists: [],
+    selected: null,
+    problem: null,
+    canSave: true,
+    ...overrides,
+  };
+}
+
+test('saves the queue with a validated playlist name and preserves a draft on an unrelated update', async (t) => {
+  const page = await panel(t);
+  const library = page.getByRole('button', { name: 'Library' });
+  await state(page, [first], first);
+  await expect(library).toHaveCount(0);
+  const render = (snapshot, sequence) =>
+    state(page, [first], first, null, null, sequence, {
+      savedPlaylists: snapshot,
+    });
+  await render(
+    savedPlaylists({ problem: 'Playlists are unavailable.', canSave: false }),
+    null,
+  );
+  await library.click();
+  await expect(page.getByText('Playlists are unavailable.')).toBeVisible();
+  const save = page.getByRole('button', { name: 'Save queue' });
+  await expect(save).toBeDisabled();
+  expect(await save.getAttribute('aria-disabled')).toBeNull();
+
+  await render(savedPlaylists(), null);
+  const name = page.getByRole('textbox', { name: 'Playlist name' });
+  await name.fill('🌿'.repeat(81));
+  await name.press('Enter');
+  await expect(page.getByText(/80 characters/)).toBeVisible();
+  expect(await messages(page)).toHaveLength(1);
+
+  const playlistName = '🌿'.repeat(80);
+  await name.fill(playlistName);
+  await name.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'save_playlist',
+    name: playlistName,
+  });
+  await render(savedPlaylists(), null);
+  await expect(name).toHaveValue(playlistName);
+  await expect(name).toBeFocused();
+  await render(
+    savedPlaylists({ lists: [{ id: 1, name: playlistName, count: 1 }] }),
+  );
+  await expect(name).toHaveValue('');
+  await expect(page.getByRole('button', { name: playlistName })).toBeVisible();
+  await expect(page.locator('#selection-id')).toHaveText(first);
+});
+
+test('browses and edits a playlist, with separate queue and playback commands', async (t) => {
+  const page = await panel(t);
+  const id = 1;
+  const name = '<b>Morning</b>';
+  const title = '<em>Track & more</em>';
+  const selected = { id, name, entries: [second], titles: { [second]: title } };
+  const lists = [{ id, name, count: 1 }];
+  const render = ({
+    entries = [first],
+    current = first,
+    snapshot = savedPlaylists({ lists }),
+    error = null,
+    sequence,
+  } = {}) =>
+    state(page, entries, current, error, null, sequence, {
+      savedPlaylists: snapshot,
+    });
+  await render();
+  await page.getByRole('button', { name: 'Library' }).click();
+  const playlist = page.getByRole('button', { name });
+  await playlist.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'open_playlist',
+    id,
+  });
+  await render({ snapshot: savedPlaylists({ lists, selected }) });
+  const heading = page.getByRole('heading', { name });
+  await expect(heading).toBeFocused();
+  await expect(heading.locator('b')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Add to queue' }).click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'append_playlist',
+    id,
+  });
+  await render({
+    entries: [first, second],
+    snapshot: savedPlaylists({ lists, selected }),
+  });
+  await expect(page.locator('#selection-id')).toHaveText(first);
+  await page.getByRole('button', { name: `Select ${title}` }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'select_playlist_track',
+    id,
+    video: second,
+  });
+  await render({
+    entries: [first, second],
+    current: second,
+    snapshot: savedPlaylists({ lists, selected }),
+  });
+  await expect(page.locator('#selection-id')).toHaveText(second);
+
+  await page.getByRole('button', { name: 'Rename' }).click();
+  const rename = page.getByRole('textbox', { name: 'Playlist name' });
+  await expect(rename).toBeFocused();
+  await rename.fill('Evening');
+  await rename.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'rename_playlist',
+    id,
+    name: 'Evening',
+  });
+  await render({
+    snapshot: savedPlaylists({ lists, selected }),
+    error: 'Could not update playlist.',
+  });
+  await expect(rename).toHaveValue('Evening');
+  await expect(page.getByText('Could not update playlist.')).toBeVisible();
+  await rename.press('Enter');
+  await rename.fill('Midnight');
+  await render({
+    snapshot: savedPlaylists({
+      lists: [{ id, name: 'Evening', count: 1 }],
+      selected: { ...selected, name: 'Evening' },
+    }),
+  });
+  await expect(rename).toBeVisible();
+  await expect(rename).toHaveValue('Midnight');
+  await expect(rename).toBeFocused();
+  await rename.press('Enter');
+  const renamed = { ...selected, name: 'Midnight' };
+  const updated = [{ id, name: renamed.name, count: 1 }];
+  await render({
+    snapshot: savedPlaylists({ lists: updated, selected: renamed }),
+  });
+  await expect(page.getByRole('heading', { name: 'Midnight' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rename' })).toBeFocused();
+
+  await page.getByRole('button', { name: 'Back to playlists' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'close_playlist',
+  });
+  await render({ snapshot: savedPlaylists({ lists: updated }) });
+  const renamedRow = page.getByRole('button', { name: 'Midnight' });
+  await expect(renamedRow).toBeFocused();
+  await renamedRow.press('Enter');
+  await render({
+    snapshot: savedPlaylists({ lists: updated, selected: renamed }),
+  });
+
+  const sent = (await messages(page)).length;
+  await page
+    .getByRole('button', { name: 'Remove', exact: true })
+    .press('Enter');
+  await expect(page.getByText('Remove this playlist?')).toBeVisible();
+  expect(await messages(page)).toHaveLength(sent);
+  await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await page.getByRole('button', { name: 'Remove playlist' }).press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'remove_playlist',
+    id,
+  });
+  await render({ snapshot: savedPlaylists() });
+  await expect(
+    page.getByRole('textbox', { name: 'Playlist name' }),
+  ).toBeFocused();
+});
+
+test('keeps Library rows scrollable and preserves focus on unrelated updates at 384×520', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const long = 'A long name that still fits at minimum width '.repeat(7);
+  const lists = Array.from({ length: 24 }, (_, i) => ({
+    id: i + 1,
+    name: `Playlist ${i}`,
+    count: 1,
+  }));
+  const snapshot = savedPlaylists({ lists });
+  const render = (savedPlaylists, sequence) =>
+    state(page, [first], first, null, null, sequence, {
+      savedPlaylists,
+      catalog: searchState(),
+      lyrics: lyricsState(),
+      metadata: { title: long, channel: long },
+    });
+  await render(snapshot);
+  await transport(page, readyTransport);
+  await page.getByRole('button', { name: 'Library' }).click();
+  const list = page.getByRole('list', { name: 'Saved playlists' });
+  const row = list.getByRole('button', { name: 'Playlist 9', exact: true });
+  await row.focus();
+  const scroll = await list.evaluate((element) => element.scrollTop);
+  expect(scroll).toBeGreaterThan(0);
+  await row.evaluate((element) => {
+    window.savedPlaylistRow = element;
+  });
+  await render(snapshot, null);
+  await expect(row).toBeFocused();
+  expect(
+    await row.evaluate((element) => element === window.savedPlaylistRow),
+  ).toBe(true);
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(scroll);
+  await row.press('Enter');
+  await render(
+    savedPlaylists({
+      lists,
+      selected: {
+        id: 10,
+        name: long,
+        entries: [second],
+        titles: { [second]: long },
+      },
+    }),
+  );
+  const tracks = page.getByRole('list', { name: 'Playlist tracks' });
+  assertVisibleQueueRow(
+    await tracks.boundingBox(),
+    await tracks.getByRole('listitem').first().boundingBox(),
+  );
+  await page.getByRole('button', { name: 'Back to playlists' }).press('Enter');
+  await render(snapshot);
+  await expect(row).toBeFocused();
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(scroll);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     384,
   );

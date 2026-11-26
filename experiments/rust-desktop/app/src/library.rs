@@ -1,3 +1,5 @@
+pub(crate) mod playlists;
+
 use std::{
     collections::{BTreeMap, HashSet},
     fs::{self, File, OpenOptions},
@@ -54,6 +56,8 @@ pub enum Command {
     Seek {
         position: u32,
     },
+    #[serde(untagged)]
+    Playlist(playlists::Command),
 }
 
 #[derive(Clone, Default, Deserialize, PartialEq, Eq, Serialize)]
@@ -62,6 +66,26 @@ pub struct QueueState {
     pub current: Option<String>,
     #[serde(default)]
     pub titles: BTreeMap<String, String>,
+}
+
+impl QueueState {
+    fn append_ids(&mut self, ids: impl IntoIterator<Item = String>) -> io::Result<()> {
+        for id in ids {
+            if !self.entries.contains(&id) {
+                self.entries.push(id);
+            }
+        }
+        if self.entries.len() > MAX_ENTRIES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("The queue can hold up to {MAX_ENTRIES} videos."),
+            ));
+        }
+        if self.current.is_none() {
+            self.current = self.entries.first().cloned();
+        }
+        Ok(())
+    }
 }
 
 pub struct Library {
@@ -102,20 +126,7 @@ impl Library {
         let mut state = self.state.clone();
         match command {
             Command::Add { source } => {
-                for id in video_ids(&source)? {
-                    if !state.entries.contains(&id) {
-                        state.entries.push(id);
-                    }
-                }
-                if state.entries.len() > MAX_ENTRIES {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("The queue can hold up to {MAX_ENTRIES} videos."),
-                    ));
-                }
-                if state.current.is_none() {
-                    state.current = state.entries.first().cloned();
-                }
+                state.append_ids(video_ids(&source)?)?;
             }
             Command::Select { id } => {
                 entry_index(&state.entries, &id)?;
@@ -160,7 +171,10 @@ impl Library {
                 };
                 state.current = Some(id.clone());
             }
-            Command::Ready {} | Command::OpenBrowser {} | Command::Search { .. } => {
+            Command::Ready {}
+            | Command::OpenBrowser {}
+            | Command::Search { .. }
+            | Command::Playlist(_) => {
                 return Ok(false);
             }
             #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -169,6 +183,47 @@ impl Library {
             }
         }
 
+        self.update_state(state)
+    }
+
+    pub(crate) fn enqueue_saved(
+        &mut self,
+        playlist: &playlists::Playlist,
+        selected: Option<&str>,
+    ) -> io::Result<bool> {
+        let entries = match selected {
+            Some(id) => {
+                let index = playlist
+                    .entries
+                    .iter()
+                    .position(|entry| entry == id)
+                    .ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "That track is no longer in the playlist.",
+                        )
+                    })?;
+                &playlist.entries[index..=index]
+            }
+            None => playlist.entries.as_slice(),
+        };
+        let mut state = self.state.clone();
+        state.append_ids(entries.iter().cloned())?;
+        for id in entries {
+            if let Some(title) = playlist.titles.get(id) {
+                state
+                    .titles
+                    .entry(id.clone())
+                    .or_insert_with(|| title.clone());
+            }
+        }
+        if let Some(id) = selected {
+            state.current = Some(id.to_owned());
+        }
+        self.update_state(state)
+    }
+
+    fn update_state(&mut self, state: QueueState) -> io::Result<bool> {
         if state == self.state {
             return Ok(false);
         }
@@ -325,18 +380,23 @@ fn invalid_state() -> io::Error {
 }
 
 fn validate_state(state: &QueueState) -> io::Result<()> {
-    let mut unique_ids = HashSet::with_capacity(state.entries.len().min(MAX_ENTRIES));
-    if state.entries.len() > MAX_ENTRIES
-        || state
-            .entries
+    validate_tracks(&state.entries, &state.titles)?;
+    if match &state.current {
+        Some(id) => !state.entries.contains(id),
+        None => !state.entries.is_empty(),
+    } {
+        return Err(invalid_state());
+    }
+    Ok(())
+}
+
+fn validate_tracks(entries: &[String], titles: &BTreeMap<String, String>) -> io::Result<()> {
+    let mut unique_ids = HashSet::with_capacity(entries.len().min(MAX_ENTRIES));
+    if entries.len() > MAX_ENTRIES
+        || entries
             .iter()
             .any(|id| !valid_id(id) || !unique_ids.insert(id))
-        || match &state.current {
-            Some(id) => !unique_ids.contains(id),
-            None => !unique_ids.is_empty(),
-        }
-        || state
-            .titles
+        || titles
             .iter()
             .any(|(id, title)| !unique_ids.contains(id) || normalized_title(title) != Some(title))
     {
@@ -348,6 +408,10 @@ fn validate_state(state: &QueueState) -> io::Result<()> {
 fn save_state(path: &Path, state: &QueueState) -> io::Result<()> {
     validate_state(state)?;
     let bytes = serde_json::to_vec(state).map_err(io::Error::other)?;
+    write_atomic(path, &bytes)
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let directory = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -355,7 +419,7 @@ fn save_state(path: &Path, state: &QueueState) -> io::Result<()> {
     fs::create_dir_all(directory)?;
     let (temp_path, mut temp_file) = create_temp_file(directory)?;
     let written = temp_file
-        .write_all(&bytes)
+        .write_all(bytes)
         .and_then(|()| temp_file.sync_all());
     drop(temp_file);
 
@@ -402,6 +466,34 @@ mod tests {
     const FIRST: &str = "dQw4w9WgXcQ";
     const SECOND: &str = "M7lc1UVf-VE";
     const THIRD: &str = "5qap5aO4i8I";
+
+    #[test]
+    fn enqueuing_saved_tracks_preserves_current_playback_and_known_titles() {
+        let dir = TestDirectory::new();
+        let path = dir.queue_path();
+        let mut queue = Library::load(path.clone()).unwrap();
+        assert!(queue.apply(add(FIRST)).unwrap());
+        queue.remember_title(FIRST, "Current title").unwrap();
+        let playlist = playlists::Playlist {
+            id: 1,
+            name: "Saved".into(),
+            entries: vec![SECOND.into(), FIRST.into(), THIRD.into()],
+            titles: BTreeMap::from([
+                (FIRST.into(), "Old title".into()),
+                (SECOND.into(), "Another track".into()),
+            ]),
+        };
+
+        assert!(queue.enqueue_saved(&playlist, Some("other")).is_err());
+        assert!(queue.enqueue_saved(&playlist, Some(SECOND)).unwrap());
+        assert_eq!(queue.state().entries, [FIRST, SECOND]);
+        assert_eq!(queue.state().current.as_deref(), Some(SECOND));
+        assert!(!queue.enqueue_saved(&playlist, None).unwrap());
+        assert_eq!(queue.state().entries, [FIRST, SECOND, THIRD]);
+        assert_eq!(queue.state().titles[FIRST], "Current title");
+        assert_eq!(queue.state().titles[SECOND], "Another track");
+        assert!(Library::load(path).unwrap().state() == queue.state());
+    }
 
     struct TestDirectory(PathBuf);
 

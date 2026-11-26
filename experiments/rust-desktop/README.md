@@ -14,6 +14,8 @@ The script builds an ad hoc signed local app. The queue accepts YouTube and YouT
 
 Paste one link or ID per line to add several videos together. Enter submits, and Shift+Enter inserts a line. The queue skips duplicates and identifies invalid lines before saving the batch. Use **Filter queue** to find an entry by title or ID while the current video plays. Press Escape in the filter field to show the full queue again.
 
+Open **Library** to save the current queue as a local playlist. Open a saved playlist to rename it, choose a track, or add its tracks to the queue while the current video plays. The library stores playlists in `playlists.json` next to `queue.json`.
+
 The local controls and the official player use separate private WebViews. Only the bundled controls can send queue commands to Rust. The player loads the selected embed with the native app's Referer and uses the website's controls and media requests. It can play videos whose owners allow embedding in the current region.
 
 **Verified on macOS 27.2.1:** captured titles for two videos, reordered the queue while the first video continued playing, and restored the titles, order, and selection after reopening. The keyboard controls for hiding the queue and refocusing the link field also worked in the bundled app. The full YouTube Music site still reports an unsupported browser in WKWebView. The preview uses individual video links. YouTube Music account browsing, Premium behavior, and live audio plugins remain separate work.
