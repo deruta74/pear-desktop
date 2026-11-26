@@ -225,11 +225,11 @@ Eight matched runs per host on Apple M5 Pro, macOS 27.2.1. Startup is measured t
 
 The Rust RSS estimate includes the three WebKit services that appeared during each Rust trial. Attribution is based on process timing and user ID. Shared pages can count toward several processes. These results cover lightweight hosts rendering a local fixture.
 
-The bundled queue app at `efc9f2f5` was sampled separately on the same Mac with two WebViews and the official YouTube demo. Each phase reports the median of seven one-second samples.
+The packaged Apple silicon queue app at `f0189f11` was sampled separately on the same Mac with two WebViews and the official YouTube demo. Each phase reports the median of seven one-second samples.
 
 | Queue app state | App process tree | Estimate including new WebKit services |
 | --- | ---: | ---: |
-| Video loaded before Play | 110 MiB | 399 MiB |
-| Video playing | 116 MiB | 523 MiB |
+| Video loaded before Play | 105 MiB | 412 MiB |
+| Video playing | 113 MiB | 499 MiB |
 
 The estimate includes four WebKit services observed after launch. Existing services are excluded, and memory pages shared by processes can be counted more than once.
