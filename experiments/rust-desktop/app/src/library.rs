@@ -440,15 +440,20 @@ fn save_state(path: &Path, state: &QueueState) -> io::Result<()> {
 }
 
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    write_atomic_with(path, |file| file.write_all(bytes))
+}
+
+fn write_atomic_with(
+    path: &Path,
+    write: impl FnOnce(&mut File) -> io::Result<()>,
+) -> io::Result<()> {
     let directory = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     fs::create_dir_all(directory)?;
     let (temp_path, mut temp_file) = create_temp_file(directory)?;
-    let written = temp_file
-        .write_all(bytes)
-        .and_then(|()| temp_file.sync_all());
+    let written = write(&mut temp_file).and_then(|()| temp_file.sync_all());
     drop(temp_file);
 
     let result = written.and_then(|()| fs::rename(&temp_path, path));

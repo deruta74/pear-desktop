@@ -1,13 +1,13 @@
 use std::{
     collections::{BTreeMap, HashSet},
     fs::File,
-    io::{self, Read},
+    io::{self, BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
 
-use super::{QueueState, validate_tracks, write_atomic};
+use super::{QueueState, validate_tracks, write_atomic_with};
 
 const MAX_PLAYLISTS: usize = 32;
 const MAX_TRACKS: usize = 8_000;
@@ -15,6 +15,7 @@ const MAX_NAME_CHARS: usize = 80;
 const MAX_NAME_INPUT_BYTES: usize = 4096;
 // Accommodate 8,000 maximum-length titles plus IDs and JSON structure.
 const MAX_FILE_BYTES: u64 = 6 * 1024 * 1024;
+const WRITE_BUFFER_BYTES: usize = 64 * 1024;
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -151,11 +152,15 @@ impl Playlists {
     }
 
     fn store(&mut self, state: StoredPlaylists) -> io::Result<()> {
-        let bytes = serde_json::to_vec(&state).map_err(io::Error::other)?;
-        if bytes.len() as u64 > MAX_FILE_BYTES {
-            return Err(invalid_input("The saved playlists file is too large."));
-        }
-        write_atomic(&self.path, &bytes).map_err(|error| {
+        write_atomic_with(&self.path, |file| {
+            let mut writer = PlaylistWriter {
+                inner: BufWriter::with_capacity(WRITE_BUFFER_BYTES, file),
+                remaining: MAX_FILE_BYTES,
+            };
+            serde_json::to_writer(&mut writer, &state)?;
+            writer.flush()
+        })
+        .map_err(|error| {
             io::Error::new(
                 error.kind(),
                 format!("Could not save the playlists. {error}"),
@@ -163,6 +168,26 @@ impl Playlists {
         })?;
         self.state = state;
         Ok(())
+    }
+}
+
+struct PlaylistWriter<W> {
+    inner: W,
+    remaining: u64,
+}
+
+impl<W: Write> Write for PlaylistWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() as u64 > self.remaining {
+            return Err(invalid_input("The saved playlists file is too large."));
+        }
+        let written = self.inner.write(bytes)?;
+        self.remaining -= written as u64;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
     }
 }
 
@@ -443,6 +468,45 @@ mod tests {
         saved.resize(MAX_FILE_BYTES as usize + 1, b' ');
         fs::write(&path, saved).unwrap();
         assert!(Playlists::load(path).is_err());
+    }
+
+    #[test]
+    fn enforces_the_exact_serialized_limit_without_replacing_the_previous_file() {
+        let directory = TestDirectory::new();
+        let path = directory.path();
+        let mut playlists = Playlists::load(path.clone()).unwrap();
+        let mut at_limit = StoredPlaylists {
+            last_id: Some(1),
+            playlists: vec![Playlist {
+                id: 1,
+                name: "Boundary".into(),
+                entries: vec![FIRST.into()],
+                titles: BTreeMap::from([(FIRST.into(), String::new())]),
+            }],
+        };
+        // Use an artificial title to exercise the file-size limit independently of track limits.
+        let overhead = serde_json::to_vec(&at_limit).unwrap().len();
+        let payload = MAX_FILE_BYTES as usize - overhead;
+        let mut title = "\"".repeat(payload / 2);
+        if !payload.is_multiple_of(2) {
+            title.push('x');
+        }
+        let title_len = title.len();
+        at_limit.playlists[0].titles.insert(FIRST.into(), title);
+        let mut over_limit = at_limit.clone();
+        over_limit.playlists[0]
+            .titles
+            .get_mut(FIRST)
+            .unwrap()
+            .push('x');
+
+        playlists.store(at_limit).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().len(), MAX_FILE_BYTES);
+        let error = playlists.store(over_limit).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(playlists.entries()[0].titles[FIRST].len(), title_len);
+        assert_eq!(fs::metadata(path).unwrap().len(), MAX_FILE_BYTES);
+        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
     }
 
     #[test]
