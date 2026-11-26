@@ -14,146 +14,6 @@
         <p id="preferences-problem" class="feedback" aria-live="polite"></p>
       </header>
 
-      <section class="selection" aria-labelledby="selection-heading" hidden>
-        <div class="selection-heading">
-          <h2 id="selection-heading">Now playing</h2>
-          <span id="position" class="position"></span>
-        </div>
-        <div class="selection-media">
-          <img
-            id="selection-artwork"
-            class="selection-artwork"
-            width="72"
-            height="54"
-            alt=""
-            decoding="async"
-            referrerpolicy="no-referrer"
-            hidden
-          />
-          <div class="selection-description">
-            <p
-              id="selection-id"
-              class="selection-title"
-              dir="auto"
-              aria-live="polite"
-            ></p>
-          </div>
-        </div>
-        <div class="playback-actions">
-          <button
-            id="previous"
-            class="icon-button"
-            type="button"
-            aria-label="Previous video"
-            title="Previous video"
-            disabled
-          >
-            <span class="skip-icon" aria-hidden="true"></span>
-          </button>
-          <button
-            id="play-toggle"
-            class="icon-button play-toggle"
-            type="button"
-            aria-label="Play video"
-            aria-describedby="transport-hint"
-            title="Play video"
-            hidden
-            disabled
-          >
-            <span class="play-icon" aria-hidden="true"></span>
-          </button>
-          <button
-            id="next"
-            class="icon-button"
-            type="button"
-            aria-label="Next video"
-            title="Next video"
-            disabled
-          >
-            <span class="skip-icon skip-icon-next" aria-hidden="true"></span>
-          </button>
-          <button
-            id="open-browser"
-            class="browser-button"
-            type="button"
-            aria-label="Open in browser"
-            title="Open in browser"
-            disabled
-          >
-            <span class="browser-label">Open in browser</span>
-            <span class="external-icon" aria-hidden="true"></span>
-          </button>
-          <button
-            id="return-to-queue"
-            class="browser-button"
-            type="button"
-            hidden
-          >
-            Return to queue
-          </button>
-          <button
-            id="show-audio-controls"
-            class="icon-button"
-            type="button"
-            aria-label="Volume controls"
-            title="Volume controls"
-            aria-expanded="false"
-            aria-controls="audio-controls"
-            hidden
-          >
-            <span class="volume-icon" aria-hidden="true"></span>
-          </button>
-        </div>
-        <div class="transport-details">
-          <div
-            id="audio-controls"
-            class="audio-controls"
-            role="group"
-            aria-label="Audio output"
-            hidden
-          >
-            <div id="volume-control" class="volume-control" hidden>
-              <label for="playback-volume">Volume</label>
-              <input
-                id="playback-volume"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                disabled
-              />
-              <span id="volume-value" aria-hidden="true"></span>
-            </div>
-            <button
-              id="playback-mute"
-              class="mute-toggle"
-              type="button"
-              aria-pressed="false"
-              hidden
-              disabled
-            >
-              Mute
-            </button>
-          </div>
-          <div id="transport-timeline" class="transport-timeline" hidden>
-            <span id="elapsed" aria-hidden="true"></span>
-            <input
-              id="playback-position"
-              type="range"
-              min="0"
-              step="1"
-              aria-label="Playback position"
-              disabled
-            />
-            <span id="duration" aria-hidden="true"></span>
-          </div>
-        </div>
-        <p id="transport-hint" class="feedback" aria-live="polite"></p>
-        <p id="audio-problem" class="feedback error" aria-live="polite"></p>
-        <p id="player-problem" class="feedback error" role="alert"></p>
-        <p id="metadata-problem" class="feedback" aria-live="polite"></p>
-      </section>
-
       <section id="queue-panel" class="queue" aria-labelledby="queue-heading">
         <div class="queue-controls">
           <div class="queue-toolbar">
@@ -183,7 +43,7 @@
                 type="search"
                 aria-label="Filter queue"
                 aria-controls="queue-items"
-                placeholder="Filter queue"
+                placeholder="Filter"
                 autocomplete="off"
                 spellcheck="false"
                 maxlength="180"
@@ -582,6 +442,150 @@
           ></ul>
         </section>
       </template>
+
+      <section class="selection" aria-labelledby="selection-heading" hidden>
+        <div class="selection-heading">
+          <h2 id="selection-heading">Now playing</h2>
+          <span id="position" class="position"></span>
+        </div>
+        <div class="selection-media">
+          <img
+            id="selection-artwork"
+            class="selection-artwork"
+            width="64"
+            height="48"
+            alt=""
+            decoding="async"
+            referrerpolicy="no-referrer"
+            hidden
+          />
+          <div class="selection-description">
+            <p
+              id="selection-id"
+              class="selection-title"
+              dir="auto"
+              aria-live="polite"
+            ></p>
+          </div>
+        </div>
+        <div
+          class="playback-actions"
+          role="group"
+          aria-label="Playback controls"
+        >
+          <button
+            id="previous"
+            class="icon-button"
+            type="button"
+            aria-label="Previous video"
+            title="Previous video"
+            disabled
+          >
+            <span class="skip-icon" aria-hidden="true"></span>
+          </button>
+          <button
+            id="play-toggle"
+            class="icon-button play-toggle"
+            type="button"
+            aria-label="Play video"
+            aria-describedby="transport-hint"
+            title="Play video"
+            hidden
+            disabled
+          >
+            <span class="play-icon" aria-hidden="true"></span>
+          </button>
+          <button
+            id="next"
+            class="icon-button"
+            type="button"
+            aria-label="Next video"
+            title="Next video"
+            disabled
+          >
+            <span class="skip-icon skip-icon-next" aria-hidden="true"></span>
+          </button>
+          <button
+            id="open-browser"
+            class="browser-button"
+            type="button"
+            aria-label="Open in browser"
+            title="Open in browser"
+            disabled
+          >
+            <span class="browser-label">Open in browser</span>
+            <span class="external-icon" aria-hidden="true"></span>
+          </button>
+          <button
+            id="return-to-queue"
+            class="browser-button"
+            type="button"
+            hidden
+          >
+            Return to queue
+          </button>
+          <button
+            id="show-audio-controls"
+            class="icon-button"
+            type="button"
+            aria-label="Volume controls"
+            title="Volume controls"
+            aria-expanded="false"
+            aria-controls="audio-controls"
+            hidden
+          >
+            <span class="volume-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="transport-details">
+          <div
+            id="audio-controls"
+            class="audio-controls"
+            role="group"
+            aria-label="Audio output"
+            hidden
+          >
+            <div id="volume-control" class="volume-control" hidden>
+              <label for="playback-volume">Volume</label>
+              <input
+                id="playback-volume"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                disabled
+              />
+              <span id="volume-value" aria-hidden="true"></span>
+            </div>
+            <button
+              id="playback-mute"
+              class="mute-toggle"
+              type="button"
+              aria-pressed="false"
+              hidden
+              disabled
+            >
+              Mute
+            </button>
+          </div>
+          <div id="transport-timeline" class="transport-timeline" hidden>
+            <span id="elapsed" aria-hidden="true"></span>
+            <input
+              id="playback-position"
+              type="range"
+              min="0"
+              step="1"
+              aria-label="Playback position"
+              disabled
+            />
+            <span id="duration" aria-hidden="true"></span>
+          </div>
+        </div>
+        <p id="transport-hint" class="feedback" aria-live="polite"></p>
+        <p id="audio-problem" class="feedback error" aria-live="polite"></p>
+        <p id="player-problem" class="feedback error" role="alert"></p>
+        <p id="metadata-problem" class="feedback" aria-live="polite"></p>
+      </section>
     </main>
 
     <main

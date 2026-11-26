@@ -1876,6 +1876,64 @@ test('fits Queue and Search rows at the minimum panel size alongside playback co
   );
 });
 
+test('keeps the playback dock below the active view while its results scroll', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const entries = [
+    first,
+    second,
+    ...Array.from({ length: 24 }, (_, index) => `extraVideo${index}`),
+  ];
+  await state(page, entries, first, null, null, 1, {
+    metadata: { title: 'Current track', channel: 'Current artist' },
+    catalog: searchState({ query: 'music', results: [pianoResult] }),
+    lyrics: lyricsState(),
+    savedPlaylists: savedPlaylists(),
+  });
+  await transport(page, { ...readyTransport, volume: 42, muted: false });
+  const nav = page.getByRole('navigation');
+  const dock = page.getByRole('region', { name: 'Now playing' });
+  const queueList = page.getByRole('list', { name: 'Queue' });
+  const play = dock.getByRole('button', { name: 'Play video' });
+  const dockBox = await dock.boundingBox();
+  const queueBox = await queueList.boundingBox();
+  expect(queueBox.y + queueBox.height).toBeLessThanOrEqual(dockBox.y);
+  await expect(dock).toBeInViewport({ ratio: 1 });
+
+  const row = queueList.getByRole('button', { name: 'Select extraVideo23' });
+  await row.focus();
+  await expect(row).toBeFocused();
+  expect(await queueList.evaluate((list) => list.scrollTop)).toBeGreaterThan(0);
+  expect(await dock.boundingBox()).toEqual(dockBox);
+
+  await nav.getByRole('button', { name: 'Search' }).press('Enter');
+  await expect(
+    page.getByRole('searchbox', { name: 'Search YouTube' }),
+  ).toBeFocused();
+  await expect(nav.getByRole('button', { name: 'Search' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(
+    page.getByRole('list', { name: 'YouTube results' }),
+  ).toBeVisible();
+  await expect(play).toBeVisible();
+  await expect(dock.getByText('Current track')).toBeVisible();
+  expect(await dock.boundingBox()).toEqual(dockBox);
+
+  await page.setViewportSize({ width: 320, height: 600 });
+  await expect(nav).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    320,
+  );
+
+  await page.setViewportSize({ width: 800, height: 730 });
+  await expect(dock).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    800,
+  );
+});
+
 function lyricsState(overrides = {}) {
   return {
     track: 'Original track',
