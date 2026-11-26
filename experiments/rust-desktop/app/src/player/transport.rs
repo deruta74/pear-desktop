@@ -88,6 +88,11 @@ impl Transport {
         Some(self.sequence)
     }
 
+    pub(super) fn discard_pending_observation(&mut self, now: Instant) {
+        self.pending = None;
+        self.deadline = self.deadline.map(|_| now);
+    }
+
     pub(super) fn receive(&mut self, sequence: u64, response: &str, time: Instant) -> bool {
         if self.pending != Some(sequence) {
             return false;
@@ -297,6 +302,21 @@ mod tests {
         sample["videoId"] = serde_json::json!(VIDEO_ID);
         sample["nativePlaybackConfirmed"] = serde_json::json!(true);
         sample
+    }
+
+    #[test]
+    fn discarded_observations_cannot_supply_a_sample_after_a_focus_change() {
+        let mut transport = Transport::default();
+        transport.reset(true);
+        let now = Instant::now();
+        let before_focus = transport.begin(now).unwrap();
+        let after_focus = now + Duration::from_millis(10);
+        transport.discard_pending_observation(after_focus);
+        let current = transport.begin(after_focus).unwrap();
+        assert!(!transport.receive(before_focus, PAUSED, after_focus));
+        assert!(transport.observed_at(after_focus).is_none());
+        assert!(transport.receive(current, PAUSED, after_focus));
+        assert!(transport.observed_at(after_focus).is_some());
     }
 
     #[test]

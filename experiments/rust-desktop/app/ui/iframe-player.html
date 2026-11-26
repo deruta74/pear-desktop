@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-vL37oukc/beKco5DiMoTa6y5FC7IeqKFWVw4Rg3YXWU=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src https://www.youtube.com{EMBED_PATH}; script-src 'sha256-Ce9YyiPyS0mYZ9mVEQwoyC6ee2BQaKdNlCaNW6SfNG4=' https://www.youtube.com/iframe_api https://www.youtube.com/s/player/; style-src 'sha256-BexbirapT3Aq0wKKdNcQg3fDFayjIhlBcnQ6SJRpPdU='">
   <title>YouTube player</title>
   <style>
     html, body { width: 100%; height: 100%; margin: 0; background: #000; }
@@ -25,8 +25,10 @@
 
       const frame = document.getElementById('player');
       const initialSrc = frame.src;
+      const trackEmbed = /^\/embed\/[A-Za-z0-9_-]{11}$/.test(new URL(initialSrc).pathname);
       const maxSeconds = 31 * 24 * 60 * 60;
       const states = [-1, 0, 1, 2, 3, 5];
+      const controllableStates = [0, 1, 2, 3];
       const errorCodes = [2, 5, 100, 101, 150, 153];
       let player;
       let ready = false;
@@ -37,6 +39,8 @@
       let blocked = false;
       let playedVideoId = null;
       let pendingAdvance = null;
+      let repeatPlayback = null;
+      let lastRepeatCycle = 0;
       let volumeSetterFailed = false;
       let muteSetterFailed = false;
       let rateSetterFailed = false;
@@ -105,8 +109,13 @@
           playedVideoId = videoId;
           ended = false;
           blocked = false;
+          // A new run can start and end before the official state getter catches up.
+          if (repeatPlayback?.terminal) repeatPlayback = null;
         }
-        if (data === 0 && hasPlayed) ended = true;
+        if (data === 0 && hasPlayed) {
+          ended = true;
+          if (repeatPlayback !== null) repeatPlayback.terminal = true;
+        }
       }
 
       function frameVisible() {
@@ -190,6 +199,23 @@
         return replayed;
       }
 
+      function observeRepeatCycle(videoId, confirmedState) {
+        if (!trackEmbed) return null;
+        if (!controllableStates.includes(confirmedState)
+            || repeatPlayback?.videoId !== videoId) repeatPlayback = null;
+        if (state === 1 && confirmedState === 1) {
+          if (repeatPlayback === null || repeatPlayback.terminal) {
+            repeatPlayback = { videoId, cycle: ++lastRepeatCycle, terminal: false, ended: false };
+          }
+          return repeatPlayback.cycle;
+        }
+        if (state === 0 && confirmedState === 0 && ended && repeatPlayback !== null) {
+          repeatPlayback.ended = true;
+          return repeatPlayback.cycle;
+        }
+        return null;
+      }
+
       function snapshot() {
         if (!isWrapper()) return null;
         const videoId = ready ? reportedVideoId() : null;
@@ -227,8 +253,10 @@
             fail();
           }
         }
+        const confirmedState = playbackStateFor(videoId);
         return {
-          ready, videoId, sourceReplayed, nativePlaybackConfirmed: canControlNativePlayback(videoId),
+          ready, videoId, sourceReplayed, nativePlaybackConfirmed: controllableStates.includes(confirmedState),
+          repeatCycle: observeRepeatCycle(videoId, confirmedState),
           hasPlayed: ready && hasPlayed, state: ready ? state : null,
           volume, muted,
           position, positionMs, playbackRate, playbackRates, duration, ended: ready && ended, error, blocked,
@@ -254,16 +282,16 @@
         }
       }
 
-      function canControlNativePlayback(videoId) {
-        return ready && hasPlayed && !blocked && error === null && pendingAdvance === null
-          && validVideoId(videoId) && playedVideoId === videoId
-          && [0, 1, 2, 3].includes(optionalValue(() => player.getPlayerState()));
+      function playbackStateFor(videoId) {
+        if (!ready || !hasPlayed || blocked || error !== null || pendingAdvance !== null
+            || !validVideoId(videoId) || playedVideoId !== videoId) return null;
+        return optionalValue(() => player.getPlayerState());
       }
 
       function setPlayback(playing, expectedId) {
         command(() => {
           if (expectedId !== undefined
-              && (reportedVideoId() !== expectedId || !canControlNativePlayback(expectedId))) return;
+              && (reportedVideoId() !== expectedId || !controllableStates.includes(playbackStateFor(expectedId)))) return;
           if (playing) player.playVideo();
           else player.pauseVideo();
         });
@@ -284,9 +312,23 @@
         });
       }
 
+      function repeatTrack(expectedId, cycle) {
+        if (!trackEmbed || !validVideoId(expectedId)) return;
+        command(() => {
+          const playback = repeatPlayback;
+          if (playback?.videoId !== expectedId || playback.cycle !== cycle || !playback.ended
+              || !ended || state !== 0 || reportedVideoId() !== expectedId || playbackStateFor(expectedId) !== 0
+              || !frameVisible() || player.getIframe() !== frame || frame.src !== initialSrc) return;
+          // Consume this end before asking YouTube to replay the loaded video.
+          repeatPlayback = null;
+          player.playVideo();
+        });
+      }
+
       Object.defineProperty(window, 'pearIframePlayer', { value: Object.freeze({
         snapshot,
         advance,
+        repeatTrack,
         play: (expectedId) => setPlayback(true, expectedId),
         pause: (expectedId) => setPlayback(false, expectedId),
         setVolume: (volume) => {
@@ -312,6 +354,10 @@
           command(() => {
             const duration = boundedSeconds(player.getDuration());
             if (duration > 0) {
+              if (repeatPlayback !== null
+                  && (repeatPlayback.terminal || optionalValue(() => player.getPlayerState()) === 0)) {
+                repeatPlayback = null;
+              }
               const position = seconds < duration ? seconds : Math.max(0, duration - 1);
               player.seekTo(position, true);
             }

@@ -2,6 +2,7 @@
 #[cfg(target_os = "macos")]
 use objc2_foundation::{NSBundle, NSString, NSURL};
 use serde::{Deserialize, Serialize};
+use std::num::NonZeroU32;
 #[cfg(any(target_os = "windows", test))]
 use std::{borrow::Cow, cell::Cell};
 use url::Url;
@@ -277,6 +278,10 @@ pub(super) enum Action {
         from: String,
         to: String,
     },
+    RepeatTrack {
+        expected_id: String,
+        cycle: NonZeroU32,
+    },
 }
 
 impl Action {
@@ -311,6 +316,10 @@ impl Action {
                 format!("window.pearIframePlayer?.advance({from:?},{to:?})")
             }
             Self::Advance { .. } => return Err("Invalid YouTube video IDs for advance.".into()),
+            Self::RepeatTrack { expected_id, cycle } if valid_id(&expected_id) => {
+                format!("window.pearIframePlayer?.repeatTrack({expected_id:?},{cycle})")
+            }
+            Self::RepeatTrack { .. } => return Err("Invalid YouTube video ID for repeat.".into()),
         })
     }
 }
@@ -327,6 +336,7 @@ pub(super) struct Snapshot {
     pub(super) video_id: Option<String>,
     #[serde(default)]
     native_playback_confirmed: bool,
+    pub(super) repeat_cycle: Option<NonZeroU32>,
     #[serde(default)]
     pub(super) source_replayed: bool,
     #[serde(default, deserialize_with = "deserialize_volume")]
@@ -349,7 +359,6 @@ pub(super) struct Snapshot {
 }
 
 impl Snapshot {
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows", test))]
     pub(super) fn allows_playback_for(&self, expected_id: &str) -> bool {
         self.native_playback_confirmed
             && self.ready
@@ -385,6 +394,9 @@ impl Snapshot {
                     || snapshot.blocked
                     || snapshot.error.is_some()
                     || snapshot.source_replayed))
+            || (snapshot.repeat_cycle.is_some()
+                && (!snapshot.native_playback_confirmed
+                    || !(snapshot.state == Some(1) || snapshot.state == Some(0) && snapshot.ended)))
             || snapshot
                 .error
                 .is_some_and(|error| !matches!(error, -1 | 2 | 5 | 100 | 101 | 150 | 153))
@@ -907,6 +919,45 @@ mod tests {
         assert!(command("not a video", ID).is_err());
         assert!(command(ID, "jNQXAC9IVR\"").is_err());
         assert!(command(ID, ID).is_err());
+    }
+
+    #[test]
+    fn replay_command_binds_the_validated_video_and_playback_cycle() {
+        let command = |id: &str| {
+            Action::RepeatTrack {
+                expected_id: id.into(),
+                cycle: 7.try_into().unwrap(),
+            }
+            .command()
+        };
+        assert_eq!(
+            command(ID).unwrap(),
+            r#"window.pearIframePlayer?.repeatTrack("M7lc1UVf-VE",7)"#,
+        );
+        assert!(command("M7lc1UVf-V\"").is_err());
+    }
+
+    #[test]
+    fn only_verified_playing_or_ended_samples_may_include_a_repeat_cycle() {
+        let mut sample: serde_json::Value = serde_json::from_str(PLAYING).unwrap();
+        sample["videoId"] = serde_json::json!(ID);
+        sample["repeatCycle"] = serde_json::json!(7);
+        assert!(Snapshot::parse(&sample.to_string()).is_none());
+        sample["nativePlaybackConfirmed"] = serde_json::json!(true);
+        assert_eq!(
+            Snapshot::parse(&sample.to_string())
+                .unwrap()
+                .repeat_cycle
+                .unwrap()
+                .get(),
+            7,
+        );
+        sample["state"] = serde_json::json!(0);
+        assert!(Snapshot::parse(&sample.to_string()).is_none());
+        sample["ended"] = serde_json::json!(true);
+        assert!(Snapshot::parse(&sample.to_string()).is_some());
+        sample["repeatCycle"] = serde_json::json!(0);
+        assert!(Snapshot::parse(&sample.to_string()).is_none());
     }
 
     #[test]

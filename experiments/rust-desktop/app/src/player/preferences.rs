@@ -13,6 +13,14 @@ const MAX_FILE_BYTES: u64 = 4096;
 const UNREADABLE: &str = "Could not read the saved playback preferences.";
 const MALFORMED: &str = "The saved playback preferences contain invalid data.";
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum RepeatMode {
+    #[default]
+    Off,
+    Queue,
+    Track,
+}
+
 #[derive(Clone, Default, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct SavedPreferences {
@@ -22,6 +30,8 @@ struct SavedPreferences {
     auto_advance: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     repeat_queue: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    repeat_track: bool,
     #[serde(default, skip_serializing_if = "output_unset")]
     output: AudioOutput,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -57,8 +67,12 @@ impl Preferences {
         self.saved.auto_advance
     }
 
-    pub(crate) fn repeat_queue(&self) -> bool {
-        self.saved.repeat_queue
+    pub(super) fn repeat_mode(&self) -> RepeatMode {
+        match (self.saved.repeat_track, self.saved.repeat_queue) {
+            (true, _) => RepeatMode::Track,
+            (false, true) => RepeatMode::Queue,
+            (false, false) => RepeatMode::Off,
+        }
     }
 
     pub(super) fn audio_output(&self) -> AudioOutput {
@@ -117,11 +131,11 @@ impl Preferences {
         .map_err(|_| "Could not save the Google Desktop OAuth client file setting.")
     }
 
-    pub(crate) fn set_playback(
+    pub(super) fn set_playback(
         &mut self,
         iframe_player: bool,
         auto_advance: bool,
-        repeat_queue: bool,
+        repeat_mode: RepeatMode,
         output: AudioOutput,
     ) -> io::Result<()> {
         if let Some(problem) = self.problem {
@@ -136,7 +150,8 @@ impl Preferences {
         self.save(SavedPreferences {
             iframe_player,
             auto_advance,
-            repeat_queue,
+            repeat_queue: repeat_mode == RepeatMode::Queue,
+            repeat_track: repeat_mode == RepeatMode::Track,
             output,
             ..self.saved.clone()
         })
@@ -198,27 +213,69 @@ mod tests {
     use super::*;
 
     #[test]
+    fn repeat_track_round_trips_without_enabling_auto_advance_or_retaining_repeat_queue() {
+        let directory = TestDirectory::new();
+        let path = directory.path();
+        fs::write(
+            &path,
+            br#"{"iframe_player":true,"auto_advance":false,"repeat_queue":true}"#,
+        )
+        .unwrap();
+        let mut preferences = Preferences::load(path.clone());
+        assert_eq!(preferences.problem(), None);
+        assert_eq!(preferences.repeat_mode(), RepeatMode::Queue);
+        assert!(!preferences.auto_advance());
+
+        let output = AudioOutput {
+            volume: Some(15),
+            muted: Some(true),
+        };
+        preferences
+            .set_playback(true, false, RepeatMode::Track, output)
+            .unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["repeat_track"], true);
+        assert!(saved.get("repeat_queue").is_none());
+
+        let mut restored = Preferences::load(path.clone());
+        assert_eq!(restored.problem(), None);
+        assert!(restored.iframe_player());
+        assert!(!restored.auto_advance());
+        assert_eq!(restored.repeat_mode(), RepeatMode::Track);
+        assert_eq!(restored.audio_output(), output);
+
+        restored
+            .set_playback(true, false, RepeatMode::Off, output)
+            .unwrap();
+        assert_eq!(Preferences::load(path).repeat_mode(), RepeatMode::Off);
+    }
+
+    #[test]
     fn repeat_queue_defaults_off_in_old_files_and_persists_with_playback_choices() {
         let directory = TestDirectory::new();
         let path = directory.path();
         fs::write(&path, br#"{"iframe_player":true,"auto_advance":true}"#).unwrap();
         let mut preferences = Preferences::load(path.clone());
         assert_eq!(preferences.problem(), None);
-        assert!(!preferences.repeat_queue());
+        assert_eq!(preferences.repeat_mode(), RepeatMode::Off);
 
         let output = AudioOutput {
             volume: Some(15),
             muted: Some(true),
         };
-        preferences.set_playback(true, true, true, output).unwrap();
+        preferences
+            .set_playback(true, true, RepeatMode::Queue, output)
+            .unwrap();
         let mut restored = Preferences::load(path.clone());
         assert!(restored.iframe_player() && restored.auto_advance());
-        assert!(restored.repeat_queue());
+        assert_eq!(restored.repeat_mode(), RepeatMode::Queue);
         assert!(restored.audio_output() == output);
 
-        restored.set_playback(true, true, false, output).unwrap();
+        restored
+            .set_playback(true, true, RepeatMode::Off, output)
+            .unwrap();
         let restored = Preferences::load(path);
-        assert!(!restored.repeat_queue());
+        assert_eq!(restored.repeat_mode(), RepeatMode::Off);
         assert!(restored.audio_output() == output);
     }
 
@@ -230,7 +287,9 @@ mod tests {
             volume: Some(37),
             muted: Some(false),
         };
-        preferences.set_playback(true, true, false, output).unwrap();
+        preferences
+            .set_playback(true, true, RepeatMode::Off, output)
+            .unwrap();
         let restored = Preferences::load(directory.path());
         assert!(restored.iframe_player() && restored.auto_advance());
         assert!(restored.audio_output() == output);
@@ -239,7 +298,7 @@ mod tests {
                 .set_playback(
                     false,
                     false,
-                    false,
+                    RepeatMode::Off,
                     AudioOutput {
                         volume: Some(101),
                         muted: None
@@ -311,7 +370,7 @@ mod tests {
             .set_youtube_key_file(Some(key_file.clone()))
             .unwrap();
         preferences
-            .set_playback(true, true, false, AudioOutput::default())
+            .set_playback(true, true, RepeatMode::Off, AudioOutput::default())
             .unwrap();
         assert_eq!(preferences.youtube_oauth_client_file(), None);
         preferences
@@ -418,7 +477,7 @@ mod tests {
             .set_youtube_key_file(Some(key_file.clone()))
             .unwrap();
         preferences
-            .set_playback(true, true, false, AudioOutput::default())
+            .set_playback(true, true, RepeatMode::Off, AudioOutput::default())
             .unwrap();
 
         let saved = fs::read_to_string(&path).unwrap();
@@ -504,19 +563,29 @@ mod tests {
         let enabled_by_default = cfg!(any(target_os = "macos", target_os = "linux"));
         assert_eq!(preferences.iframe_player(), enabled_by_default);
         assert!(!preferences.auto_advance());
-        assert!(!preferences.repeat_queue());
+        assert_eq!(preferences.repeat_mode(), RepeatMode::Off);
         assert_eq!(preferences.problem(), None);
         assert!(!path.exists());
 
         preferences
-            .set_playback(!enabled_by_default, false, false, AudioOutput::default())
+            .set_playback(
+                !enabled_by_default,
+                false,
+                RepeatMode::Off,
+                AudioOutput::default(),
+            )
             .unwrap();
         assert_eq!(preferences.iframe_player(), !enabled_by_default);
         let mut restored = Preferences::load(path.clone());
         assert_eq!(restored.iframe_player(), !enabled_by_default);
         assert_eq!(restored.problem(), None);
         restored
-            .set_playback(enabled_by_default, false, false, AudioOutput::default())
+            .set_playback(
+                enabled_by_default,
+                false,
+                RepeatMode::Off,
+                AudioOutput::default(),
+            )
             .unwrap();
         assert_eq!(Preferences::load(path).iframe_player(), enabled_by_default);
     }
@@ -530,7 +599,7 @@ mod tests {
         assert!(!preferences.iframe_player());
         assert_eq!(preferences.problem(), None);
         preferences
-            .set_playback(true, false, false, AudioOutput::default())
+            .set_playback(true, false, RepeatMode::Off, AudioOutput::default())
             .unwrap();
         let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
         assert_eq!(saved, serde_json::json!({ "iframe_player": true }));
@@ -557,12 +626,12 @@ mod tests {
             assert!(!problem.contains(path.to_str().unwrap()));
             assert!(
                 preferences
-                    .set_playback(false, false, false, AudioOutput::default())
+                    .set_playback(false, false, RepeatMode::Off, AudioOutput::default())
                     .is_err()
             );
             assert!(
                 preferences
-                    .set_playback(true, false, false, AudioOutput::default())
+                    .set_playback(true, false, RepeatMode::Off, AudioOutput::default())
                     .is_err()
             );
             assert!(preferences.set_youtube_key_file(None).is_err());
@@ -581,7 +650,7 @@ mod tests {
         assert!(preferences.problem().is_some());
         assert!(
             preferences
-                .set_playback(true, false, false, AudioOutput::default())
+                .set_playback(true, false, RepeatMode::Off, AudioOutput::default())
                 .is_err()
         );
         assert!(path.is_dir());
@@ -595,14 +664,14 @@ mod tests {
         let backup = directory.0.join("saved.json");
         let mut preferences = Preferences::load(path.clone());
         preferences
-            .set_playback(true, false, false, AudioOutput::default())
+            .set_playback(true, false, RepeatMode::Off, AudioOutput::default())
             .unwrap();
         fs::rename(&path, &backup).unwrap();
         fs::create_dir(&path).unwrap();
 
         assert!(
             preferences
-                .set_playback(false, false, false, AudioOutput::default())
+                .set_playback(false, false, RepeatMode::Off, AudioOutput::default())
                 .is_err()
         );
         assert!(preferences.iframe_player());
@@ -612,7 +681,7 @@ mod tests {
         fs::remove_dir(&path).unwrap();
         fs::rename(backup, &path).unwrap();
         preferences
-            .set_playback(false, false, false, AudioOutput::default())
+            .set_playback(false, false, RepeatMode::Off, AudioOutput::default())
             .unwrap();
         assert!(!Preferences::load(path).iframe_player());
     }

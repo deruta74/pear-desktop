@@ -188,8 +188,9 @@ jobs:
       # The browser tests only need Playwright and its Chromium download.
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Test queue and local audio controls
+      - name: Test queue, IFrame player, and local audio controls
         run: >-
           node --test
           experiments/rust-desktop/app/ui/controls.test.mjs
+          experiments/rust-desktop/app/ui/iframe-player.test.mjs
           experiments/rust-desktop/app/ui/local-audio.test.mjs

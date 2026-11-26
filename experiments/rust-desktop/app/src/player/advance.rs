@@ -1,15 +1,26 @@
-use std::time::{Duration, Instant};
+use std::{
+    num::NonZeroU32,
+    time::{Duration, Instant},
+};
 
-use super::iframe::{Action, Snapshot};
+use super::{
+    iframe::{Action, Snapshot},
+    preferences::RepeatMode,
+};
 use crate::library::QueueState;
 
 const SWITCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 pub(super) struct Advance {
-    armed: Option<(String, String)>,
+    armed: Option<(String, Target)>,
     pending: Option<Switch>,
-    repeat_queue: bool,
+    repeat_mode: RepeatMode,
+}
+
+enum Target {
+    Next(String),
+    Replay(NonZeroU32),
 }
 
 struct Switch {
@@ -29,8 +40,11 @@ pub(super) enum Resolution {
 }
 
 impl Advance {
-    pub(super) fn set_repeat_queue(&mut self, repeat_queue: bool) {
-        self.repeat_queue = repeat_queue;
+    pub(super) fn set_repeat_mode(&mut self, mode: RepeatMode) {
+        if (self.repeat_mode == RepeatMode::Track) != (mode == RepeatMode::Track) {
+            self.disarm();
+        }
+        self.repeat_mode = mode;
     }
 
     pub(super) fn pending(&self) -> bool {
@@ -57,8 +71,8 @@ impl Advance {
     }
 
     pub(super) fn retarget_after_queue_edit(&mut self, queue: &QueueState) {
-        if let Some((armed_from, armed_to)) = &mut self.armed
-            && let Some((from, to)) = queue_next(queue, self.repeat_queue)
+        if let Some((armed_from, Target::Next(armed_to))) = &mut self.armed
+            && let Some((from, to)) = queue_next(queue, self.repeat_mode)
             && armed_from == from
         {
             to.clone_into(armed_to);
@@ -76,13 +90,16 @@ impl Advance {
             self.disarm();
             return None;
         }
-        let Some((from, to)) = queue_next(queue, self.repeat_queue) else {
-            self.disarm();
-            return None;
-        };
         if self.pending() {
             return None;
         }
+        if self.repeat_mode == RepeatMode::Track {
+            return self.observe_repeat_track(queue, sample);
+        }
+        let Some((from, to)) = queue_next(queue, self.repeat_mode) else {
+            self.disarm();
+            return None;
+        };
         if sample.state == Some(1)
             && sample.ready
             && sample.has_played
@@ -90,19 +107,19 @@ impl Advance {
             && sample.error.is_none()
             && sample.video_id.as_deref() == Some(from)
         {
-            if self
-                .armed
-                .as_ref()
-                .is_none_or(|(a, b)| a != from || b != to)
-            {
-                self.armed = Some((from.to_owned(), to.to_owned()));
+            if self.armed.as_ref().is_none_or(|(a, target)| {
+                a != from || !matches!(target, Target::Next(b) if b == to)
+            }) {
+                self.armed = Some((from.to_owned(), Target::Next(to.to_owned())));
             }
             return None;
         }
         if !sample.ended || sample.state != Some(0) {
             return None;
         }
-        let (armed_from, armed_to) = self.armed.take()?;
+        let (armed_from, Target::Next(armed_to)) = self.armed.take()? else {
+            return None;
+        };
         if armed_from == from && armed_to == to {
             self.begin(queue, sample, now)
         } else {
@@ -110,8 +127,41 @@ impl Advance {
         }
     }
 
+    fn observe_repeat_track(&mut self, queue: &QueueState, sample: &Snapshot) -> Option<Action> {
+        let current = queue.current.as_deref().filter(|id| {
+            queue.entries.iter().any(|entry| entry == *id) && sample.allows_playback_for(id)
+        });
+        let Some(id) = current else {
+            self.disarm();
+            return None;
+        };
+        match (sample.state, sample.repeat_cycle) {
+            (Some(1), Some(cycle)) => {
+                if self.armed.as_ref().is_none_or(|(armed_id, target)| {
+                    armed_id != id || !matches!(target, Target::Replay(armed) if *armed == cycle)
+                }) {
+                    self.armed = Some((id.to_owned(), Target::Replay(cycle)));
+                }
+                None
+            }
+            (Some(0), Some(cycle)) => match self.armed.take() {
+                Some((expected_id, Target::Replay(armed)))
+                    if expected_id == id && armed == cycle =>
+                {
+                    Some(Action::RepeatTrack { expected_id, cycle })
+                }
+                _ => None,
+            },
+            (Some(2 | 3), None) => None,
+            _ => {
+                self.disarm();
+                None
+            }
+        }
+    }
+
     fn begin(&mut self, queue: &QueueState, sample: &Snapshot, now: Instant) -> Option<Action> {
-        let (from, to) = queue_next(queue, self.repeat_queue)?;
+        let (from, to) = queue_next(queue, self.repeat_mode)?;
         if self.pending()
             || sample.video_id.as_deref() != Some(from)
             || !sample.ready
@@ -144,7 +194,7 @@ impl Advance {
     ) -> Option<Resolution> {
         let switch = self.pending.as_mut()?;
         let expected = (switch.from.as_str(), switch.to.as_str());
-        if queue_next(queue, self.repeat_queue) != Some(expected)
+        if queue_next(queue, self.repeat_mode) != Some(expected)
             || sample.is_some_and(|sample| {
                 sample.source_replayed && sample.video_id.as_deref() == Some(switch.from.as_str())
             })
@@ -193,13 +243,15 @@ impl Advance {
     }
 }
 
-fn queue_next(queue: &QueueState, repeat_queue: bool) -> Option<(&str, &str)> {
+fn queue_next(queue: &QueueState, mode: RepeatMode) -> Option<(&str, &str)> {
+    if mode == RepeatMode::Track {
+        return None;
+    }
     let current = queue.current.as_deref()?;
     let position = queue.entries.iter().position(|entry| entry == current)?;
-    let next = queue
-        .entries
-        .get(position + 1)
-        .or_else(|| (repeat_queue && queue.entries.len() > 1).then(|| &queue.entries[0]))?;
+    let next = queue.entries.get(position + 1).or_else(|| {
+        (mode == RepeatMode::Queue && queue.entries.len() > 1).then(|| &queue.entries[0])
+    })?;
     Some((current, next))
 }
 
@@ -226,6 +278,109 @@ mod tests {
             "error": null, "blocked": blocked, "videoId": id,
         });
         Snapshot::parse(&json.to_string()).unwrap()
+    }
+
+    fn repeat_sample(id: &str, state: i32, cycle: u32) -> Snapshot {
+        let json = serde_json::json!({
+            "ready": true, "hasPlayed": true, "state": state, "position": if state == 0 { 20 } else { 19 },
+            "duration": 20, "ended": state == 0, "error": null, "blocked": false,
+            "videoId": id, "nativePlaybackConfirmed": true, "repeatCycle": cycle,
+        });
+        Snapshot::parse(&json.to_string()).unwrap()
+    }
+
+    #[test]
+    fn repeat_track_replays_a_single_video_once_per_observed_playback_cycle() {
+        let now = Instant::now();
+        let mut queue = queue();
+        queue.entries.truncate(1);
+        let mut state = Advance::default();
+        state.set_repeat_mode(RepeatMode::Track);
+
+        assert!(
+            state
+                .observe(&queue, &repeat_sample(A, 0, 1), true, now)
+                .is_none()
+        );
+        for cycle in [2, 3] {
+            assert!(
+                state
+                    .observe(&queue, &repeat_sample(A, 1, cycle), true, now)
+                    .is_none()
+            );
+            assert!(matches!(
+                state.observe(&queue, &repeat_sample(A, 0, cycle), true, now),
+                Some(Action::RepeatTrack { expected_id, cycle: issued }) if expected_id == A && issued.get() == cycle
+            ));
+            assert!(
+                state
+                    .observe(&queue, &repeat_sample(A, 0, cycle), true, now)
+                    .is_none()
+            );
+            assert!(!state.pending());
+        }
+        assert_eq!(queue.current.as_deref(), Some(A));
+        assert_eq!(queue.entries, [A]);
+    }
+
+    #[test]
+    fn repeat_track_requires_a_matching_cycle_and_fresh_foreground_playback_after_disarm() {
+        let now = Instant::now();
+        let mut queue = queue();
+        let mut state = Advance::default();
+        state.set_repeat_mode(RepeatMode::Track);
+        state.observe(&queue, &repeat_sample(A, 1, 2), true, now);
+        assert!(
+            state
+                .observe(&queue, &repeat_sample(A, 0, 3), true, now)
+                .is_none()
+        );
+
+        state.observe(&queue, &repeat_sample(A, 1, 3), true, now);
+        state.disarm();
+        assert!(
+            state
+                .observe(&queue, &repeat_sample(A, 0, 3), true, now)
+                .is_none()
+        );
+
+        state.observe(&queue, &repeat_sample(A, 1, 4), true, now);
+        assert!(
+            state
+                .observe(&queue, &repeat_sample(A, 0, 4), false, now)
+                .is_none()
+        );
+        assert!(
+            state
+                .observe(&queue, &repeat_sample(A, 0, 4), true, now)
+                .is_none()
+        );
+
+        state.observe(&queue, &repeat_sample(A, 1, 5), true, now);
+        queue.current = Some(B.into());
+        assert!(
+            state
+                .observe(&queue, &repeat_sample(A, 0, 5), true, now)
+                .is_none()
+        );
+        assert!(
+            state
+                .observe(&queue, &repeat_sample(B, 0, 5), true, now)
+                .is_none()
+        );
+
+        queue.current = Some(A.into());
+        state.observe(&queue, &repeat_sample(A, 1, 6), true, now);
+        assert!(
+            state
+                .observe(&queue, &sample(A, 1, 19_000, false), true, now)
+                .is_none()
+        );
+        assert!(
+            state
+                .observe(&queue, &repeat_sample(A, 0, 6), true, now)
+                .is_none()
+        );
     }
 
     #[test]
@@ -353,7 +508,7 @@ mod tests {
         let mut queue = queue();
         queue.current = Some(C.into());
         let mut state = Advance::default();
-        state.set_repeat_queue(true);
+        state.set_repeat_mode(RepeatMode::Queue);
         state.observe(&queue, &sample(C, 1, 19_000, false), true, now);
         assert!(!state.pending_wrap());
 
@@ -399,7 +554,7 @@ mod tests {
         state.observe(&queue, &playing, true, now);
         assert!(state.observe(&queue, &ended, true, now).is_none());
 
-        state.set_repeat_queue(true);
+        state.set_repeat_mode(RepeatMode::Queue);
         assert!(state.observe(&queue, &ended, true, now).is_none());
         state.observe(&queue, &playing, true, now);
         assert!(state.observe(&queue, &ended, false, now).is_none());
@@ -426,7 +581,7 @@ mod tests {
         let mut queue = queue();
         queue.current = Some(C.into());
         let mut state = Advance::default();
-        state.set_repeat_queue(true);
+        state.set_repeat_mode(RepeatMode::Queue);
         state.observe(&queue, &sample(B, 1, 19000, false), true, now);
         assert!(
             state
@@ -452,12 +607,12 @@ mod tests {
         let ended = sample(C, 0, 20_000, false);
         let mut state = Advance::default();
 
-        state.set_repeat_queue(true);
+        state.set_repeat_mode(RepeatMode::Queue);
         state.observe(&queue, &playing, true, now);
-        state.set_repeat_queue(false);
+        state.set_repeat_mode(RepeatMode::Off);
         assert!(state.observe(&queue, &ended, true, now).is_none());
 
-        state.set_repeat_queue(true);
+        state.set_repeat_mode(RepeatMode::Queue);
         state.observe(&queue, &playing, true, now);
         assert!(state.observe(&queue, &ended, true, now).is_some());
         assert_eq!(
@@ -468,7 +623,7 @@ mod tests {
         state.observe(&queue, &playing, true, now);
         assert!(state.observe(&queue, &ended, true, now).is_some());
         assert!(state.pending_wrap());
-        state.set_repeat_queue(false);
+        state.set_repeat_mode(RepeatMode::Off);
         assert_eq!(
             state.resolve(&queue, None, now),
             Some(Resolution::Superseded)
@@ -483,12 +638,12 @@ mod tests {
         let queue = queue();
         let mut state = Advance::default();
         state.observe(&queue, &sample(A, 1, 19_000, false), true, now);
-        state.set_repeat_queue(true);
+        state.set_repeat_mode(RepeatMode::Queue);
         assert!(matches!(
             state.observe(&queue, &sample(A, 0, 20_000, false), true, now),
             Some(Action::Advance { from, to }) if from == A && to == B
         ));
-        state.set_repeat_queue(false);
+        state.set_repeat_mode(RepeatMode::Off);
         assert_eq!(state.resolve(&queue, None, now), None);
         assert_eq!(
             state.resolve(&queue, None, now + SWITCH_TIMEOUT),

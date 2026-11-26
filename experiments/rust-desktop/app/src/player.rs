@@ -60,6 +60,7 @@ use crate::{
 };
 
 use platform::{APP_ID, Layout, Pane};
+use preferences::RepeatMode;
 
 const CONTROLS_ASSET_URL: &str = "pear-queue://app.local/";
 #[cfg(not(target_os = "windows"))]
@@ -75,6 +76,7 @@ const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
 const IFRAME_MENU_LABEL: &str = "Experimental Playback Controls";
 const AUTO_ADVANCE_LABEL: &str = "Play Next Automatically";
 const REPEAT_QUEUE_LABEL: &str = "Repeat Queue";
+const REPEAT_TRACK_LABEL: &str = "Repeat Track";
 const ADVANCE_PENDING: &str = "Waiting for the next video to start.";
 
 enum PlayerEvent {
@@ -608,9 +610,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut automatic = preferences
         .as_ref()
         .is_some_and(preferences::Preferences::auto_advance);
-    let mut repeat_queue = preferences
+    let mut repeat_mode = preferences
         .as_ref()
-        .is_some_and(preferences::Preferences::repeat_queue);
+        .map_or_else(RepeatMode::default, preferences::Preferences::repeat_mode);
     let mut preferred_iframe = preferences
         .as_ref()
         .is_some_and(preferences::Preferences::iframe_player);
@@ -708,13 +710,20 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         None,
     );
     view_menu.append(&toggle_advance)?;
-    let toggle_repeat = CheckMenuItem::new(
+    let toggle_repeat_queue = CheckMenuItem::new(
         REPEAT_QUEUE_LABEL,
         approved && preferences.is_some() && mode.iframe_player && automatic,
-        repeat_queue,
+        repeat_mode == RepeatMode::Queue,
         None,
     );
-    view_menu.append(&toggle_repeat)?;
+    view_menu.append(&toggle_repeat_queue)?;
+    let toggle_repeat_track = CheckMenuItem::new(
+        REPEAT_TRACK_LABEL,
+        approved && preferences.is_some() && mode.iframe_player,
+        repeat_mode == RepeatMode::Track,
+        None,
+    );
+    view_menu.append(&toggle_repeat_track)?;
     let mut speed_menu = speed_menu::SpeedMenu::new();
     view_menu.append(speed_menu.submenu())?;
     let edit_menu = Submenu::with_items(
@@ -828,7 +837,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     let mut native_media = native_media::Session::new(event_loop.create_proxy());
     let mut auto_advance = advance::Advance::default();
-    auto_advance.set_repeat_queue(repeat_queue);
+    auto_advance.set_repeat_mode(repeat_mode);
     let make_lyrics_lookup = {
         let events = event_loop.create_proxy();
         move || lyrics_lookup::Lookup::new(events.clone())
@@ -916,8 +925,18 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             Event::WindowEvent {
                 window_id, event, ..
             } if window_id == window.id() => {
+                let repeat_focus_changed = repeat_mode == RepeatMode::Track
+                    && matches!(event, WindowEvent::Focused(_));
                 match event {
-                    WindowEvent::Focused(false) => auto_advance.disarm(),
+                    WindowEvent::Focused(focused) => {
+                        if !focused || repeat_focus_changed {
+                            auto_advance.disarm();
+                        }
+                        if repeat_focus_changed && let Some(transport) = &mut transport {
+                            // A poll sent before a focus change cannot arm the next repeat.
+                            transport.discard_pending_observation(Instant::now());
+                        }
+                    }
                     WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                         if let Err(error) = layout.arrange(
                             &window,
@@ -930,10 +949,10 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     }
                     _ => {}
                 }
-                if !account_expired {
+                if !account_expired && !repeat_focus_changed {
                     return;
                 }
-                true
+                account_expired
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *local_audio.id() => {
                 let problem = launch_local_audio();
@@ -978,7 +997,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
             }
             Event::UserEvent(PlayerEvent::Menu(event))
                 if event.id == *toggle_iframe.id() || event.id == *toggle_advance.id()
-                    || event.id == *toggle_repeat.id() =>
+                    || event.id == *toggle_repeat_queue.id()
+                    || event.id == *toggle_repeat_track.id() =>
             {
                 if !approved {
                     return;
@@ -988,9 +1008,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 let enabled = toggle_iframe.is_checked();
                 let next_automatically = toggle_advance.is_checked();
-                let repeat = toggle_repeat.is_checked();
+                let repeat = if event.id == *toggle_repeat_queue.id() {
+                    if toggle_repeat_queue.is_checked() { RepeatMode::Queue } else { RepeatMode::Off }
+                } else if event.id == *toggle_repeat_track.id() {
+                    if toggle_repeat_track.is_checked() { RepeatMode::Track } else { RepeatMode::Off }
+                } else {
+                    repeat_mode
+                };
                 if enabled == mode.iframe_player && next_automatically == automatic
-                    && repeat == repeat_queue
+                    && repeat == repeat_mode
                 {
                     return;
                 }
@@ -999,10 +1025,18 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 save_options = true;
                 automatic = next_automatically;
-                repeat_queue = repeat;
-                auto_advance.set_repeat_queue(repeat);
-                toggle_repeat.set_enabled(enabled && automatic);
-                if !automatic && auto_advance.cancel() {
+                if repeat != repeat_mode && repeat == RepeatMode::Track
+                    && let Some(transport) = &mut transport
+                {
+                    transport.discard_pending_observation(Instant::now());
+                }
+                repeat_mode = repeat;
+                auto_advance.set_repeat_mode(repeat_mode);
+                toggle_repeat_queue.set_checked(repeat_mode == RepeatMode::Queue);
+                toggle_repeat_track.set_checked(repeat_mode == RepeatMode::Track);
+                toggle_repeat_queue.set_enabled(enabled && automatic);
+                toggle_repeat_track.set_enabled(enabled);
+                if !automatic && repeat_mode != RepeatMode::Track && auto_advance.cancel() {
                     reload_player = true;
                 }
                 if enabled != mode.iframe_player {
@@ -1127,6 +1161,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     true
                 } else {
                     if let Some(transport) = &mut transport {
+                        if repeat_mode == RepeatMode::Track {
+                            auto_advance.disarm();
+                        }
                         transport.reset(true);
                     }
                     false
@@ -1148,10 +1185,13 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 }
                 let sample = transport.observed_at(now);
                 advance_resolution = auto_advance.resolve(library.state(), sample, now);
-                let foreground_automatic = automatic
+                let foreground_automatic = (automatic || repeat_mode == RepeatMode::Track)
                     && window.is_visible()
                     && window.is_focused()
                     && !window.is_minimized();
+                if repeat_mode == RepeatMode::Track && sample.is_none() {
+                    auto_advance.disarm();
+                }
                 let starting = if advance_resolution.is_none() {
                     current_player.as_ref().and_then(|video| {
                         let action = auto_advance.observe(library.state(), sample?, foreground_automatic, now)?;
@@ -1162,8 +1202,12 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 };
                 if let Some((video, action)) = starting {
                     if let Err(reason) = transport.perform(video, action) {
-                        eprintln!("Could not start the next video automatically: {reason}");
-                        advance_resolution = auto_advance.manual();
+                        if repeat_mode == RepeatMode::Track {
+                            eprintln!("Could not repeat the current video: {reason}");
+                        } else {
+                            eprintln!("Could not start the next video automatically: {reason}");
+                            advance_resolution = auto_advance.manual();
+                        }
                     }
                     true
                 } else if advance_resolution.is_some() {
@@ -1193,6 +1237,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                 let metadata_changed = lookup.as_mut().is_some_and(|lookup| lookup.tick(now));
                 let catalog_changed = catalog.as_mut().is_some_and(|catalog| catalog.tick(now));
                 let expired = transport.as_mut().is_some_and(|transport| transport.expire(now));
+                if expired && repeat_mode == RepeatMode::Track {
+                    auto_advance.disarm();
+                }
                 if let (Some(transport), Some(video)) = (&mut transport, &current_player)
                     && let Some(sequence) = transport.begin(now)
                 {
@@ -1202,6 +1249,9 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     }) {
                         eprintln!("Could not read player state: {reason}");
                         transport.receive(sequence, "null", now);
+                        if repeat_mode == RepeatMode::Track {
+                            auto_advance.disarm();
+                        }
                     }
                 }
                 let overdue = load_deadline.is_some_and(|deadline| now >= deadline);
@@ -1269,7 +1319,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 add_video.set_enabled(true);
                                 toggle_iframe.set_enabled(preferences.is_some());
                                 toggle_advance.set_enabled(preferences.is_some() && mode.iframe_player);
-                                toggle_repeat.set_enabled(preferences.is_some() && mode.iframe_player && automatic);
+                                toggle_repeat_queue.set_enabled(preferences.is_some() && mode.iframe_player && automatic);
+                                toggle_repeat_track.set_enabled(preferences.is_some() && mode.iframe_player);
                                 catalog_key_menu.refresh(preferences.as_ref());
                                 oauth_client_menu.refresh(preferences.as_ref());
                                 let saved_key = preferences.as_ref().and_then(preferences::Preferences::youtube_key_file);
@@ -1427,7 +1478,8 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                     #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows", test))]
                                     iframe::Action::NativePlayback { .. } => "native playback",
                                     iframe::Action::Seek(_) => "seek",
-                                iframe::Action::Advance { .. } => "advance",
+                                    iframe::Action::Advance { .. } => "advance",
+                                    iframe::Action::RepeatTrack { .. } => "repeat track",
                                     iframe::Action::SetVolume(_) => "volume",
                                     iframe::Action::SetMuted(_) => "mute",
                                     iframe::Action::SetRate(_) => "rate",
@@ -1508,17 +1560,19 @@ pub fn run(mode: LaunchMode) -> Result<()> {
         };
 
         if save_options && let Some(preferences) = &mut preferences {
-            if let Err(reason) = preferences.set_playback(preferred_iframe, automatic, repeat_queue, mode.audio_output) {
+            if let Err(reason) = preferences.set_playback(preferred_iframe, automatic, repeat_mode, mode.audio_output) {
                 eprintln!("Could not save playback preferences: {reason}");
                 preferences_problem = Some("Playback preferences changed for this session. They could not be saved.");
                 toggle_iframe.set_text(format!("{IFRAME_MENU_LABEL} (This Session)"));
                 toggle_advance.set_text(format!("{AUTO_ADVANCE_LABEL} (This Session)"));
-                toggle_repeat.set_text(format!("{REPEAT_QUEUE_LABEL} (This Session)"));
+                toggle_repeat_queue.set_text(format!("{REPEAT_QUEUE_LABEL} (This Session)"));
+                toggle_repeat_track.set_text(format!("{REPEAT_TRACK_LABEL} (This Session)"));
             } else {
                 preferences_problem = None;
                 toggle_iframe.set_text(IFRAME_MENU_LABEL);
                 toggle_advance.set_text(AUTO_ADVANCE_LABEL);
-                toggle_repeat.set_text(REPEAT_QUEUE_LABEL);
+                toggle_repeat_queue.set_text(REPEAT_QUEUE_LABEL);
+                toggle_repeat_track.set_text(REPEAT_TRACK_LABEL);
             }
         }
 

@@ -49,7 +49,7 @@ cargo run --locked --manifest-path experiments/rust-desktop/Cargo.toml -p pear-d
 
 Press Play in the visible YouTube player first. The queue panel then exposes pause, resume, and seeking through the official IFrame Player API. Press **Space** while the queue panel is focused outside an input or button to pause or resume. Both players share the local queue and playlists. The experimental player shows saved titles and looks up details for the selected video.
 
-With the experimental player active, **View → Play Next Automatically** can advance the queue when the current video ends and the window is in the foreground. Enable **View → Repeat Queue** to return to the first video after the last when the queue has at least two videos. Both options start off. If YouTube blocks a transition, Pear opens the next video for you to start with its Play button.
+With the experimental player active, **View → Play Next Automatically** can advance the queue when the current video ends and the window is in the foreground. With that option on, **View → Repeat Queue** returns to the first video after the last when the queue has at least two videos. **View → Repeat Track** is a separate opt-in that replays the current queue video in the foreground after you start it with the visible player's Play button. Selecting either repeat mode clears the other. Automatic playback options start off. If YouTube blocks a transition to the next video, Pear opens it for you to start with its Play button.
 
 **Volume controls** can adjust the embedded player before playback when YouTube exposes volume and mute. Pear remembers changes confirmed by the player and reapplies them when it opens another video.
 
@@ -206,10 +206,10 @@ cargo test --locked --manifest-path experiments/rust-desktop/Cargo.toml --worksp
 
 A native Linux ARM64 build loaded the local benchmark page in WebKitGTK under Xvfb.
 
-The queue frontend tests exercise the controls and IPC acknowledgements using the repository's installed Playwright Chromium.
+The queue frontend tests exercise the controls and IPC acknowledgements using the repository's installed Playwright Chromium. The IFrame wrapper tests check the script's playback guards and content security policy.
 
 ```sh
-node --test experiments/rust-desktop/app/ui/controls.test.mjs
+node --test experiments/rust-desktop/app/ui/controls.test.mjs experiments/rust-desktop/app/ui/iframe-player.test.mjs
 ```
 
 The [benchmark instructions](benchmark/README.md) describe the reproducible local comparison with a minimal Electron host. It measures identical local pages so the results isolate the browser hosts from plugin and network behavior.
