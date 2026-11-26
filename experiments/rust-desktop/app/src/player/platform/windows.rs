@@ -23,16 +23,6 @@ use super::{Pane, child_bounds};
 
 pub(in crate::player) struct Layout {
     webview_data_dir: PathBuf,
-    #[cfg(feature = "windows-playback-qa")]
-    smoke_browser_arguments: Option<String>,
-}
-
-#[cfg(feature = "windows-playback-qa")]
-fn smoke_cdp_arguments(port: &str) -> Option<String> {
-    let port = port.parse::<std::num::NonZeroU16>().ok()?;
-    Some(format!(
-        "--remote-debugging-address=127.0.0.1 --remote-debugging-port={port}"
-    ))
 }
 
 #[derive(Default)]
@@ -335,21 +325,7 @@ impl Layout {
     pub(in crate::player) fn new(_window: &Window, data_dir: &Path) -> crate::Result<Self> {
         Ok(Self {
             webview_data_dir: data_dir.join("WebView2"),
-            #[cfg(feature = "windows-playback-qa")]
-            smoke_browser_arguments: None,
         })
-    }
-
-    #[cfg(feature = "windows-playback-qa")]
-    pub(in crate::player) fn with_smoke_cdp(mut self, smoke: bool) -> crate::Result<Self> {
-        if smoke && let Some(port) = std::env::var_os("PEAR_PREVIEW_SMOKE_CDP_PORT") {
-            self.smoke_browser_arguments = Some(
-                port.to_str()
-                    .and_then(smoke_cdp_arguments)
-                    .ok_or("Invalid Windows QA debugging port.")?,
-            );
-        }
-        Ok(self)
     }
 
     pub(in crate::player) fn build(
@@ -362,14 +338,6 @@ impl Layout {
         let (video_bounds, controls_bounds) = child_bounds(window, queue_visible, true);
         let mut context = WebContext::new(Some(self.webview_data_dir.clone()));
         let builder = configure(WebViewBuilder::new_with_web_context(&mut context));
-        // Elevated WebView2 hosts ignore the environment's browser flags. Both
-        // panes must pass the same options for the shared user data directory.
-        #[cfg(feature = "windows-playback-qa")]
-        let builder = if let Some(arguments) = &self.smoke_browser_arguments {
-            builder.with_additional_browser_args(arguments.clone())
-        } else {
-            builder
-        };
         let builder = match pane {
             Pane::Video => builder
                 .with_profile_name("PearPreviewVideo")
@@ -410,18 +378,6 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use super::VideoNavigation;
-
-    #[cfg(feature = "windows-playback-qa")]
-    #[test]
-    fn smoke_debugging_accepts_only_a_numeric_nonzero_port() {
-        assert_eq!(
-            super::smoke_cdp_arguments("50123").as_deref(),
-            Some("--remote-debugging-address=127.0.0.1 --remote-debugging-port=50123")
-        );
-        for invalid in ["", "0", "65536", "50123 --disable-web-security"] {
-            assert!(super::smoke_cdp_arguments(invalid).is_none());
-        }
-    }
 
     #[test]
     fn completes_only_the_first_expected_navigation() {

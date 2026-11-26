@@ -7,7 +7,6 @@ license = "MIT"
 
 [features]
 benchmark = []
-windows-playback-qa = ["benchmark"]
 
 [dependencies]
 html-escape = "0.2"
