@@ -6,14 +6,14 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::iframe::AudioOutput;
+use super::{iframe::AudioOutput, metadata::read_key_file};
 use crate::library::write_atomic;
 
 const MAX_FILE_BYTES: u64 = 4096;
 const UNREADABLE: &str = "Could not read the saved playback preferences.";
 const MALFORMED: &str = "The saved playback preferences contain invalid data.";
 
-#[derive(Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Default, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct SavedPreferences {
     #[serde(default)]
@@ -22,6 +22,8 @@ struct SavedPreferences {
     auto_advance: bool,
     #[serde(default, skip_serializing_if = "output_unset")]
     output: AudioOutput,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    youtube_key_file: Option<PathBuf>,
 }
 
 pub(crate) struct Preferences {
@@ -59,6 +61,30 @@ impl Preferences {
         self.problem
     }
 
+    pub(super) fn youtube_key_file(&self) -> Option<&Path> {
+        self.saved.youtube_key_file.as_deref()
+    }
+
+    pub(super) fn set_youtube_key_file(
+        &mut self,
+        path: Option<PathBuf>,
+    ) -> Result<(), &'static str> {
+        if let Some(problem) = self.problem {
+            return Err(problem);
+        }
+        if path
+            .as_deref()
+            .is_some_and(|path| !path.is_absolute() || read_key_file(path).is_none())
+        {
+            return Err("Choose a readable plain-text file containing one YouTube Data API key.");
+        }
+        self.save(SavedPreferences {
+            youtube_key_file: path,
+            ..self.saved.clone()
+        })
+        .map_err(|_| "Could not save the YouTube Data API key file setting.")
+    }
+
     pub(crate) fn set_playback(
         &mut self,
         iframe_player: bool,
@@ -74,15 +100,25 @@ impl Preferences {
                 "Volume must be between 0 and 100.",
             ));
         }
-        let saved = SavedPreferences {
+        self.save(SavedPreferences {
             iframe_player,
             auto_advance,
             output,
-        };
+            ..self.saved.clone()
+        })
+    }
+
+    fn save(&mut self, saved: SavedPreferences) -> io::Result<()> {
         if saved == self.saved {
             return Ok(());
         }
         let bytes = serde_json::to_vec(&saved).map_err(io::Error::other)?;
+        if bytes.len() as u64 > MAX_FILE_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "The playback preferences file would be too large.",
+            ));
+        }
         write_atomic(&self.path, &bytes)?;
         self.saved = saved;
         Ok(())
@@ -182,6 +218,87 @@ mod tests {
     }
 
     #[test]
+    fn remembers_only_the_key_file_location_and_keeps_playback_preferences() {
+        let directory = TestDirectory::new();
+        let key_file = directory.0.join("key.txt");
+        let secret = "synthetic-pear-key";
+        fs::write(&key_file, secret).unwrap();
+        let path = directory.path();
+        let mut preferences = Preferences::load(path.clone());
+        preferences
+            .set_youtube_key_file(Some(key_file.clone()))
+            .unwrap();
+        preferences
+            .set_playback(true, true, AudioOutput::default())
+            .unwrap();
+
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(!saved.contains(secret));
+        let mut restored = Preferences::load(path.clone());
+        assert_eq!(restored.youtube_key_file(), Some(key_file.as_path()));
+        assert!(restored.iframe_player() && restored.auto_advance());
+
+        restored.set_youtube_key_file(None).unwrap();
+        let restored = Preferences::load(path);
+        assert_eq!(restored.youtube_key_file(), None);
+        assert!(restored.iframe_player() && restored.auto_advance());
+        assert_eq!(fs::read_to_string(key_file).unwrap(), secret);
+    }
+
+    #[test]
+    fn rejects_invalid_key_file_choices_without_replacing_the_saved_path() {
+        let directory = TestDirectory::new();
+        let key_file = directory.0.join("key.txt");
+        fs::write(&key_file, b"synthetic-key").unwrap();
+        let path = directory.path();
+        let mut preferences = Preferences::load(path.clone());
+        preferences
+            .set_youtube_key_file(Some(key_file.clone()))
+            .unwrap();
+        let original = fs::read(&path).unwrap();
+        let invalid = directory.0.join("invalid-file.txt");
+        for bytes in [b" \n".as_slice(), b"{ synthetic-secret }", &[b'x'; 513]] {
+            fs::write(&invalid, bytes).unwrap();
+            let problem = preferences
+                .set_youtube_key_file(Some(invalid.clone()))
+                .unwrap_err();
+            assert!(!problem.contains("invalid-file"));
+            assert!(!problem.contains("synthetic-secret"));
+        }
+        for path in [
+            directory.0.clone(),
+            directory.0.join("missing.txt"),
+            PathBuf::new(),
+        ] {
+            assert!(preferences.set_youtube_key_file(Some(path)).is_err());
+        }
+        assert_eq!(preferences.youtube_key_file(), Some(key_file.as_path()));
+        assert_eq!(fs::read(path).unwrap(), original);
+    }
+
+    #[test]
+    fn uses_the_explicit_key_file_override_before_the_saved_path() {
+        use super::super::metadata::Client;
+
+        let directory = TestDirectory::new();
+        let valid = directory.0.join("key.txt");
+        let missing = directory.0.join("missing.txt");
+        fs::write(&valid, b"synthetic-key").unwrap();
+
+        assert!(matches!(Client::configured(None, None), Ok(None)));
+        assert!(matches!(
+            Client::configured(None, Some(&valid)),
+            Ok(Some(_))
+        ));
+        assert!(Client::configured(None, Some(&missing)).is_err());
+        assert!(Client::configured(Some(&missing), Some(&valid)).is_err());
+        assert!(matches!(
+            Client::configured(Some(&valid), Some(&missing)),
+            Ok(Some(_))
+        ));
+    }
+
+    #[test]
     fn defaults_for_a_missing_file_and_persists_both_choices_across_restarts() {
         let directory = TestDirectory::new();
         let path = directory.path();
@@ -247,6 +364,7 @@ mod tests {
                     .set_playback(true, false, AudioOutput::default())
                     .is_err()
             );
+            assert!(preferences.set_youtube_key_file(None).is_err());
             assert_eq!(fs::read(&path).unwrap(), original);
         }
     }

@@ -4,6 +4,7 @@ mod account_catalog;
 mod account_oauth;
 mod advance;
 mod catalog;
+mod catalog_setup;
 mod consent;
 mod iframe;
 mod lyrics;
@@ -21,7 +22,7 @@ mod transport;
 use std::{
     borrow::Cow,
     fs::{self, File, OpenOptions},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -107,6 +108,8 @@ struct QueueView<'a> {
     browser_search: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     catalog: Option<&'a catalog::View>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    catalog_key_problem: Option<&'static str>,
     saved_playlists: playlists::View<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
     account: Option<account::View<'a>>,
@@ -542,8 +545,17 @@ fn receive_account_outcome(
 fn start_youtube_clients(
     events: &EventLoopProxy<PlayerEvent>,
     current: Option<&str>,
-) -> (Option<catalog::Catalog>, Option<metadata_lookup::Lookup>) {
-    let keyed = metadata::Client::from_env();
+    override_path: Option<&Path>,
+    saved_path: Option<&Path>,
+) -> (
+    Option<catalog::Catalog>,
+    Option<metadata_lookup::Lookup>,
+    Option<&'static str>,
+) {
+    let (keyed, key_problem) = match metadata::Client::configured(override_path, saved_path) {
+        Ok(client) => (client, None),
+        Err(problem) => (None, Some(problem)),
+    };
     let catalog = keyed.as_ref().and_then(|client| {
         match catalog::Catalog::new(client.clone(), events.clone()) {
             Ok(catalog) => Some(catalog),
@@ -564,7 +576,7 @@ fn start_youtube_clients(
             None
         }
     };
-    (catalog, lookup)
+    (catalog, lookup, key_problem)
 }
 
 pub fn run(mode: LaunchMode) -> Result<()> {
@@ -581,6 +593,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut mode = mode;
     let mut preferences =
         (!mode.smoke).then(|| preferences::Preferences::load(data_dir.join("preferences.json")));
+    let catalog_key_override = std::env::var_os("PEAR_YOUTUBE_API_KEY_FILE").map(PathBuf::from);
     let mut preferences_problem = preferences
         .as_ref()
         .and_then(preferences::Preferences::problem);
@@ -642,7 +655,33 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let legal = MenuItem::new("Terms and Privacy", true, None);
     let app_menu = Submenu::with_items("Pear Desktop", true, &[&quit])?;
     let local_audio = MenuItem::new("Open Local Audio Window", true, None);
-    let file_menu = Submenu::with_items("File", true, &[&add_video, &open_music, &local_audio])?;
+    let choose_catalog_key = MenuItem::new(
+        "Set YouTube Data API Key File…",
+        approved && preferences.is_some(),
+        None,
+    );
+    let forget_catalog_key = MenuItem::new(
+        "Forget YouTube Data API Key File",
+        approved
+            && preferences
+                .as_ref()
+                .and_then(preferences::Preferences::youtube_key_file)
+                .is_some(),
+        None,
+    );
+    let file_menu = Submenu::with_items(
+        "File",
+        true,
+        &[
+            &add_video,
+            &open_music,
+            &PredefinedMenuItem::separator(),
+            &choose_catalog_key,
+            &forget_catalog_key,
+            &PredefinedMenuItem::separator(),
+            &local_audio,
+        ],
+    )?;
     let view_menu = Submenu::with_items("View", true, &[&toggle_queue, &reload])?;
     let toggle_iframe = CheckMenuItem::new(
         IFRAME_MENU_LABEL,
@@ -755,10 +794,17 @@ pub fn run(mode: LaunchMode) -> Result<()> {
     let mut titled_generation = None;
     let mut controls_ready = false;
     let service_events = event_loop.create_proxy();
-    let (mut catalog, mut lookup) = if approved && !mode.smoke {
-        start_youtube_clients(&service_events, library.state().current.as_deref())
+    let (mut catalog, mut lookup, mut catalog_key_problem) = if approved && !mode.smoke {
+        start_youtube_clients(
+            &service_events,
+            library.state().current.as_deref(),
+            catalog_key_override.as_deref(),
+            preferences
+                .as_ref()
+                .and_then(preferences::Preferences::youtube_key_file),
+        )
     } else {
-        (None, None)
+        (None, None, None)
     };
     let mut transport = mode.iframe_player.then(transport::Transport::default);
     let mut auto_advance = advance::Advance::default();
@@ -891,6 +937,19 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     error = Some(format!("Could not open YouTube Music: {reason}"));
                 }
                 true
+            }
+            Event::UserEvent(PlayerEvent::Menu(event))
+                if event.id == *choose_catalog_key.id() || event.id == *forget_catalog_key.id() =>
+            {
+                let Some(preferences) = preferences.as_mut().filter(|_| approved) else {
+                    return;
+                };
+                let forget = event.id == *forget_catalog_key.id();
+                if !forget || preferences.youtube_key_file().is_some() {
+                    catalog_setup::update(&window, preferences, forget, catalog_key_override.is_some());
+                    forget_catalog_key.set_enabled(preferences.youtube_key_file().is_some());
+                }
+                return;
             }
             Event::UserEvent(PlayerEvent::Menu(event)) if event.id == *reload.id() => {
                 if !approved {
@@ -1170,7 +1229,15 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                                 add_video.set_enabled(true);
                                 toggle_iframe.set_enabled(preferences.is_some());
                                 toggle_advance.set_enabled(preferences.is_some() && mode.iframe_player);
-                                (catalog, lookup) = start_youtube_clients(&service_events, library.state().current.as_deref());
+                                choose_catalog_key.set_enabled(preferences.is_some());
+                                let saved_key = preferences.as_ref().and_then(preferences::Preferences::youtube_key_file);
+                                forget_catalog_key.set_enabled(saved_key.is_some());
+                                (catalog, lookup, catalog_key_problem) = start_youtube_clients(
+                                    &service_events,
+                                    library.state().current.as_deref(),
+                                    catalog_key_override.as_deref(),
+                                    saved_key,
+                                );
                                 account = account::Panel::from_env();
                                 if mode.iframe_player {
                                     lyrics = lyrics_worker();
@@ -1506,6 +1573,7 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                     metadata_problem: lookup.as_ref().and_then(metadata_lookup::Lookup::problem),
                     browser_search: approved && !mode.smoke && catalog.is_none(),
                     catalog: catalog.as_ref().map(catalog::Catalog::view),
+                    catalog_key_problem,
                     saved_playlists: playlists.view(),
                     account: account.as_ref().map(account::Panel::view),
                     legal: LegalView {

@@ -116,7 +116,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Pear shows the title, channel and artwork for the selected video when YouTube supplies them. The public oEmbed lookup works without an API key.
 
-To enable in-app search, store a developer key restricted to YouTube Data API v3 in a private text file and set `PEAR_YOUTUBE_API_KEY_FILE` to that file's path. Pear then uses the Data API for video details and music search. Search requests use the configured project's API quota and run when you submit a query. Lookup results stay in memory and expire within a day. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
+To enable in-app search, enable YouTube Data API v3 in a Google Cloud project and create a developer key restricted to that API. Save the key on its own line in a private plain-text file. In Pear, choose **File → Set YouTube Data API Key File…**, select the file, and reopen Pear. Pear remembers the file location. To remove that setting, choose **File → Forget YouTube Data API Key File** and reopen Pear. [Google Cloud API key guide](https://cloud.google.com/docs/authentication/api-keys)
+
+Pear uses the Data API for video details and music search. Search requests use the configured project's API quota and run when you submit a query. Lookup results stay in memory and expire within a day. For development or testing, `PEAR_YOUTUBE_API_KEY_FILE` takes priority over the file selected in the menu. [YouTube Data API reference](https://developers.google.com/youtube/v3/docs/search/list)
 
 With a key configured, paste a public YouTube or YouTube Music playlist link into Search. Choose **Load more** to request another page of up to 50 items. Pear keeps the playlist order, including repeated tracks, and opens the video you choose in YouTube Music. The preview can browse up to 500 playlist entries. Results expire in memory one day after the first page loads. [Playlist items API](https://developers.google.com/youtube/v3/docs/playlistItems/list)
 

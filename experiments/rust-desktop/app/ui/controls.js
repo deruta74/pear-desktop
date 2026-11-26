@@ -87,6 +87,7 @@ let interruptHistorySwipe;
 let viewSwitcher = null;
 let renderedCatalog = null;
 let renderedBrowserSearch = false;
+let catalogKeyProblem = null;
 let catalogView = null;
 let catalogSearchError = '';
 let catalogPageError = '';
@@ -1150,6 +1151,9 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
     message = results.length
       ? `${results.length} ${results.length === 1 ? 'video' : 'videos'} found.`
       : 'No videos found. Try a different search.';
+  } else if (renderedBrowserSearch && catalogKeyProblem) {
+    message = catalogKeyProblem;
+    error = true;
   }
   view.feedback.classList.toggle('error', error);
   if (view.feedback.textContent !== message)
@@ -1928,6 +1932,7 @@ window.renderPearState = (
     metadata,
     metadataProblem,
     catalog,
+    catalogKeyProblem: keyProblem,
     browserSearch,
     lyrics,
     lyricsSwitching,
@@ -2132,6 +2137,7 @@ window.renderPearState = (
     lyricsSwitchingActive
   )
     cancelLyricsClock();
+  catalogKeyProblem = keyProblem;
   const catalogWasFocused = updateCatalog(catalog, browserSearch === true);
   const lyricsWasFocused = updateLyrics(
     playingPublicPlaylist ? null : lyrics,

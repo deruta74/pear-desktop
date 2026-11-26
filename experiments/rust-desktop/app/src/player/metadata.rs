@@ -7,6 +7,7 @@ use ureq::{
     tls::{RootCerts, TlsConfig, TlsProvider},
     typestate::WithoutBody,
 };
+use zeroize::Zeroizing;
 
 use crate::library::valid_id;
 
@@ -78,10 +79,22 @@ impl Client {
         Self::new(Source::PublicEmbed)
     }
 
-    pub(super) fn from_env() -> Option<Self> {
-        let path = std::env::var_os("PEAR_YOUTUBE_API_KEY_FILE")?;
-        let api_key = read_key_file(Path::new(&path));
-        Some(Self::new(Source::DataApi(api_key)))
+    pub(super) fn configured(
+        override_path: Option<&Path>,
+        saved_path: Option<&Path>,
+    ) -> Result<Option<Self>, &'static str> {
+        let key = if let Some(path) = override_path {
+            read_key_file(path)
+                .ok_or("Could not read the YouTube Data API key file specified at launch.")?
+        } else if let Some(path) = saved_path {
+            path.is_absolute()
+                .then(|| read_key_file(path))
+                .flatten()
+                .ok_or("Could not read the saved YouTube Data API key file. Choose it again from the File menu.")?
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(Self::new(Source::DataApi(Some(key)))))
     }
 
     fn new(source: Source) -> Self {
@@ -246,7 +259,7 @@ pub(super) fn normalize_query(query: &str) -> Option<String> {
     Some(trimmed.to_owned())
 }
 
-fn read_key_file(path: &Path) -> Option<HeaderValue> {
+pub(super) fn read_key_file(path: &Path) -> Option<HeaderValue> {
     let metadata = path.metadata().ok()?;
     if !metadata.is_file() || metadata.len() > MAX_KEY_FILE_BYTES {
         return None;
@@ -255,7 +268,7 @@ fn read_key_file(path: &Path) -> Option<HeaderValue> {
 }
 
 fn key_header(reader: impl Read) -> Option<HeaderValue> {
-    let mut value = String::new();
+    let mut value = Zeroizing::new(String::new());
     reader
         .take(MAX_KEY_FILE_BYTES + 1)
         .read_to_string(&mut value)
