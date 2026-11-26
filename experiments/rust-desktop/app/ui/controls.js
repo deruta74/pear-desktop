@@ -724,6 +724,7 @@ function mountCatalog(query) {
     addFeedback,
     results,
     renderedResults: [],
+    renderedAsPlaylist: false,
   };
 }
 
@@ -735,7 +736,7 @@ function removeView(form, results) {
   return focused;
 }
 
-function createCatalogResult({ id, title, channel }) {
+function createCatalogResult({ id, title, channel }, playlist) {
   const row = document.createElement('li');
   row.className = 'catalog-result';
   const description = document.createElement('div');
@@ -746,21 +747,29 @@ function createCatalogResult({ id, title, channel }) {
   name.title = title;
   const attribution = document.createElement('p');
   attribution.className = 'catalog-channel';
-  attribution.textContent = `YouTube · ${channel}`;
+  attribution.textContent = channel ? `YouTube · ${channel}` : 'YouTube';
   attribution.title = attribution.textContent;
   description.append(name, attribution);
   const button = document.createElement('button');
   button.type = 'button';
-  button.textContent = 'Add';
-  button.setAttribute('aria-label', `Add ${title} to queue`);
+  button.textContent = playlist ? 'Open in browser' : 'Add';
+  button.setAttribute(
+    'aria-label',
+    playlist ? `Open ${title} in YouTube Music` : `Add ${title} to queue`,
+  );
   button.addEventListener('click', () => {
-    send({ type: 'add', source: id }, 'result-add');
+    const command = playlist
+      ? { type: 'open_playlist_video', id }
+      : { type: 'add', source: id };
+    send(command, 'result-add');
   });
   row.append(description, button);
   return row;
 }
 
 function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
+  if (renderedCatalog?.playlist && !catalog?.playlist)
+    catalogAddFeedback = null;
   renderedCatalog = catalog ?? null;
   renderedBrowserSearch = !catalog && browserSearch === true;
   if (!renderedBrowserSearch) browserSearchError = '';
@@ -786,11 +795,19 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   view.form.toggleAttribute('data-browser-search', renderedBrowserSearch);
   if (view.label.textContent !== label) view.label.textContent = label;
   if (view.submit.textContent !== action) view.submit.textContent = action;
+  const placeholder = renderedBrowserSearch
+    ? ''
+    : 'Search or paste a public playlist link';
+  if (view.query.placeholder !== placeholder)
+    view.query.placeholder = placeholder;
 
   const searching =
     catalog && (catalog.pending || pending?.context === 'search');
   const results = searching ? [] : (catalog?.results ?? []);
+  const playlist = catalog?.playlist;
+  const asPlaylist = Boolean(playlist);
   if (
+    asPlaylist !== view.renderedAsPlaylist ||
     results.length !== view.renderedResults.length ||
     results.some((result, index) => {
       const previous = view.renderedResults[index];
@@ -802,8 +819,15 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
     })
   ) {
     if (view.results.contains(document.activeElement)) view.query.focus();
-    view.results.replaceChildren(...results.map(createCatalogResult));
+    view.results.replaceChildren(
+      ...results.map((result) => createCatalogResult(result, asPlaylist)),
+    );
+    view.results.setAttribute(
+      'aria-label',
+      asPlaylist ? 'YouTube playlist videos' : 'YouTube results',
+    );
     view.renderedResults = results;
+    view.renderedAsPlaylist = asPlaylist;
   }
   view.results.hidden = view.form.hidden || !results.length;
   const controlsBusy = Boolean(pending);
@@ -823,10 +847,22 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   } else if (renderedBrowserSearch && pending?.context === 'browser-search') {
     message = 'Opening YouTube Music…';
   } else if (searching) {
-    message = 'Searching YouTube…';
+    message = asPlaylist
+      ? 'Loading the YouTube playlist…'
+      : 'Searching YouTube…';
   } else if (catalog?.problem) {
     message = catalog.problem;
     error = true;
+  } else if (playlist) {
+    const videos =
+      results.length === 1 ? '1 video' : `${results.length} videos`;
+    message = [
+      playlist.hasMore ? 'First page' : null,
+      videos,
+      playlist.unavailable ? `${playlist.unavailable} unavailable` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
   } else if (catalog?.query) {
     message = results.length
       ? `${results.length} ${results.length === 1 ? 'video' : 'videos'} found.`

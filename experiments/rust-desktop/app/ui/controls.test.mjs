@@ -826,7 +826,7 @@ test('shows a supplied metadata problem independently of playback and queue feed
   const metadataProblem = 'YouTube video details are unavailable.';
   const problemText = page.getByText(metadataProblem, { exact: true });
   const playerAlert = page
-    .getByRole('region', { name: 'Current video' })
+    .getByRole('region', { name: 'Now playing' })
     .getByRole('alert');
   const queueStatus = page.getByRole('status');
 
@@ -948,6 +948,56 @@ const pianoResult = {
   title: '<b>Studio piano & strings</b>',
   channel: '<i>Artist & friends</i>',
 };
+
+test('shows public playlist limitations and hands off a selected row without adding to the queue', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 384, height: 520 });
+  const link = 'https://music.youtube.com/playlist?list=PL_1234567890';
+  const render = (catalog, error = null, sequence) =>
+    state(page, [first], first, error, null, sequence, { catalog });
+  await render(searchState());
+  await page.getByRole('button', { name: 'Search' }).click();
+  const input = page.getByRole('searchbox', { name: 'Search YouTube' });
+  await input.fill(link);
+  await input.press('Enter');
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'search',
+    query: link,
+  });
+  const playlist = { hasMore: true, unavailable: 2 };
+  await render(
+    searchState({ query: 'PL_1234567890', playlist, pending: true }),
+    null,
+    2,
+  );
+  await expect(page.getByText('Loading the YouTube playlist…')).toBeVisible();
+  const loaded = searchState({
+    query: 'PL_1234567890',
+    playlist,
+    results: [pianoResult, pianoResult],
+  });
+  await render(loaded, null, null);
+  await expect(
+    page.getByText('First page · 2 videos · 2 unavailable'),
+  ).toBeVisible();
+  const rows = page.getByRole('list', { name: 'YouTube playlist videos' });
+  const actions = rows.getByRole('button', {
+    name: /Open .* in YouTube Music/,
+  });
+  await expect(actions).toHaveCount(2);
+  await actions.first().click();
+  expect((await messages(page)).at(-1).command).toEqual({
+    type: 'open_playlist_video',
+    id: second,
+  });
+  await render(loaded, 'Could not open YouTube Music.', 3);
+  await expect(page.getByText('Could not open YouTube Music.')).toBeVisible();
+  await expect(page.getByText('1 of 1')).toBeVisible();
+  await render(searchState(), null, null);
+  await expect(input).toHaveValue(link);
+  await expect(rows).toBeHidden();
+  await expect(page.getByText('Could not open YouTube Music.')).toBeHidden();
+});
 
 test('opens browser search only when submitted and keeps its draft and acknowledgement in Search', async (t) => {
   const page = await panel(t);
@@ -1884,7 +1934,7 @@ test('updates the player alert independently from queue acknowledgements and val
   const playerProblem = 'The video player stopped. Use Reload Player.';
   const validation = 'Enter a valid YouTube link or video ID.';
   const playerAlert = page
-    .getByRole('region', { name: 'Current video' })
+    .getByRole('region', { name: 'Now playing' })
     .getByRole('alert');
   const queueError = page.locator('#queue-error');
   const input = page.getByRole('textbox', { name: 'YouTube link or video ID' });

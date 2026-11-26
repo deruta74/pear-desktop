@@ -2,6 +2,8 @@
 #[cfg(target_os = "macos")]
 use objc2_foundation::{NSBundle, NSString, NSURL};
 use serde::{Deserialize, Serialize};
+#[cfg(any(target_os = "windows", test))]
+use std::{borrow::Cow, cell::Cell};
 use url::Url;
 #[cfg(target_os = "linux")]
 use webkit2gtk::WebViewExt as _;
@@ -10,11 +12,15 @@ use wry::WebView;
 use wry::WebViewExtMacOS;
 #[cfg(target_os = "linux")]
 use wry::WebViewExtUnix;
+#[cfg(any(target_os = "windows", test))]
+use wry::http::{Method, Request, Response, StatusCode, header};
 
 use super::platform::APP_ID;
 use crate::{Result, library::valid_id};
 
 const WRAPPER_PATH: &str = "/iframe-player.html";
+#[cfg(any(target_os = "windows", test))]
+pub(super) const WINDOWS_WRAPPER_SCHEME: &str = "com.pear-desktop";
 const HTML: &str = include_str!("../../ui/iframe-player.html");
 const MAX_SNAPSHOT_BYTES: usize = 768;
 const MAX_VOLUME: u8 = 100;
@@ -76,16 +82,58 @@ impl Page {
         Ok(Self { embed_url })
     }
 
+    #[cfg(not(target_os = "windows"))]
     pub(super) fn permits(&self, url: &str) -> bool {
-        // Wry's callback covers child frames as well. The iframe sandbox
+        // On WebKit, Wry's callback covers child frames as well. The iframe sandbox
         // prohibits navigation from the player into the top-level document.
-        url == "about:blank" || url == self.embed_url.as_str() || Self::is_wrapper_url(url)
+        self.permits_frame(url) || Self::is_wrapper_url(url)
+    }
+
+    pub(super) fn permits_frame(&self, url: &str) -> bool {
+        url == "about:blank" || url == self.embed_url.as_str()
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) fn windows_top_level_navigation() -> impl Fn(String) -> bool {
+        let loaded = Cell::new(false);
+        move |url| match url.as_str() {
+            "about:blank" => !loaded.get(),
+            // A controller serves the HTML for its initial video. Pear's
+            // Reload Player creates a new controller for the current video.
+            _ => Self::is_wrapper_url(&url) && !loaded.replace(true),
+        }
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) fn windows_wrapper_response(
+        request: &Request<Vec<u8>>,
+        html: &str,
+    ) -> Response<Cow<'static, [u8]>> {
+        // Wry maps scheme://host to https://scheme.host on WebView2, then
+        // restores the original URI before invoking the asset handler.
+        let uri = request.uri();
+        if request.method() != Method::GET
+            || uri.scheme_str() != Some(WINDOWS_WRAPPER_SCHEME)
+            || uri.authority().map(|authority| authority.as_str()) != Some("rust-preview")
+            || uri.path_and_query().map(|path| path.as_str()) != Some(WRAPPER_PATH)
+        {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Cow::Borrowed(&[][..]))
+                .expect("fixed error response");
+        }
+        Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+            .body(Cow::Owned(html.as_bytes().to_vec()))
+            .expect("fixed wrapper response")
     }
 
     pub(super) fn is_wrapper_url(url: &str) -> bool {
         url == wrapper_url()
     }
 
+    #[cfg(not(target_os = "windows"))]
     pub(super) fn load(&self, view: &WebView, output: AudioOutput) -> Result<()> {
         #[cfg(target_os = "macos")]
         if !NSBundle::mainBundle()
@@ -118,7 +166,7 @@ impl Page {
         Ok(())
     }
 
-    fn html(&self, url: &str, output: AudioOutput) -> Result<String> {
+    pub(super) fn html(&self, url: &str, output: AudioOutput) -> Result<String> {
         if output.volume.is_some_and(|value| value > MAX_VOLUME) {
             return Err("The IFrame volume is out of range.".into());
         }
@@ -328,6 +376,7 @@ mod tests {
     const PLAYING: &str = r#"{"ready":true,"hasPlayed":true,"state":1,"position":172,"duration":320,"ended":false,"error":null,"blocked":false}"#;
     const STARTING: &str = r#"{"ready":false,"hasPlayed":false,"state":null,"position":null,"duration":null,"ended":false,"error":null,"blocked":false}"#;
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn permits_only_the_local_wrapper_and_its_exact_player_url() {
         let page = Page::new(ID).unwrap();
@@ -352,6 +401,87 @@ mod tests {
         ] {
             assert!(!page.permits(url), "{url}");
         }
+    }
+
+    #[test]
+    fn windows_serves_and_navigates_only_the_expected_wrapper_and_frame() {
+        use wry::http::{Method, Request, StatusCode, header};
+
+        let page = Page::new(ID).unwrap();
+        let expected_asset = "com.pear-desktop://rust-preview/iframe-player.html";
+        assert_eq!(
+            expected_asset.replace(
+                &format!("{WINDOWS_WRAPPER_SCHEME}://"),
+                &format!("https://{WINDOWS_WRAPPER_SCHEME}."),
+            ),
+            wrapper_url(),
+        );
+        let html = page.html(WRAPPER, AudioOutput::default()).unwrap();
+        let request = |method: Method, uri: &str| {
+            Request::builder()
+                .method(method)
+                .uri(uri)
+                .body(Vec::new())
+                .unwrap()
+        };
+        let response = Page::windows_wrapper_response(&request(Method::GET, expected_asset), &html);
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+        assert_eq!(
+            response.headers()[header::X_CONTENT_TYPE_OPTIONS],
+            "nosniff"
+        );
+        assert_eq!(response.body().as_ref(), html.as_bytes());
+        assert!(html.contains(&format!("data-wrapper-url=\"{WRAPPER}\"")));
+
+        for (method, uri) in [
+            (Method::POST, expected_asset),
+            (Method::GET, "com.pear-desktop://rust-preview/"),
+            (
+                Method::GET,
+                "com.pear-desktop://rust-preview/iframe-player.html?other",
+            ),
+            (
+                Method::GET,
+                "com.pear-desktop://rust-preview.evil.example/iframe-player.html",
+            ),
+            (Method::GET, WRAPPER),
+        ] {
+            let response = Page::windows_wrapper_response(&request(method, uri), &html);
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+            assert!(response.body().is_empty(), "{uri}");
+        }
+
+        assert!(page.permits_frame(EMBED));
+        assert!(page.permits_frame("about:blank"));
+        assert!(!page.permits_frame(WRAPPER));
+        assert!(!page.permits_frame(&format!("{EMBED}&autoplay=1")));
+        assert!(!page.permits_frame("https://www.youtube.com/watch?v=M7lc1UVf-VE"));
+
+        let rebuilt = Page::new("dQw4w9WgXcQ").unwrap();
+        assert!(!page.permits_frame(rebuilt.embed_url.as_str()));
+        assert!(rebuilt.permits_frame(rebuilt.embed_url.as_str()));
+        assert!(!rebuilt.permits_frame(EMBED));
+    }
+
+    #[test]
+    fn windows_wrapper_allows_one_top_level_load_per_controller() {
+        let navigate = Page::windows_top_level_navigation();
+        assert!(navigate("about:blank".into()));
+        assert!(!navigate(EMBED.into()));
+        assert!(!navigate(format!("{WRAPPER}#other")));
+        assert!(navigate(WRAPPER.into()));
+        assert!(
+            !navigate(WRAPPER.into()),
+            "a native reload would replay the initial video"
+        );
+        assert!(!navigate("about:blank".into()));
+
+        let rebuilt = Page::windows_top_level_navigation();
+        assert!(rebuilt(WRAPPER.into()));
     }
 
     #[test]

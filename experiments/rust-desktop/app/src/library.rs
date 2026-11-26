@@ -54,24 +54,22 @@ pub enum Command {
     OpenMusicSearch {
         query: String,
     },
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    OpenPlaylistVideo {
+        id: String,
+    },
     FindLyrics {
         title: String,
         artist: String,
     },
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     SetPlayback {
         playing: bool,
     },
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     Seek {
         position: u32,
     },
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     SetVolume {
         volume: u8,
     },
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     SetMuted {
         muted: bool,
     },
@@ -214,10 +212,10 @@ impl Library {
             | Command::OpenBrowser {}
             | Command::Search { .. }
             | Command::OpenMusicSearch { .. }
+            | Command::OpenPlaylistVideo { .. }
             | Command::Playlist(_) => {
                 return Ok(false);
             }
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             Command::SetPlayback { .. }
             | Command::Seek { .. }
             | Command::SetVolume { .. }

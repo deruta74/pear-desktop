@@ -10,14 +10,57 @@ use tao::event_loop::EventLoopProxy;
 
 use super::{
     PlayerEvent,
-    metadata::{Client, LookupError, SearchResult, normalize_query},
+    metadata::{Client, LookupError, PlaylistItems, SearchResult, normalize_query, playlist_id},
     metadata_lookup::Retention,
 };
 
 const THROTTLE_DELAY: Duration = Duration::from_secs(60);
 
-pub(super) type Response = Result<Vec<SearchResult>, LookupError>;
-type Request = (u64, String);
+pub(super) type Response = Result<Results, LookupError>;
+type Request = (u64, Query);
+
+pub(super) enum Results {
+    Search(Vec<SearchResult>),
+    Playlist(PlaylistItems),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Query {
+    Search(String),
+    Playlist(String),
+}
+
+impl Query {
+    pub(super) fn parse(input: &str) -> Result<Self, &'static str> {
+        if let Some(id) = playlist_id(input) {
+            return Ok(Self::Playlist(id));
+        }
+        let first_word = input.split_whitespace().next().unwrap_or_default();
+        let authority = first_word.split(['/', '?', '#']).next().unwrap_or_default();
+        if input.contains("://")
+            || first_word.starts_with("//")
+            || (authority.contains('.') && authority.len() < first_word.len())
+        {
+            return Err("Enter a public YouTube playlist link or a search term.");
+        }
+        normalize_query(input)
+            .map(Self::Search)
+            .ok_or("Enter a search of up to 160 characters.")
+    }
+
+    fn value(&self) -> &str {
+        match self {
+            Self::Search(query) | Self::Playlist(query) => query,
+        }
+    }
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaylistSummary {
+    has_more: bool,
+    unavailable: usize,
+}
 
 #[derive(Default, Serialize)]
 pub(super) struct View {
@@ -25,6 +68,8 @@ pub(super) struct View {
     pending: bool,
     results: Vec<SearchResult>,
     problem: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    playlist: Option<PlaylistSummary>,
 }
 
 pub(super) struct Catalog {
@@ -45,8 +90,12 @@ impl Catalog {
             .name("youtube-search".into())
             .spawn(move || {
                 while let Ok((revision, query)) = receiver.recv() {
+                    let results = match &query {
+                        Query::Search(query) => client.search(query).map(Results::Search),
+                        Query::Playlist(id) => client.playlist_items(id).map(Results::Playlist),
+                    };
                     if events
-                        .send_event(PlayerEvent::SearchResults(revision, client.search(&query)))
+                        .send_event(PlayerEvent::SearchResults(revision, results))
                         .is_err()
                     {
                         break;
@@ -74,8 +123,8 @@ impl Catalog {
     }
 
     pub(super) fn submit(&mut self, input: &str, time: Instant) {
-        let query = normalize_query(input);
-        if query.as_deref() == Some(self.view.query.as_str())
+        let query = Query::parse(input);
+        if query.as_ref().map(Query::value) == Ok(self.view.query.as_str())
             && (self.view.pending
                 || self
                     .expires
@@ -89,11 +138,17 @@ impl Catalog {
         self.waiting = None;
         self.expires = None;
         self.view = View::default();
-        let Some(query) = query else {
-            self.view.problem = Some("Enter a search of up to 160 characters.");
-            return;
+        let query = match query {
+            Ok(query) => query,
+            Err(problem) => {
+                self.view.problem = Some(problem);
+                return;
+            }
         };
-        self.view.query.clone_from(&query);
+        self.view.query = query.value().to_owned();
+        if matches!(query, Query::Playlist(_)) {
+            self.view.playlist = Some(PlaylistSummary::default());
+        }
         self.view.pending = true;
         if self
             .in_flight
@@ -130,11 +185,24 @@ impl Catalog {
         let Some((_, query)) = self.in_flight.take_if(|(active, _)| *active == revision) else {
             return false;
         };
-        let is_current = self.view.pending && self.view.query == query;
+        let is_current = self.view.pending && self.view.query == query.value();
         match response {
             Ok(results) if is_current => {
                 self.expires = Some(Retention::new(time));
-                self.view.results = results;
+                self.view.results = match results {
+                    Results::Search(items) => items,
+                    Results::Playlist(PlaylistItems {
+                        items,
+                        has_more,
+                        unavailable,
+                    }) => {
+                        self.view.playlist = Some(PlaylistSummary {
+                            has_more,
+                            unavailable,
+                        });
+                        items
+                    }
+                };
                 self.view.pending = false;
             }
             Ok(_) => {}
@@ -162,6 +230,9 @@ impl Catalog {
                 self.throttled_until = Some(time + THROTTLE_DELAY);
                 return "YouTube is limiting searches. Try again shortly.";
             }
+            _ if self.view.playlist.is_some() => {
+                return "Could not load this public YouTube playlist. Check the link and try again.";
+            }
             _ => return "Could not search YouTube. Try again.",
         };
         self.unavailable = Some(unavailable);
@@ -170,6 +241,15 @@ impl Catalog {
 
     pub(super) fn deadline(&self) -> Option<Instant> {
         self.expires.as_ref().map(Retention::deadline)
+    }
+
+    pub(super) fn can_open_playlist_video(&self, id: &str, time: Instant) -> bool {
+        self.view.playlist.is_some()
+            && self
+                .expires
+                .as_ref()
+                .is_some_and(|expiry| !expiry.expired(time))
+            && self.view.results.iter().any(|result| result.id == id)
     }
 
     pub(super) fn tick(&mut self, time: Instant) -> bool {
@@ -182,6 +262,7 @@ impl Catalog {
         }
         self.view.results.clear();
         self.view.query.clear();
+        self.view.playlist = None;
         self.expires = None;
         true
     }
@@ -210,11 +291,11 @@ mod tests {
         catalog.submit("second", now);
         catalog.submit("third", now);
         assert_eq!(receiver.try_recv(), Err(TryRecvError::Empty));
-        assert!(!catalog.receive(first, Ok(vec![result("Old")]), now));
+        assert!(!catalog.receive(first, Ok(Results::Search(vec![result("Old")])), now));
         let (third, query) = receiver.try_recv().unwrap();
-        assert_eq!(query, "third");
+        assert_eq!(query, Query::Search("third".into()));
         assert!(catalog.view().results.is_empty());
-        assert!(catalog.receive(third, Ok(vec![result("Newest")]), now));
+        assert!(catalog.receive(third, Ok(Results::Search(vec![result("Newest")])), now));
         assert_eq!(catalog.view().results[0].title, "Newest");
     }
 
@@ -234,7 +315,7 @@ mod tests {
         assert_eq!(receiver.try_recv(), Err(TryRecvError::Empty));
         catalog.submit("second", now + THROTTLE_DELAY);
         let (second, _) = receiver.try_recv().unwrap();
-        assert!(catalog.receive(second, Ok(vec![]), now + THROTTLE_DELAY));
+        assert!(catalog.receive(second, Ok(Results::Search(vec![])), now + THROTTLE_DELAY));
         catalog.submit("second", now + THROTTLE_DELAY);
         assert_eq!(receiver.try_recv(), Err(TryRecvError::Empty));
     }
@@ -248,8 +329,59 @@ mod tests {
         let (first, _) = receiver.try_recv().unwrap();
         catalog.submit("second", now);
         catalog.submit("first", now);
-        assert!(catalog.receive(first, Ok(vec![result("Reused")]), now));
+        assert!(catalog.receive(first, Ok(Results::Search(vec![result("Reused")])), now));
         assert_eq!(catalog.view().results[0].title, "Reused");
         assert_eq!(receiver.try_recv(), Err(TryRecvError::Empty));
+    }
+
+    #[test]
+    fn playlist_results_open_only_current_rows_until_expiry() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut catalog = Catalog::with_sender(sender);
+        let now = Instant::now();
+        let id = "PL_1234567890";
+        catalog.submit("https://example.com/playlist?list=PL_1234567890", now);
+        assert_eq!(receiver.try_recv(), Err(TryRecvError::Empty));
+
+        catalog.submit(
+            &format!("https://music.youtube.com/playlist?list={id}"),
+            now,
+        );
+        let (revision, query) = receiver.try_recv().unwrap();
+        assert_eq!(query, Query::Playlist(id.into()));
+        assert!(!catalog.can_open_playlist_video("M7lc1UVf-VE", now));
+        assert!(catalog.receive(
+            revision,
+            Ok(Results::Playlist(PlaylistItems {
+                items: vec![result("Available")],
+                has_more: true,
+                unavailable: 1,
+            })),
+            now,
+        ));
+        assert_eq!(catalog.view().results[0].title, "Available");
+        let playlist = catalog.view().playlist.as_ref().unwrap();
+        assert!(playlist.has_more);
+        assert_eq!(playlist.unavailable, 1);
+        assert!(catalog.can_open_playlist_video("M7lc1UVf-VE", now));
+        assert!(!catalog.can_open_playlist_video("dQw4w9WgXcQ", now));
+        let expired = now + Duration::from_secs(25 * 60 * 60);
+        assert!(!catalog.can_open_playlist_video("M7lc1UVf-VE", expired));
+        assert!(catalog.tick(expired));
+        assert!(catalog.view().playlist.is_none());
+    }
+
+    #[test]
+    fn playlist_routing_does_not_send_share_parameters_or_intercept_artist_searches() {
+        assert_eq!(
+            Query::parse("FLEETWOODMAC"),
+            Ok(Query::Search("FLEETWOODMAC".into()))
+        );
+        assert!(Query::parse("//example.com/playlist?list=PL_1234567890&si=share").is_err());
+        assert!(Query::parse("example.com/playlist?list=PL_1234567890&si=share").is_err());
+        assert_eq!(
+            Query::parse("www.youtube.com/playlist?si=share&list=PL_1234567890"),
+            Ok(Query::Playlist("PL_1234567890".into())),
+        );
     }
 }

@@ -100,6 +100,33 @@ pub(in crate::player) fn load_video_with_referer(
     Ok(())
 }
 
+pub(in crate::player) fn restrict_video_frames(
+    view: &WebView,
+    permits: impl Fn(&str) -> bool + 'static,
+) -> crate::Result<()> {
+    let handler = NavigationStartingEventHandler::create(Box::new(move |_, args| {
+        let Some(args) = args else {
+            return Ok(());
+        };
+        let mut uri = PWSTR::null();
+        // WebView2 supplies these arguments on the controller thread.
+        unsafe {
+            args.Uri(&mut uri)?;
+            args.SetCancel(!permits(&take_pwstr(uri)))?;
+        }
+        Ok(())
+    }));
+    // Wry's Windows navigation handler covers only the top-level document.
+    // WebView2 releases this frame handler when the controller closes.
+    let mut token = 0;
+    unsafe {
+        view.webview()
+            .add_FrameNavigationStarting(&handler, &mut token)
+    }
+    .map_err(|error| webview_error("restrict video frame navigation", error))?;
+    Ok(())
+}
+
 pub(in crate::player) fn observe_video(
     view: &WebView,
     url: &str,
