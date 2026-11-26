@@ -1,5 +1,8 @@
-//! Host reference implementation of Pear Desktop's wet reverb tank.
+//! Pear Desktop's native Dattorro tank and stereo reverb mixer.
 #![forbid(unsafe_code)]
+
+mod stereo_reverb;
+pub use stereo_reverb::{ReverbSettings, StereoReverb};
 
 // Port of Pear's DATTORRO_WORKLET_SOURCE, adapted from pear-devs/pear-desktop
 // PR #4700, commit 52763433a853f67766c7a6e8947f074e1f2d0288, by nathwn12
@@ -242,18 +245,28 @@ impl Dattorro {
         }
         let predelay_frames = (self.predelay * self.sample_rate * 0.1).floor() as usize;
         for i in 0..left.len() {
-            [out_left[i], out_right[i]] = self.process_frame(left[i], right[i], predelay_frames);
+            let input = (sanitize(left[i]) + sanitize(right[i])) * 0.5;
+            [out_left[i], out_right[i]] = self.process_frame(input, predelay_frames, 0.0);
         }
     }
 
-    fn process_frame(&mut self, left: f32, right: f32, predelay_frames: usize) -> [f32; 2] {
+    fn process_frame(
+        &mut self,
+        input: f64,
+        predelay_frames: usize,
+        predelay_fraction: f64,
+    ) -> [f32; 2] {
         let frame = self.frame;
-        let input = (sanitize(left) + sanitize(right)) * 0.5;
         let predelay_length = self.pre_delay.len();
         self.pre_delay[self.pre_index] = input as f32;
         self.pre_index = (self.pre_index + 1) % predelay_length;
-        let delayed = (self.pre_index + predelay_length - predelay_frames) % predelay_length;
-        let delayed = f64::from(self.pre_delay[delayed]);
+        let delayed_index = (self.pre_index + predelay_length - predelay_frames) % predelay_length;
+        let mut delayed = f64::from(self.pre_delay[delayed_index]);
+        if predelay_fraction > 0.0 {
+            let previous_index = (delayed_index + predelay_length - 1) % predelay_length;
+            let previous = f64::from(self.pre_delay[previous_index]);
+            delayed += predelay_fraction * (previous - delayed);
+        }
         self.pre_filter_state += (delayed - self.pre_filter_state) * self.diffusion.pre_filter;
         let mut input = self.pre_filter_state;
         for (i, diffuser) in self.input_diffusers.iter_mut().enumerate() {
