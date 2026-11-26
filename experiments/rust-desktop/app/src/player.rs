@@ -581,17 +581,9 @@ fn start_youtube_clients(
         }
     });
     let details = keyed.unwrap_or_else(metadata::Client::public_embed);
-    let lookup = match metadata_lookup::Lookup::new(details, events.clone()) {
-        Ok(mut lookup) => {
-            lookup.select(current);
-            Some(lookup)
-        }
-        Err(_) => {
-            eprintln!("Could not start YouTube video details lookup.");
-            None
-        }
-    };
-    (catalog, lookup, key_problem)
+    let mut lookup = metadata_lookup::Lookup::new(details, events.clone());
+    lookup.select(current);
+    (catalog, Some(lookup), key_problem)
 }
 
 pub fn run(mode: LaunchMode) -> Result<()> {

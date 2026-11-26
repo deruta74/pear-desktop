@@ -19,6 +19,7 @@ const THROTTLE_DELAY: Duration = Duration::from_secs(60);
 const MAX_ATTEMPTS: u8 = 2;
 
 pub(super) type Response = Result<Option<Metadata>, LookupError>;
+type StartWorker = Box<dyn FnOnce() -> io::Result<SyncSender<String>>>;
 
 pub(super) struct Retention {
     deadline: Instant,
@@ -48,7 +49,8 @@ impl Retention {
 }
 
 pub(super) struct Lookup {
-    sender: SyncSender<String>,
+    start_worker: Option<StartWorker>,
+    sender: Option<SyncSender<String>>,
     selected: Option<String>,
     requested: Option<String>,
     metadata: Option<Metadata>,
@@ -59,27 +61,37 @@ pub(super) struct Lookup {
 }
 
 impl Lookup {
-    pub(super) fn new(client: Client, events: EventLoopProxy<PlayerEvent>) -> io::Result<Self> {
-        let (sender, receiver) = mpsc::sync_channel::<String>(1);
-        thread::Builder::new()
-            .name("youtube-metadata".into())
-            .spawn(move || {
-                while let Ok(id) = receiver.recv() {
-                    let response = client.lookup(&id);
-                    if events
-                        .send_event(PlayerEvent::Metadata(id, response))
-                        .is_err()
-                    {
-                        break;
+    pub(super) fn new(client: Client, events: EventLoopProxy<PlayerEvent>) -> Self {
+        Self::with_start_worker(move || {
+            let (sender, receiver) = mpsc::sync_channel::<String>(1);
+            thread::Builder::new()
+                .name("youtube-metadata".into())
+                .spawn(move || {
+                    while let Ok(id) = receiver.recv() {
+                        let response = client.lookup(&id);
+                        if events
+                            .send_event(PlayerEvent::Metadata(id, response))
+                            .is_err()
+                        {
+                            break;
+                        }
                     }
-                }
-            })?;
-        Ok(Self::with_sender(sender))
+                })?;
+            Ok(sender)
+        })
     }
 
+    #[cfg(test)]
     fn with_sender(sender: SyncSender<String>) -> Self {
+        Self::with_start_worker(move || Ok(sender))
+    }
+
+    fn with_start_worker(
+        start_worker: impl FnOnce() -> io::Result<SyncSender<String>> + 'static,
+    ) -> Self {
         Self {
-            sender,
+            start_worker: Some(Box::new(start_worker)),
+            sender: None,
             selected: None,
             requested: None,
             metadata: None,
@@ -114,7 +126,21 @@ impl Lookup {
         }
         let Some(id) = &self.selected else { return };
         self.retry_after = None;
-        if self.sender.try_send(id.clone()).is_ok() {
+        if let Some(start_worker) = self.start_worker.take() {
+            match start_worker() {
+                Ok(sender) => self.sender = Some(sender),
+                Err(_) => {
+                    self.problem =
+                        Some("Could not start the YouTube details service. Restart Pear to retry.");
+                    return;
+                }
+            }
+        }
+        if self
+            .sender
+            .as_ref()
+            .is_some_and(|sender| sender.try_send(id.clone()).is_ok())
+        {
             self.requested = Some(id.clone());
             self.attempts += 1;
         } else {
@@ -192,7 +218,7 @@ impl Lookup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::TryRecvError;
+    use std::{cell::Cell, rc::Rc, sync::mpsc::TryRecvError};
 
     const FIRST: &str = "M7lc1UVf-VE";
     const SECOND: &str = "jNQXAC9IVRw";
@@ -204,6 +230,29 @@ mod tests {
             channel: "Example channel".into(),
             thumbnail_url: None,
         }
+    }
+
+    #[test]
+    fn starts_the_worker_only_when_a_video_is_selected() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let starts = Rc::new(Cell::new(0));
+        let recorded = Rc::clone(&starts);
+        let mut lookup = Lookup::with_start_worker(move || {
+            recorded.set(recorded.get() + 1);
+            Ok(sender)
+        });
+        lookup.select(None);
+        lookup.tick(Instant::now());
+        assert_eq!(starts.get(), 0);
+        assert_eq!(receiver.try_recv(), Err(TryRecvError::Empty));
+
+        lookup.select(Some(FIRST));
+        assert_eq!(starts.get(), 1);
+        assert_eq!(receiver.try_recv().unwrap(), FIRST);
+        assert!(lookup.receive(FIRST, Ok(None), Instant::now()));
+        lookup.select(Some(SECOND));
+        assert_eq!(starts.get(), 1);
+        assert_eq!(receiver.try_recv().unwrap(), SECOND);
     }
 
     #[test]
