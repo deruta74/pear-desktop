@@ -244,7 +244,7 @@ fn pick_files(window: &Window) -> Vec<PathBuf> {
             .set_title("Open audio files")
             .add_filter(
                 "Audio files",
-                &["wav", "wave", "flac", "mp3", "opus", "ogg"],
+                &["wav", "wave", "flac", "mp3", "opus", "ogg", "m4a"],
             )
             .pick_files()
             .unwrap_or_default()
@@ -271,6 +271,7 @@ fn pick_files(window: &Window) -> Vec<PathBuf> {
             "*.[mM][pP]3",
             "*.[oO][pP][uU][sS]",
             "*.[oO][gG][gG]",
+            "*.[mM]4[aA]",
         ] {
             filter.add_pattern(pattern);
         }

@@ -4,7 +4,10 @@ use std::{
     path::Path,
 };
 
-use super::{EngineOpenError, flac::FlacSource, mp3::Mp3Source, opus::OpusSource, wav::WavSource};
+use super::{
+    EngineOpenError, flac::FlacSource, m4a::M4aSource, mp3::Mp3Source, opus::OpusSource,
+    wav::WavSource,
+};
 
 use crate::local_audio::metadata::Metadata;
 
@@ -19,6 +22,7 @@ pub(super) struct AudioInfo {
 enum Format {
     Wav(WavSource),
     Flac(FlacSource),
+    M4a(Box<M4aSource>),
     Mp3(Box<Mp3Source>),
     Opus(Box<OpusSource>),
 }
@@ -69,6 +73,15 @@ impl AudioSource {
                 let (source, metadata) = Mp3Source::open(file, length)?;
                 (Format::Mp3(Box::new(source)), metadata)
             }
+            _ if path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("m4a")) =>
+            {
+                (
+                    Format::M4a(Box::new(M4aSource::open(file, length)?)),
+                    Metadata::default(),
+                )
+            }
             _ => return Err(EngineOpenError::UnsupportedAudio),
         };
         Ok(Self { format, metadata })
@@ -78,6 +91,7 @@ impl AudioSource {
         match &self.format {
             Format::Wav(source) => source.info(),
             Format::Flac(source) => source.info(),
+            Format::M4a(source) => source.info(),
             Format::Mp3(source) => source.info(),
             Format::Opus(source) => source.info(),
         }
@@ -87,6 +101,7 @@ impl AudioSource {
         match &mut self.format {
             Format::Wav(source) => source.seek_to(frame),
             Format::Flac(source) => source.seek_to(frame),
+            Format::M4a(source) => source.seek_to(frame),
             Format::Mp3(source) => source.seek_to(frame),
             Format::Opus(source) => source.seek_to(frame),
         }
@@ -96,6 +111,7 @@ impl AudioSource {
         match &mut self.format {
             Format::Wav(source) => source.read_frame().map_err(io::Error::other),
             Format::Flac(source) => source.read_frame(),
+            Format::M4a(source) => source.read_frame(),
             Format::Mp3(source) => source.read_frame(),
             Format::Opus(source) => source.read_frame(),
         }

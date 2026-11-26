@@ -8,14 +8,14 @@ use std::{
 
 use super::*;
 
-struct Fixture(PathBuf);
+pub(super) struct Fixture(pub(super) PathBuf);
 
 impl Fixture {
     fn from_bytes(bytes: &[u8]) -> Self {
         Self::with_extension(bytes, "wav")
     }
 
-    fn with_extension(bytes: &[u8], extension: &str) -> Self {
+    pub(super) fn with_extension(bytes: &[u8], extension: &str) -> Self {
         static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 
         let path = std::env::temp_dir().join(format!(
@@ -263,6 +263,107 @@ fn mp3_uses_gapless_duration_and_seeks_to_the_same_samples() {
     }
     source.seek_to(source.info().frames).unwrap();
     assert!(source.read_frame().is_err());
+}
+
+#[test]
+fn m4a_uses_the_edit_list_for_mono_playback() {
+    // FFmpeg AAC-LC at 44.1 kHz with a 1,024-frame edit and a short final packet.
+    let fixture = Fixture::with_extension(include_bytes!("fixtures/mono-edit.m4a"), "m4a");
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().sample_rate, 44_100);
+    assert_eq!(source.info().frames, 11_157);
+    for index in 0..source.info().frames {
+        let actual = source.read_frame().unwrap();
+        assert_eq!(actual[0], actual[1]);
+        match index {
+            0 => assert_aac_frame(actual, [0.002_672_992; 2]),
+            400 => assert_aac_frame(actual, [-0.124_922_77; 2]),
+            11_156 => assert_aac_frame(actual, [0.076_335_445; 2]),
+            _ => (),
+        }
+    }
+    assert!(source.read_frame().is_err());
+    source.seek_to(11_157).unwrap();
+    assert!(source.read_frame().is_err());
+}
+
+#[test]
+fn m4a_uses_validated_itunes_priming_and_padding() {
+    // macOS afconvert AAC-LC with no edit list and 2,112 leading and 43 trailing frames.
+    let fixture = Fixture::with_extension(include_bytes!("fixtures/mono-itunes.m4a"), "m4a");
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().frames, 11_157);
+    assert_aac_frame(source.read_frame().unwrap(), [-0.001_221_655; 2]);
+    source.seek_to(11_156).unwrap();
+    assert_aac_frame(source.read_frame().unwrap(), [0.099_173_83; 2]);
+    assert!(source.read_frame().is_err());
+}
+
+#[test]
+fn m4a_decodes_stereo_and_seeks_using_the_sample_table() {
+    // FFmpeg AAC-LC at 48 kHz with the edit disabled and moov before mdat.
+    let fixture = Fixture::with_extension(include_bytes!("fixtures/stereo-unedited.m4a"), "m4a");
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().sample_rate, 48_000);
+    assert_eq!(source.info().frames, 33_184);
+    let frames: Vec<_> = (0..source.info().frames)
+        .map(|_| source.read_frame().unwrap())
+        .collect();
+    assert!(source.read_frame().is_err());
+    assert_aac_frame(frames[16_024], [0.210_181_43, 0.061_160_162]);
+    assert_aac_frame(frames[33_183], [0.111_701_72, -0.036_795_076]);
+    for index in [32_770, 9_223, 0] {
+        source.seek_to(index).unwrap();
+        let mut squared_error = 0.0;
+        let mut shifted_error = 0.0;
+        for index in index as usize..index as usize + 128 {
+            let [left, right] = source.read_frame().unwrap();
+            squared_error += (left - frames[index][0]).powi(2) + (right - frames[index][1]).powi(2);
+            shifted_error +=
+                (left - frames[index + 1][0]).powi(2) + (right - frames[index + 1][1]).powi(2);
+        }
+        // AAC perceptual noise substitution can use different noise after a seek.
+        assert!(squared_error < 0.001 && squared_error < shifted_error);
+    }
+    source.seek_to(33_183).unwrap();
+    assert!(source.read_frame().is_ok());
+    assert!(source.read_frame().is_err());
+}
+
+#[test]
+fn m4a_rejects_truncated_encrypted_and_invalid_packet_tables() {
+    let media = include_bytes!("fixtures/mono-edit.m4a");
+    let field = |name| media.windows(4).position(|bytes| bytes == name).unwrap();
+    let mut encrypted = media.to_vec();
+    let entry = field(b"stsd") + 16;
+    assert_eq!(&media[entry..entry + 4], b"mp4a");
+    encrypted[entry..entry + 4].copy_from_slice(b"enca");
+    let mut bad_size = media.to_vec();
+    let first_packet_size = field(b"stsz") + 16;
+    bad_size[first_packet_size..first_packet_size + 4].copy_from_slice(&u32::MAX.to_be_bytes());
+    let mut complex_edit = media.to_vec();
+    complex_edit[field(b"elst") + 11] = 2;
+    for bytes in [
+        &media[..media.len() - 1],
+        &encrypted,
+        &bad_size,
+        &complex_edit,
+    ] {
+        let fixture = Fixture::with_extension(bytes, "m4a");
+        assert!(matches!(
+            AudioSource::open(&fixture.0),
+            Err(EngineOpenError::UnsupportedAudio)
+        ));
+    }
+}
+
+fn assert_aac_frame(actual: [f32; 2], expected: [f32; 2]) {
+    for (actual, expected) in actual.into_iter().zip(expected) {
+        assert!(
+            (actual - expected).abs() < 0.000_075,
+            "{actual} != {expected}"
+        );
+    }
 }
 
 #[test]

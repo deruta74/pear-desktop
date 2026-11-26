@@ -1,5 +1,6 @@
 mod eq;
 mod flac;
+mod m4a;
 mod mp3;
 mod opus;
 mod render;
@@ -51,7 +52,7 @@ impl fmt::Display for EngineOpenError {
         formatter.write_str(match self {
             Self::UnavailableAudio => "Could not open the selected audio file.",
             Self::UnsupportedAudio => {
-                "Choose a non-empty mono or stereo WAV, FLAC, MP3, or Ogg Opus file."
+                "Choose a non-empty mono or stereo WAV, FLAC, MP3, Ogg Opus, or AAC-LC M4A file."
             }
             Self::AudioOutputUnavailable => "Could not start the default audio output.",
         })

@@ -626,7 +626,9 @@ test('opens local audio from Terms without agreeing or dismissing the disclosure
 
   await render();
   await expect(
-    region.getByText(/Play WAV, FLAC, MP3, and Ogg Opus files offline/),
+    region.getByText(
+      /Play WAV, FLAC, MP3, Ogg Opus, and AAC-LC M4A files offline/,
+    ),
   ).toBeVisible();
   await localAudio.press('Enter');
   await expect(localAudio).toBeFocused();

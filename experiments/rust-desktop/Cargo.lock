@@ -2547,7 +2547,9 @@ dependencies = [
  "lazy_static",
  "symphonia-bundle-flac",
  "symphonia-bundle-mp3",
+ "symphonia-codec-aac",
  "symphonia-core",
+ "symphonia-format-isomp4",
  "symphonia-metadata",
 ]
 
@@ -2575,6 +2577,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "symphonia-codec-aac"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5bf8e39552d34a3c4c98333370e62f48c92456d2e814f273b5c3ad7c4a5f45c"
+dependencies = [
+ "lazy_static",
+ "log",
+ "symphonia-common",
+ "symphonia-core",
+]
+
+[[package]]
 name = "symphonia-common"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2597,6 +2611,18 @@ dependencies = [
  "log",
  "num-complex",
  "smallvec",
+]
+
+[[package]]
+name = "symphonia-format-isomp4"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e681a70e1870d34e02abf1dbc51e4267c3f1827801474e8870be8c689fc4dc3"
+dependencies = [
+ "log",
+ "symphonia-common",
+ "symphonia-core",
+ "symphonia-metadata",
 ]
 
 [[package]]
