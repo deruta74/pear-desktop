@@ -366,7 +366,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev xvfb xauth x11-utils dbus-daemon
+            libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev libasound2-dev xvfb xauth x11-utils dbus-daemon
       - name: Build and test the Rust preview on Linux x64
         run: |
           test "$(uname -m)" = x86_64
@@ -379,7 +379,7 @@ jobs:
           toolchain="stable-$target"
           git rev-parse HEAD
           node --version
-          dpkg-query -W libgtk-3-0t64 libwebkit2gtk-4.1-0 libssl3t64
+          dpkg-query -W libgtk-3-0t64 libwebkit2gtk-4.1-0 libssl3t64 libasound2t64
           rustup toolchain install "$toolchain" --profile minimal
           rustup run "$toolchain" rustc --version
           rustup run "$toolchain" cargo test --locked --target "$target" --workspace --all-features
@@ -410,7 +410,7 @@ jobs:
           Install the runtime libraries, extract the archive, and start the app from a desktop session.
 
           ```sh
-          sudo apt install libgtk-3-0t64 libwebkit2gtk-4.1-0 libssl3t64
+          sudo apt install libgtk-3-0t64 libwebkit2gtk-4.1-0 libssl3t64 libasound2t64
           tar -xzf pear-rust-preview-linux-x64.tar.gz
           cd pear-rust-preview-linux-x64
           ./pear-desktop-preview
