@@ -1,3 +1,13 @@
+--- a/experiments/rust-desktop/app/Cargo.toml
++++ b/experiments/rust-desktop/app/Cargo.toml
+@@ -7,6 +7,7 @@
+
+ [features]
+ benchmark = []
++windows-iframe-playback-qa = ["benchmark"]
+
+ [dependencies]
+ base64 = "0.23"
 --- a/experiments/rust-desktop/app/src/player.rs
 +++ b/experiments/rust-desktop/app/src/player.rs
 @@ -351,6 +351,15 @@
@@ -181,3 +191,37 @@
      pub(super) fn allows_playback_for(&self, expected_id: &str) -> bool {
          self.native_playback_confirmed
              && self.ready
+--- a/experiments/rust-desktop/app/src/player/platform/windows.rs
++++ b/experiments/rust-desktop/app/src/player/platform/windows.rs
+@@ -384,6 +384,31 @@
+         let (video_bounds, controls_bounds) = child_bounds(window, queue_visible, true);
+         let mut context = WebContext::new(Some(self.webview_data_dir.clone()));
+         let builder = configure(WebViewBuilder::new_with_web_context(&mut context));
++        #[cfg(feature = "windows-iframe-playback-qa")]
++        let builder = if let Some(port) = std::env::var_os("PEAR_PREVIEW_SMOKE_CDP_PORT") {
++            if std::env::var_os("PEAR_WINDOWS_VISUAL_DIAGNOSTIC").is_none_or(|value| value != "1")
++                || !std::env::args_os().skip(1).eq(["--iframe-player-smoke"])
++                || !self
++                    .webview_data_dir
++                    .parent()
++                    .is_some_and(|profile| profile.join("visual-checkpoints").is_dir())
++            {
++                return Err("Windows QA debugging requires the isolated IFrame fixture.".into());
++            }
++            let port = port
++                .to_str()
++                .and_then(|port| port.parse::<u16>().ok())
++                .filter(|port| *port >= 1024)
++                .ok_or("Invalid Windows QA debugging port.")?;
++            // Supplying arguments overrides Wry's defaults, so keep the same flags
++            // for the fixture and only add a disposable loopback CDP listener.
++            builder.with_additional_browser_args(format!(
++                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
++                 --remote-debugging-address=127.0.0.1 --remote-debugging-port={port}"
++            ))
++        } else {
++            builder
++        };
+         let builder = match pane {
+             Pane::Video => builder
+                 .with_profile_name("PearPreviewVideo")

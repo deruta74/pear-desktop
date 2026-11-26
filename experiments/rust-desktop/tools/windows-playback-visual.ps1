@@ -24,6 +24,9 @@ $stdout = Join-Path $root 'stdout'
 $stagedPng = Join-Path $root 'client.png'
 $artifact = Join-Path $env:RUNNER_TEMP 'pear-windows-playback-visual.png'
 $preview = $null
+$previewId = $null
+$session = [Diagnostics.Process]::GetCurrentProcess().SessionId
+$debugPort = $null
 $registeredSource = $false
 $stage = 'setup'
 $published = $false
@@ -53,7 +56,11 @@ $report = [ordered]@{
     wrapperFinished = $false
     transportReady = $false
     playGlyphVerified = $false
+    cdpListenerVerified = $false
     click = 'unavailable'
+    cdpMediaPresent = $false
+    cdpMediaPlaying = $false
+    cdpMediaAdvanced = $false
     playback = 'inconclusive'
     settle = 'unavailable'
     readyBy25 = $null
@@ -72,6 +79,17 @@ function Get-FixtureWebViewProcess([int] $parentId, [int] $session) {
             [uint]$child.ProcessId
         }
     }
+}
+
+function Get-FixtureDebuggerStage([int] $port, [uint] $owner) {
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
+    if (!$listeners.Count) { return 'cdp-listener-unavailable' }
+    if ($listeners | Where-Object { $_.OwningProcess -ne $owner }) { return 'cdp-listener-owner' }
+    if ($listeners.LocalAddress -cnotcontains '127.0.0.1' -or
+        ($listeners | Where-Object { $_.LocalAddress -cnotin '127.0.0.1', '::1' })) {
+        return 'cdp-listener-binding'
+    }
+    return 'cdp-listener-verified'
 }
 
 function Update-Readiness {
@@ -194,9 +212,26 @@ try {
     $targetDir = Join-Path $root 'target'
     $manifest = Join-Path $source 'experiments/rust-desktop/Cargo.toml'
     $buildArguments = @('+stable', 'build', '--locked', '--manifest-path', $manifest, '--target', $target,
-        '--target-dir', $targetDir, '--features', 'benchmark', '-p', 'pear-desktop-preview')
+        '--target-dir', $targetDir, '--features', 'windows-iframe-playback-qa', '-p', 'pear-desktop-preview')
     & cargo @buildArguments *> $null
     if ($LASTEXITCODE -ne 0) { throw 'fixture-build' }
+
+    $stage = 'playwright-install'
+    & npm.cmd install --prefix $root --cache (Join-Path $root 'npm-cache') `
+        --registry 'https://registry.npmjs.org/' --ignore-scripts --no-audit --no-fund `
+        --no-package-lock --no-progress --fetch-retries=0 --fetch-timeout=20000 playwright-core@1.61.1 *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'playwright-install' }
+    $probeScript = Join-Path $root 'probe.cjs'
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-playback-visual-cdp.cjs') -Destination $probeScript
+
+    $stage = 'cdp-port'
+    $socket = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    try {
+        $socket.Start()
+        $debugPort = $socket.LocalEndpoint.Port
+    } finally {
+        $socket.Stop()
+    }
 
     $stage = 'launch'
     Add-Type -Path (Join-Path $PSScriptRoot 'windows-playback-visual-window.cs')
@@ -205,6 +240,7 @@ try {
     $environment = @{
         PEAR_PREVIEW_QUEUE_DIR = $fixtureProfile
         PEAR_WINDOWS_VISUAL_DIAGNOSTIC = '1'
+        PEAR_PREVIEW_SMOKE_CDP_PORT = $debugPort.ToString([Globalization.CultureInfo]::InvariantCulture)
         PEAR_YOUTUBE_API_KEY_FILE = $null
         PEAR_YOUTUBE_OAUTH_CLIENT_FILE = $null
         PEAR_PREVIEW_EXPERIMENTAL_PANEL_SWIPE = $null
@@ -227,6 +263,7 @@ try {
         PassThru = $true
     }
     $preview = Start-Process @launchArguments
+    $previewId = $preview.Id
 
     $stage = 'settle'
     $captureAfter = 55
@@ -257,7 +294,6 @@ try {
         elseif (!$readySeen) { 'deadline' }
         elseif ($report.readyBy25) { 'ready-by-25s' } else { 'ready-after-25s' }
 
-    $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
     if ($preview.HasExited) {
         $stage = "preview-exited-$readinessStage"
         throw 'preview-exited'
@@ -293,14 +329,44 @@ try {
     }
     if (!$report.playGlyphVerified) { throw 'play-glyph-not-found' }
 
-    $stage = 'click'
+    $stage = 'cdp-profile'
     $browser = $browserProcesses[0]
     $browserProcesses = @(Get-FixtureWebViewProcess $preview.Id $session)
     $report.profileVerified = $browserProcesses.Count -eq 1 -and $browserProcesses[0] -eq $browser
     if ($preview.HasExited -or !$report.profileVerified) { throw 'fixture-click-profile-lost' }
-    $report.click = [PearFixtureWindow]::ClickFixturePlay($window, $preview.Id, $browser, $session)
-    if ($report.click -cne 'dispatched') { throw 'fixture-click-not-dispatched' }
-    $null = New-Item -ItemType File -Path (Join-Path $fixtureProfile 'visual-play-clicked')
+    $stage = 'cdp-window'
+    $verifiedBounds = [PearFixtureWindow]::GetVerifiedClient($window, $preview.Id)
+    if ($verifiedBounds.Right -ne $bounds.Right -or $verifiedBounds.Bottom -ne $bounds.Bottom) {
+        throw 'fixture-window-changed'
+    }
+    $stage = Get-FixtureDebuggerStage $debugPort $browser
+    if ($stage -cne 'cdp-listener-verified') { throw 'unverified-debug-listener' }
+    $report.cdpListenerVerified = $true
+
+    $stage = 'cdp-probe-output'
+    $lines = @(& node.exe --no-use-env-proxy $probeScript $debugPort 2>$null)
+    $probeExit = $LASTEXITCODE
+    if ($lines.Count -ne 1) { throw 'unexpected-probe-output' }
+    $probe = $lines[0] | ConvertFrom-Json -AsHashtable
+    $probeStages = @('endpoint-metadata', 'cdp-connect', 'fixture-panes', 'exact-official-frame',
+        'wrapper-not-visible', 'official-play-button-missing', 'official-play-button-unavailable',
+        'official-play-button-ambiguous', 'official-play-label-mismatch', 'official-play-not-actionable',
+        'official-play-identity-changed', 'official-play-click', 'clock-signal', 'clicked',
+        'invalid-port', 'probe-bootstrap', 'cdp-deadline')
+    if ($probe -isnot [System.Collections.IDictionary] -or $probe.Count -ne 4 -or
+        $probe.stage -isnot [string] -or $probe.stage -cnotin $probeStages -or $probe.mediaPresent -isnot [bool] -or
+        $probe.mediaPlaying -isnot [bool] -or $probe.mediaAdvanced -isnot [bool]) {
+        throw 'unexpected-probe-output'
+    }
+    $report.click = $probe.stage
+    $report.cdpMediaPresent = $probe.mediaPresent
+    $report.cdpMediaPlaying = $probe.mediaPlaying
+    $report.cdpMediaAdvanced = $probe.mediaAdvanced
+    $stage = $probe.stage
+    if ($probeExit -ne 0 -or $probe.stage -cne 'clicked' -or
+        !(Test-Path -LiteralPath (Join-Path $fixtureProfile 'visual-play-clicked') -PathType Leaf)) {
+        throw 'fixture-click-unverified'
+    }
 
     $stage = 'playback-clock'
     $clock.Restart()
@@ -325,7 +391,8 @@ try {
     $stage = 'confirm'
     $browserProcesses = @(Get-FixtureWebViewProcess $preview.Id $session)
     $report.profileVerified = $browserProcesses.Count -eq 1 -and $browserProcesses[0] -eq $browser
-    if ($preview.HasExited -or !$report.profileVerified) {
+    $report.cdpListenerVerified = (Get-FixtureDebuggerStage $debugPort $browser) -ceq 'cdp-listener-verified'
+    if ($preview.HasExited -or !$report.profileVerified -or !$report.cdpListenerVerified) {
         throw 'profile-lost'
     }
     Move-Item -LiteralPath $stagedPng -Destination $artifact
@@ -342,6 +409,18 @@ try {
             }
             if (!$preview.WaitForExit(5000)) { throw 'preview-exit' }
             $preview.Dispose()
+        }
+        if ($null -ne $debugPort -and $null -ne $previewId) {
+            $owners = @(Get-FixtureWebViewProcess $previewId $session)
+            $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $debugPort -ErrorAction SilentlyContinue)
+            foreach ($owner in ($listeners.OwningProcess | Sort-Object -Unique)) {
+                if ($owner -in $owners) {
+                    Stop-Process -Id $owner -ErrorAction SilentlyContinue
+                    Wait-Process -Id $owner -Timeout 3 -ErrorAction SilentlyContinue
+                }
+            }
+            $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $debugPort -ErrorAction SilentlyContinue)
+            if ($listeners | Where-Object { $_.OwningProcess -in $owners }) { throw 'listener-cleanup' }
         }
         if ($registeredSource) {
             & git -C $repo worktree remove --force $source *> $null

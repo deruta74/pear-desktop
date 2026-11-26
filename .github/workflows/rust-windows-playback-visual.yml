@@ -23,6 +23,10 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.22.0
+          package-manager-cache: false
       - name: Install stable Rust
         run: rustup toolchain install stable --profile minimal
       - name: Click Play and verify the public demo advances
