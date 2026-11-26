@@ -736,6 +736,23 @@ test('sends queue controls to the host and moves focus after removing a row', as
   ).toBeFocused();
 });
 
+test('prioritizes adding a link when the queue is empty', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 1180, height: 640 });
+  const playing = page.getByRole('region', { name: 'Now playing' });
+  const addLink = page.getByRole('textbox', {
+    name: 'YouTube link or video ID',
+  });
+  await state(page, [], null);
+  await expect(playing).toBeHidden();
+  await expect(addLink).toBeInViewport();
+  await state(page, [first], first);
+  await expect(playing).toBeVisible();
+  await state(page, [], null);
+  await expect(playing).toBeHidden();
+  await expect(addLink).toBeInViewport();
+});
+
 test('rejects oversized UTF-8 envelopes without getting stuck waiting for the host', async (t) => {
   const page = await panel(t);
   await state(page, []);

@@ -1521,9 +1521,7 @@ window.renderPearState = (
   const selectionChanged =
     renderedState !== null && current !== renderedState.current;
   const active = document.activeElement;
-  const selectionLabel = hasSelection
-    ? currentTitle || current
-    : 'No video selected';
+  const selectionLabel = hasSelection ? currentTitle || current : '';
   if (selection.textContent !== selectionLabel) {
     selection.textContent = selectionLabel;
     selection.title = hasSelection ? selectionLabel : '';
@@ -1532,7 +1530,8 @@ window.renderPearState = (
   updateSelectionAttribution(selectedMetadata?.channel.trim());
   if (!panel.hidden)
     updateSelectionArtwork(current, selectedMetadata?.thumbnailUrl);
-  selectionPanel.toggleAttribute('data-current', hasSelection);
+  selectionPanel.hidden = !hasSelection;
+  panel.toggleAttribute('data-empty', !hasSelection);
   position.textContent = hasSelection
     ? `${index + 1} of ${entries.length}`
     : '';
