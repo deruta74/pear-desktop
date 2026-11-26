@@ -167,7 +167,10 @@ fn read_saved(path: &Path) -> Result<SavedPreferences, &'static str> {
     let file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(SavedPreferences::default());
+            return Ok(SavedPreferences {
+                iframe_player: cfg!(any(target_os = "macos", target_os = "linux")),
+                ..SavedPreferences::default()
+            });
         }
         Err(_) => return Err(UNREADABLE),
     };
@@ -498,21 +501,24 @@ mod tests {
         let directory = TestDirectory::new();
         let path = directory.path();
         let mut preferences = Preferences::load(path.clone());
-        assert!(!preferences.iframe_player());
+        let enabled_by_default = cfg!(any(target_os = "macos", target_os = "linux"));
+        assert_eq!(preferences.iframe_player(), enabled_by_default);
+        assert!(!preferences.auto_advance());
+        assert!(!preferences.repeat_queue());
         assert_eq!(preferences.problem(), None);
         assert!(!path.exists());
 
         preferences
-            .set_playback(true, false, false, AudioOutput::default())
+            .set_playback(!enabled_by_default, false, false, AudioOutput::default())
             .unwrap();
-        assert!(preferences.iframe_player());
+        assert_eq!(preferences.iframe_player(), !enabled_by_default);
         let mut restored = Preferences::load(path.clone());
-        assert!(restored.iframe_player());
+        assert_eq!(restored.iframe_player(), !enabled_by_default);
         assert_eq!(restored.problem(), None);
         restored
-            .set_playback(false, false, false, AudioOutput::default())
+            .set_playback(enabled_by_default, false, false, AudioOutput::default())
             .unwrap();
-        assert!(!Preferences::load(path).iframe_player());
+        assert_eq!(Preferences::load(path).iframe_player(), enabled_by_default);
     }
 
     #[test]
@@ -585,6 +591,7 @@ mod tests {
     fn failed_write_keeps_the_last_saved_choice_and_can_be_retried() {
         let directory = TestDirectory::new();
         let path = directory.path();
+        fs::write(&path, br#"{"iframe_player":false}"#).unwrap();
         let backup = directory.0.join("saved.json");
         let mut preferences = Preferences::load(path.clone());
         preferences
