@@ -24,7 +24,7 @@ use super::{Command, Request, State, Status, windows_request};
 #[cfg(test)]
 mod tests;
 
-pub(in crate::local_audio) struct Backend {
+pub(crate) struct Backend {
     controls: SystemMediaTransportControls,
     display: SystemMediaTransportControlsDisplayUpdater,
     state: Arc<Mutex<Option<State>>>,
@@ -34,7 +34,7 @@ pub(in crate::local_audio) struct Backend {
 }
 
 impl Backend {
-    pub(in crate::local_audio) fn new(
+    pub(crate) fn new(
         window: &Window,
         dispatch: impl Fn(Request) + Send + Sync + 'static,
     ) -> Option<Self> {
@@ -93,7 +93,7 @@ impl Backend {
         })
     }
 
-    pub(in crate::local_audio) fn update(&mut self, state: Option<State>) {
+    pub(crate) fn update(&mut self, state: Option<State>) {
         if self.token.is_none() {
             return;
         }

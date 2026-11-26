@@ -3,16 +3,11 @@ use std::{
     path::Path,
 };
 
+pub(super) use crate::media::Metadata;
+
 const MAX_TEXT_BYTES: u64 = 4 * 1024;
 const MAX_TEXT_CHARS: usize = 180;
 const MAX_FIELDS: usize = 256;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(super) struct Metadata {
-    pub(super) title: String,
-    pub(super) artist: Option<String>,
-    pub(super) album: Option<String>,
-}
 
 #[derive(Clone, Copy)]
 enum Field {

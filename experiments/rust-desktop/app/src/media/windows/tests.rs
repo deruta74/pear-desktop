@@ -8,6 +8,7 @@ use windows::Win32::Foundation::{
 };
 
 use super::*;
+use crate::media::Metadata;
 
 #[test]
 #[ignore = "requires Windows desktop SMTC"]
@@ -50,7 +51,7 @@ fn windows_smtc_native_smoke() -> Result<()> {
 
     let mut state = State {
         generation: 1,
-        metadata: Arc::new(crate::local_audio::metadata::Metadata {
+        metadata: Arc::new(Metadata {
             title: "Synthetic One".into(),
             artist: Some("Pear QA".into()),
             album: Some("Preview".into()),
@@ -80,7 +81,7 @@ fn windows_smtc_native_smoke() -> Result<()> {
     assert_eq!(music.AlbumTitle()?, HSTRING::from("Preview"));
 
     state.generation += 1;
-    state.metadata = Arc::new(crate::local_audio::metadata::Metadata {
+    state.metadata = Arc::new(Metadata {
         title: "Synthetic Two.wav".into(),
         ..Default::default()
     });

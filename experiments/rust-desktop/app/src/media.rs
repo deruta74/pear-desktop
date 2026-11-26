@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use super::metadata::Metadata;
-
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
@@ -12,15 +10,22 @@ mod tests;
 mod windows;
 
 #[cfg(target_os = "linux")]
-pub(super) use linux::Backend;
+pub(crate) use linux::Backend;
 #[cfg(target_os = "macos")]
-pub(super) use macos::Backend;
+pub(crate) use macos::Backend;
 #[cfg(target_os = "windows")]
-pub(super) use windows::Backend;
+pub(crate) use windows::Backend;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Metadata {
+    pub(crate) title: String,
+    pub(crate) artist: Option<String>,
+    pub(crate) album: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
-pub(super) enum Command {
+pub(crate) enum Command {
     Play,
     Pause,
     Toggle,
@@ -30,13 +35,13 @@ pub(super) enum Command {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Request {
-    pub(super) generation: u64,
-    pub(super) command: Command,
+pub(crate) struct Request {
+    pub(crate) generation: u64,
+    pub(crate) command: Command,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Status {
+pub(crate) enum Status {
     Playing,
     Paused,
     Stopped,
@@ -44,18 +49,18 @@ pub(super) enum Status {
 
 #[derive(Clone)]
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub(super) struct State {
-    pub(super) generation: u64,
-    pub(super) metadata: Arc<Metadata>,
-    pub(super) duration_ms: u64,
-    pub(super) position_ms: u64,
-    pub(super) position_revision: u32,
-    pub(super) speed: f64,
-    pub(super) volume: f64,
-    pub(super) status: Status,
-    pub(super) can_previous: bool,
-    pub(super) can_next: bool,
-    pub(super) can_control: bool,
+pub(crate) struct State {
+    pub(crate) generation: u64,
+    pub(crate) metadata: Arc<Metadata>,
+    pub(crate) duration_ms: u64,
+    pub(crate) position_ms: u64,
+    pub(crate) position_revision: u32,
+    pub(crate) speed: f64,
+    pub(crate) volume: f64,
+    pub(crate) status: Status,
+    pub(crate) can_previous: bool,
+    pub(crate) can_next: bool,
+    pub(crate) can_control: bool,
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows", test))]
@@ -89,13 +94,13 @@ fn windows_request(state: Option<&State>, command: Command) -> Option<Request> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-pub(super) struct Backend;
+pub(crate) struct Backend;
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 impl Backend {
-    pub(super) fn new(_dispatch: impl Fn(Request) + 'static) -> Option<Self> {
+    pub(crate) fn new(_dispatch: impl Fn(Request) + 'static) -> Option<Self> {
         None
     }
 
-    pub(super) fn update(&mut self, _state: Option<State>) {}
+    pub(crate) fn update(&mut self, _state: Option<State>) {}
 }

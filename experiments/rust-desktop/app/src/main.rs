@@ -7,6 +7,7 @@ mod page;
 
 mod library;
 mod local_audio;
+mod media;
 mod player;
 
 use std::{error::Error, ffi::OsString, path::PathBuf, sync::Arc};

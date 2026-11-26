@@ -74,7 +74,7 @@ const INTERFACES: &str = r#"
 </node>
 "#;
 
-pub(in crate::local_audio) struct Backend {
+pub(crate) struct Backend {
     connection: DBusConnection,
     registrations: Vec<RegistrationId>,
     name: Option<String>,
@@ -82,7 +82,7 @@ pub(in crate::local_audio) struct Backend {
 }
 
 impl Backend {
-    pub(in crate::local_audio) fn new(dispatch: impl Fn(Request) + 'static) -> Option<Self> {
+    pub(crate) fn new(dispatch: impl Fn(Request) + 'static) -> Option<Self> {
         // Keep session bus loss from terminating the app or changing GTK's shared connection.
         let address =
             gio::dbus_address_get_for_bus_sync(gio::BusType::Session, Cancellable::NONE).ok()?;
@@ -174,7 +174,7 @@ impl Backend {
         Some(backend)
     }
 
-    pub(in crate::local_audio) fn update(&mut self, next: Option<State>) {
+    pub(crate) fn update(&mut self, next: Option<State>) {
         let previous = self.state.replace(next);
         let next = self.state.borrow();
         let changed = changed_properties(previous.as_ref(), next.as_ref());

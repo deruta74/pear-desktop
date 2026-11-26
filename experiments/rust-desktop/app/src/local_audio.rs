@@ -1,6 +1,5 @@
 mod engine;
 mod equalizer;
-mod media;
 mod metadata;
 mod presets;
 mod queue;
@@ -27,7 +26,7 @@ use wry::{
     http::{Request, Response, header},
 };
 
-use crate::{Result, attach_menu, build_webview, player::isolated_builder};
+use crate::{Result, attach_menu, build_webview, media, player::isolated_builder};
 
 use metadata::Metadata;
 use settings::Settings;

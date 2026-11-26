@@ -100,7 +100,7 @@ struct Target {
     registration: Retained<AnyObject>,
 }
 
-pub(in crate::local_audio) struct Backend {
+pub(crate) struct Backend {
     center: Retained<MPNowPlayingInfoCenter>,
     targets: Vec<Target>,
     route: Arc<Mutex<Option<Route>>>,
@@ -108,9 +108,7 @@ pub(in crate::local_audio) struct Backend {
 }
 
 impl Backend {
-    pub(in crate::local_audio) fn new(
-        dispatch: impl Fn(Request) + Send + Sync + 'static,
-    ) -> Option<Self> {
+    pub(crate) fn new(dispatch: impl Fn(Request) + Send + Sync + 'static) -> Option<Self> {
         let route = Arc::new(Mutex::new(None::<Route>));
         let dispatch = Arc::new(dispatch);
         // Tao constructs and updates the native player on the macOS main thread.
@@ -165,7 +163,7 @@ impl Backend {
         })
     }
 
-    pub(in crate::local_audio) fn update(&mut self, state: Option<State>) {
+    pub(crate) fn update(&mut self, state: Option<State>) {
         let route = state.as_ref().map(Route::from);
         let previous = match self.route.lock() {
             Ok(mut active) => std::mem::replace(&mut *active, route),
