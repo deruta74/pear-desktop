@@ -1,0 +1,37 @@
+name: Rust preview Windows playback comparison
+
+on:
+  push:
+    branches: [diagnostic/rust-windows-playback-comparison]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: github.repository == 'deruta74/pear-desktop' && contains(github.event.head_commit.message, '[windows-playback-comparison]')
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: experiments/rust-desktop
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.22.0
+          package-manager-cache: false
+      - name: Verify comparison rules
+        run: node --test tools/windows-playback-comparison.test.cjs
+      - name: Build the existing native benchmark
+        run: |
+          rustup toolchain install stable --profile minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo +stable build --locked --features benchmark -p pear-desktop-preview
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compare the official player in Pear and stock Edge
+        timeout-minutes: 4
+        run: ./tools/windows-playback-comparison.ps1 (Resolve-Path 'target/debug/pear-desktop-preview.exe').Path
