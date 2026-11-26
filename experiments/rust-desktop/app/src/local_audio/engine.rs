@@ -1,5 +1,7 @@
 mod eq;
+mod flac;
 mod render;
+mod source;
 mod wav;
 
 #[cfg(test)]
@@ -27,7 +29,7 @@ use serde::Serialize;
 
 use self::{
     render::{Render, ReverbControls},
-    wav::{WavInfo, WavSource},
+    source::{AudioInfo, AudioSource},
 };
 
 const QUEUE_FRAMES: usize = 16_384;
@@ -35,18 +37,20 @@ const DECODE_BATCH: usize = 256;
 const DECODE_ERROR: u8 = 1;
 const OUTPUT_ERROR: u8 = 2;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(super) enum EngineOpenError {
-    UnavailableWav,
-    UnsupportedWav,
+    UnavailableAudio,
+    UnsupportedAudio,
     AudioOutputUnavailable,
 }
 
 impl fmt::Display for EngineOpenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::UnavailableWav => "Could not open the selected WAV file.",
-            Self::UnsupportedWav => "Choose a non-empty mono or stereo PCM or IEEE float WAV file.",
+            Self::UnavailableAudio => "Could not open the selected audio file.",
+            Self::UnsupportedAudio => {
+                "Choose a non-empty mono or stereo WAV or FLAC file with a known duration."
+            }
             Self::AudioOutputUnavailable => "Could not start the default audio output.",
         })
     }
@@ -54,11 +58,11 @@ impl fmt::Display for EngineOpenError {
 
 impl std::error::Error for EngineOpenError {}
 
-pub(super) struct PreparedWav(WavSource);
+pub(super) struct PreparedAudio(AudioSource);
 
-impl PreparedWav {
+impl PreparedAudio {
     pub(super) fn read(path: &Path) -> Result<Self, EngineOpenError> {
-        WavSource::open(path).map(Self)
+        AudioSource::open(path).map(Self)
     }
 }
 
@@ -75,7 +79,7 @@ pub(super) struct Engine {
     stream: Stream,
     shared: Arc<Shared>,
     worker: JoinHandle<()>,
-    input: WavInfo,
+    input: AudioInfo,
     output_rate: u32,
     equalizer: Box<eq::Updates>,
 }
@@ -83,11 +87,13 @@ pub(super) struct Engine {
 impl Engine {
     #[cfg(test)]
     pub(super) fn open(path: &Path) -> Result<Self, EngineOpenError> {
-        Self::open_prepared(PreparedWav::read(path)?)
+        Self::open_prepared(PreparedAudio::read(path)?)
     }
 
-    pub(super) fn open_prepared(PreparedWav(wav): PreparedWav) -> Result<Self, EngineOpenError> {
-        let input = wav.info();
+    pub(super) fn open_prepared(
+        PreparedAudio(audio): PreparedAudio,
+    ) -> Result<Self, EngineOpenError> {
+        let input = audio.info();
         let unavailable = |_| EngineOpenError::AudioOutputUnavailable;
         let device = cpal::default_host()
             .default_output_device()
@@ -127,8 +133,8 @@ impl Engine {
 
         let state = Arc::clone(&shared);
         let worker = thread::Builder::new()
-            .name("pear-wav-decoder".into())
-            .spawn(move || decode_stream(wav, producer, &state))
+            .name("pear-audio-decoder".into())
+            .spawn(move || decode_stream(audio, producer, &state))
             .map_err(|_| EngineOpenError::AudioOutputUnavailable)?;
         let engine = Self {
             stream,
@@ -150,7 +156,7 @@ impl Engine {
         let (frame, active) = self.shared.status(self.input.frames);
         let duration_ms = self.duration_ms();
         let error = match self.shared.error.load(Ordering::Acquire) {
-            DECODE_ERROR => Some("Could not read the WAV audio."),
+            DECODE_ERROR => Some("Could not read the audio samples."),
             OUTPUT_ERROR => Some("The audio output stopped."),
             _ => None,
         };
@@ -346,15 +352,15 @@ struct QueuedFrame {
     pcm: [f32; 2],
 }
 
-fn decode_stream(mut wav: WavSource, mut queue: Producer<QueuedFrame>, shared: &Shared) {
-    let total = wav.info().frames;
+fn decode_stream(mut audio: AudioSource, mut queue: Producer<QueuedFrame>, shared: &Shared) {
+    let total = audio.info().frames;
     let mut generation = 0;
     let mut index = 0;
     while !shared.stopping.load(Ordering::Acquire) && shared.error.load(Ordering::Acquire) == 0 {
         let (requested_generation, requested_frame) =
             unpack(shared.request.load(Ordering::Acquire));
         if requested_generation != generation {
-            if wav.seek_to(requested_frame).is_err() {
+            if audio.seek_to(requested_frame).is_err() {
                 shared.error.store(DECODE_ERROR, Ordering::Release);
                 return;
             }
@@ -382,7 +388,7 @@ fn decode_stream(mut wav: WavSource, mut queue: Producer<QueuedFrame>, shared: &
         }
 
         for _ in 0..count {
-            let Ok(pcm) = wav.read_frame() else {
+            let Ok(pcm) = audio.read_frame() else {
                 shared.error.store(DECODE_ERROR, Ordering::Release);
                 return;
             };

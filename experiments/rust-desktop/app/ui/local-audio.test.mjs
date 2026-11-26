@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { chromium, expect } from '@playwright/test';
 
-test('opens WAV files and sends playback and exact reverb settings to Rust', async (t) => {
+test('opens local audio files and sends playback and exact reverb settings to Rust', async (t) => {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 420, height: 475 } });
@@ -42,7 +42,7 @@ test('opens WAV files and sends playback and exact reverb settings to Rust', asy
   const messages = () => page.evaluate(() => window.commands);
   const render = (state) =>
     page.evaluate((state) => window.renderPearLocal(state), state);
-  const open = page.getByRole('button', { name: 'Open WAV file' });
+  const open = page.getByRole('button', { name: 'Open audio file' });
   await render({ track: null, transport: null, error: null });
   await expect(
     page.getByRole('button', { name: 'Play', exact: true }),
@@ -51,7 +51,7 @@ test('opens WAV files and sends playback and exact reverb settings to Rust', asy
   expect((await messages()).at(-1)).toEqual({ type: 'open' });
   await render({ track: null, transport: null, opening: true });
   await expect(open).toBeDisabled();
-  await expect(page.getByRole('status')).toHaveText('Opening WAV…');
+  await expect(page.getByRole('status')).toHaveText('Opening audio…');
 
   const track = '<strong>Local mix</strong>.wav';
   const transport = { positionMs: 0, durationMs: 48000, playing: false };
@@ -106,9 +106,13 @@ test('opens WAV files and sends playback and exact reverb settings to Rust', asy
     { type: 'set_speed', speed: 1 },
     { type: 'set_reverb', intensity: 0, high_pass_hz: 180, low_pass_hz: 6500 },
   ]);
-  await render({ track, transport, error: 'Could not open this WAV file.' });
+  await render({
+    track,
+    transport,
+    error: 'Could not open the selected audio file.',
+  });
   await expect(page.getByRole('alert')).toContainText(
-    'Could not open this WAV file.',
+    'Could not open the selected audio file.',
   );
   await render({
     track,

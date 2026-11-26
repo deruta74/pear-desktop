@@ -57,7 +57,7 @@ In `--iframe-player`, start the video and open **Lyrics**. Check the track name 
 
 ### Local audio and Slowed + Reverb
 
-Choose **File → Open Local Audio Window**, then **Open WAV file**. Pear plays mono or stereo integer PCM and IEEE float WAV through the system’s default output. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. The effect settings apply to the current local audio session.
+Choose **File → Open Local Audio Window**, then **Open audio file**. Pear streams mono or stereo integer PCM and IEEE float WAV, as well as native FLAC files with a known duration, through the system’s default output. The window provides pause, seeking, volume, speed from 0.70× to 1.30×, and reverb with exact high-pass and low-pass inputs in hertz. Speed changes pitch. The effect settings apply to the current local audio session.
 
 You can also pass `--local-audio` to the executable. Local playback runs offline in a separate window and uses its own session. The embedded YouTube player has its own playback controls.
 
@@ -103,7 +103,7 @@ Click the player's **Play** button and confirm that the timer advances and **Pau
 
 ## Reverb and platform checks
 
-Node 24 runs the checked-in JavaScript worklet as the oracle for the host Rust port. The differential checks both channels at 8, 44.1, 48 and 96 kHz, with changing intensity and different block sizes. The crate models the wet tank. The effect chain, browser audio capture, EQ, and the released Player Actions controller remain separate integration work.
+Node 24 runs the checked-in JavaScript worklet as the reference for the Rust reverb port. The comparison checks both channels at 8, 44.1, 48 and 96 kHz, with changing intensity and different block sizes. The local audio window runs the reverb and EQ in the native output stream.
 
 ```sh
 cargo test --locked --manifest-path experiments/rust-desktop/Cargo.toml --workspace --all-features

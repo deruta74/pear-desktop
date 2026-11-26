@@ -1,27 +1,22 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::File,
     io::{self, BufReader, Read, Seek, SeekFrom},
-    path::Path,
 };
 
 use hound::{Sample, SampleFormat};
 
-use super::EngineOpenError;
+use super::{
+    EngineOpenError,
+    source::{AudioInfo, MAX_INPUT_RATE},
+};
 
 const MAX_HEADER_CHUNKS: usize = 4_096;
-const MAX_INPUT_RATE: u32 = 384_000;
 const PCM: u16 = 1;
 const IEEE_FLOAT: u16 = 3;
 const EXTENSIBLE: u16 = 0xfffe;
 
 // The remaining bytes of the WAVEFORMATEXTENSIBLE PCM/IEEE float subtype GUID.
 const SUBTYPE_GUID_SUFFIX: [u8; 14] = [0, 0, 0, 0, 0x10, 0, 0x80, 0, 0, 0xaa, 0, 0x38, 0x9b, 0x71];
-
-#[derive(Clone, Copy)]
-pub(super) struct WavInfo {
-    pub(super) frames: u32,
-    pub(super) sample_rate: u32,
-}
 
 struct Format {
     channels: u16,
@@ -43,35 +38,17 @@ impl Format {
 pub(super) struct WavSource {
     reader: BufReader<File>,
     format: Format,
-    info: WavInfo,
+    info: AudioInfo,
     data_offset: u64,
 }
 
 impl WavSource {
-    pub(super) fn open(path: &Path) -> Result<Self, EngineOpenError> {
-        let unavailable = |_| EngineOpenError::UnavailableWav;
-        let unsupported = |_| EngineOpenError::UnsupportedWav;
-        if !fs::metadata(path).map_err(unavailable)?.is_file() {
-            return Err(EngineOpenError::UnavailableWav);
-        }
-        let mut options = OpenOptions::new();
-        options.read(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            // A path that has changed to a FIFO since the metadata check cannot block open.
-            options.custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY);
-        }
-        let file = options.open(path).map_err(unavailable)?;
-        let metadata = file.metadata().map_err(unavailable)?;
-        if !metadata.is_file() {
-            return Err(EngineOpenError::UnavailableWav);
-        }
-
+    pub(super) fn open(file: File, file_length: u64) -> Result<Self, EngineOpenError> {
+        let unsupported = |_| EngineOpenError::UnsupportedAudio;
         let mut reader = BufReader::with_capacity(64 * 1024, file);
         let riff_end = hound::read_wave_header(&mut reader).map_err(unsupported)?;
-        if riff_end < 12 || riff_end > metadata.len() {
-            return Err(EngineOpenError::UnsupportedWav);
+        if riff_end < 12 || riff_end > file_length {
+            return Err(EngineOpenError::UnsupportedAudio);
         }
 
         let mut format = None;
@@ -84,7 +61,7 @@ impl WavSource {
             let mut chunk = [0_u8; 8];
             reader
                 .read_exact(&mut chunk)
-                .map_err(|_| EngineOpenError::UnsupportedWav)?;
+                .map_err(|_| EngineOpenError::UnsupportedAudio)?;
             let size = le_u32(&chunk, 4);
             let data_end = data_offset + u64::from(size);
             if data_end > riff_end {
@@ -94,12 +71,12 @@ impl WavSource {
             match &chunk[..4] {
                 b"fmt " => format = Some(read_format(&mut reader, size)?),
                 b"data" => {
-                    let format = format.ok_or(EngineOpenError::UnsupportedWav)?;
+                    let format = format.ok_or(EngineOpenError::UnsupportedAudio)?;
                     let frame_size = u32::from(format.bytes_per_frame());
                     if size == 0 || !size.is_multiple_of(frame_size) {
                         break;
                     }
-                    let info = WavInfo {
+                    let info = AudioInfo {
                         frames: size / frame_size,
                         sample_rate: format.sample_rate,
                     };
@@ -116,12 +93,12 @@ impl WavSource {
             position = data_end + u64::from(size % 2);
             reader
                 .seek(SeekFrom::Start(position))
-                .map_err(|_| EngineOpenError::UnsupportedWav)?;
+                .map_err(|_| EngineOpenError::UnsupportedAudio)?;
         }
-        Err(EngineOpenError::UnsupportedWav)
+        Err(EngineOpenError::UnsupportedAudio)
     }
 
-    pub(super) fn info(&self) -> WavInfo {
+    pub(super) fn info(&self) -> AudioInfo {
         self.info
     }
 
@@ -168,7 +145,7 @@ impl WavSource {
 }
 
 fn read_format(reader: &mut impl Read, size: u32) -> Result<Format, EngineOpenError> {
-    let unsupported = EngineOpenError::UnsupportedWav;
+    let unsupported = EngineOpenError::UnsupportedAudio;
     if size < 16 {
         return Err(unsupported);
     }
@@ -176,7 +153,7 @@ fn read_format(reader: &mut impl Read, size: u32) -> Result<Format, EngineOpenEr
     let bytes_read = size.min(bytes.len() as u32) as usize;
     reader
         .read_exact(&mut bytes[..bytes_read])
-        .map_err(|_| EngineOpenError::UnsupportedWav)?;
+        .map_err(|_| EngineOpenError::UnsupportedAudio)?;
 
     let mut tag = le_u16(&bytes, 0);
     let channels = le_u16(&bytes, 2);

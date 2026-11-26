@@ -8,7 +8,7 @@ use pear_preview_dsp::{ReverbSettings, StereoReverb};
 use rtrb::Consumer;
 
 use super::eq::Tone;
-use super::{QUEUE_FRAMES, QueuedFrame, Shared, WavInfo, unpack};
+use super::{AudioInfo, QUEUE_FRAMES, QueuedFrame, Shared, unpack};
 
 const REVERB_TAIL_SECONDS: u32 = 3;
 
@@ -16,7 +16,7 @@ pub(super) struct Render {
     shared: Arc<Shared>,
     frames: SourceFrames,
     cursor: Cursor,
-    input: WavInfo,
+    input: AudioInfo,
     rate_ratio: f64,
     effects: StereoReverb,
     tone: Tone,
@@ -30,7 +30,7 @@ impl Render {
     pub(super) fn new(
         queue: Consumer<QueuedFrame>,
         shared: Arc<Shared>,
-        input: WavInfo,
+        input: AudioInfo,
         output_rate: u32,
         tone: Tone,
     ) -> Self {

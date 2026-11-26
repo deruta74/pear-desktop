@@ -80,7 +80,7 @@ enum AudioCommand {
 enum AudioEvent {
     Command(AudioCommand),
     Menu(MenuEvent),
-    Prepared(std::result::Result<(String, engine::PreparedWav), engine::EngineOpenError>),
+    Prepared(std::result::Result<(String, engine::PreparedAudio), engine::EngineOpenError>),
     Opened(std::result::Result<Track, engine::EngineOpenError>),
 }
 
@@ -176,7 +176,7 @@ fn title(path: &Path) -> String {
         .collect();
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        "WAV file"
+        "Audio file"
     } else {
         trimmed
     }
@@ -188,8 +188,8 @@ fn pick_file(window: &Window) -> Option<PathBuf> {
     {
         rfd::FileDialog::new()
             .set_parent(window)
-            .set_title("Open WAV file")
-            .add_filter("WAV audio", &["wav", "wave"])
+            .set_title("Open audio file")
+            .add_filter("WAV and FLAC audio", &["wav", "wave", "flac"])
             .pick_file()
     }
     #[cfg(target_os = "linux")]
@@ -198,15 +198,15 @@ fn pick_file(window: &Window) -> Option<PathBuf> {
         use tao::platform::unix::WindowExtUnix;
 
         let dialog = gtk::FileChooserNative::new(
-            Some("Open WAV file"),
+            Some("Open audio file"),
             Some(window.gtk_window()),
             gtk::FileChooserAction::Open,
             Some("Open"),
             Some("Cancel"),
         );
         let filter = gtk::FileFilter::new();
-        filter.set_name(Some("WAV audio"));
-        for pattern in ["*.[wW][aA][vV]", "*.[wW][aA][vV][eE]"] {
+        filter.set_name(Some("WAV and FLAC audio"));
+        for pattern in ["*.[wW][aA][vV]", "*.[wW][aA][vV][eE]", "*.[fF][lL][aA][cC]"] {
             filter.add_pattern(pattern);
         }
         dialog.add_filter(filter);
@@ -244,7 +244,7 @@ pub(crate) fn run() -> Result<()> {
 
     use muda::accelerator::{Accelerator, CMD_OR_CTRL, Code};
     let key = |key| (!cfg!(target_os = "windows")).then(|| Accelerator::new(CMD_OR_CTRL, key));
-    let open = MenuItem::new("Open WAV File…", true, key(Code::KeyO));
+    let open = MenuItem::new("Open Audio File…", true, key(Code::KeyO));
     let quit = MenuItem::new("Quit Pear Local Audio", true, key(Code::KeyQ));
     let menu = Menu::with_items(&[
         &Submenu::with_items("Pear Local Audio", true, &[&quit])?,
@@ -391,8 +391,8 @@ pub(crate) fn run() -> Result<()> {
                     match std::thread::Builder::new()
                         .name("pear-audio-open".into())
                         .spawn(move || {
-                            let result =
-                                engine::PreparedWav::read(&path).map(|wav| (title(&path), wav));
+                            let result = engine::PreparedAudio::read(&path)
+                                .map(|audio| (title(&path), audio));
                             let _ = result_events.send_event(AudioEvent::Prepared(result));
                         }) {
                         Ok(_) => {
@@ -400,7 +400,7 @@ pub(crate) fn run() -> Result<()> {
                             error = None;
                             open.set_enabled(false);
                         }
-                        Err(_) => error = Some("Could not open the selected WAV file.".into()),
+                        Err(_) => error = Some("Could not open the selected audio file.".into()),
                     }
                 }
             }

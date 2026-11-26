@@ -53,9 +53,58 @@ const MONO_I16: hound::WavSpec = hound::WavSpec {
 };
 
 #[test]
+fn decodes_flac_packets_and_seeks_to_an_exact_frame() {
+    // Four 192-frame blocks with different constant values in each channel.
+    let fixture = Fixture::from_bytes(include_bytes!("fixtures/stereo.flac"));
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    assert_eq!(source.info().frames, 768);
+    assert_eq!(source.info().sample_rate, 8_000);
+    assert_eq!(source.read_frame().unwrap(), [0.125, -0.25]);
+    source.seek_to(383).unwrap();
+    assert_eq!(source.read_frame().unwrap(), [-0.5, 0.25]);
+    assert_eq!(source.read_frame().unwrap(), [0.5, -0.25]);
+    source.seek_to(767).unwrap();
+    assert_eq!(source.read_frame().unwrap(), [0.0, 0.125]);
+    assert!(source.read_frame().is_err());
+    source.seek_to(768).unwrap();
+    source.seek_to(0).unwrap();
+    assert_eq!(source.read_frame().unwrap(), [0.125, -0.25]);
+}
+
+#[test]
+fn seeks_within_a_large_unindexed_flac_packet() {
+    let fixture = Fixture::from_bytes(include_bytes!("fixtures/unindexed.flac"));
+    let mut source = AudioSource::open(&fixture.0).unwrap();
+    let frames: Vec<_> = (0..source.info().frames)
+        .map(|_| source.read_frame().unwrap())
+        .collect();
+    for index in [4607, 2304, 0] {
+        source.seek_to(index).unwrap();
+        assert_eq!(source.read_frame().unwrap(), frames[index as usize]);
+    }
+}
+
+#[test]
+fn rejects_a_flac_seek_table_point_outside_its_audio_payload() {
+    let original = include_bytes!("fixtures/stereo.flac");
+    let mut data = original[..42].to_vec();
+    data[4] &= 0x7f;
+    data.extend_from_slice(&[0x83, 0, 0, 18]);
+    data.extend_from_slice(&0_u64.to_be_bytes());
+    data.extend_from_slice(&u64::MAX.to_be_bytes());
+    data.extend_from_slice(&192_u16.to_be_bytes());
+    data.extend_from_slice(&original[42..]);
+    let fixture = Fixture::from_bytes(&data);
+    assert!(matches!(
+        AudioSource::open(&fixture.0),
+        Err(EngineOpenError::UnsupportedAudio)
+    ));
+}
+
+#[test]
 fn decodes_mono_pcm_as_stereo_and_seeks_by_frame() {
     let fixture = Fixture::from_bytes(&wav_fixture(MONO_I16, &[0i16, i16::MIN, 16_384]));
-    let mut wav = WavSource::open(&fixture.0).unwrap();
+    let mut wav = AudioSource::open(&fixture.0).unwrap();
 
     assert_eq!(wav.info().frames, 3);
     assert_eq!(wav.info().sample_rate, 8_000);
@@ -75,7 +124,7 @@ fn retains_distinct_float_channels_and_sanitizes_nonfinite_samples() {
         ..MONO_I16
     };
     let fixture = Fixture::from_bytes(&wav_fixture(spec, &[0.25f32, -0.5, f32::NAN, 2.0]));
-    let mut wav = WavSource::open(&fixture.0).unwrap();
+    let mut wav = AudioSource::open(&fixture.0).unwrap();
 
     assert_eq!(wav.read_frame().unwrap(), [0.25, -0.5]);
     assert_eq!(wav.read_frame().unwrap(), [0.0, 1.0]);
@@ -88,7 +137,7 @@ fn normalizes_eight_and_twenty_four_bit_pcm() {
         ..MONO_I16
     };
     let fixture = Fixture::from_bytes(&wav_fixture(spec, &[-128i8, 64]));
-    let mut wav = WavSource::open(&fixture.0).unwrap();
+    let mut wav = AudioSource::open(&fixture.0).unwrap();
     assert_eq!(wav.read_frame().unwrap(), [-1.0; 2]);
     assert_eq!(wav.read_frame().unwrap(), [0.5; 2]);
 
@@ -97,7 +146,7 @@ fn normalizes_eight_and_twenty_four_bit_pcm() {
         ..MONO_I16
     };
     let fixture = Fixture::from_bytes(&wav_fixture(spec, &[-8_388_608i32, 4_194_304]));
-    let mut wav = WavSource::open(&fixture.0).unwrap();
+    let mut wav = AudioSource::open(&fixture.0).unwrap();
     assert_eq!(wav.read_frame().unwrap(), [-1.0; 2]);
     assert_eq!(wav.read_frame().unwrap(), [0.5; 2]);
 }
@@ -111,7 +160,7 @@ fn decodes_sixty_four_bit_float() {
     bytes.extend_from_slice(&(-0.25f64).to_le_bytes());
     bytes.extend_from_slice(&0.75f64.to_le_bytes());
     let fixture = Fixture::from_bytes(&bytes);
-    let mut wav = WavSource::open(&fixture.0).unwrap();
+    let mut wav = AudioSource::open(&fixture.0).unwrap();
 
     assert_eq!(wav.read_frame().unwrap(), [-0.25, 0.75]);
 }
@@ -123,12 +172,12 @@ fn rejects_a_truncated_wav_and_a_directory() {
     let fixture = Fixture::from_bytes(&truncated);
 
     assert!(matches!(
-        WavSource::open(&fixture.0),
-        Err(EngineOpenError::UnsupportedWav)
+        AudioSource::open(&fixture.0),
+        Err(EngineOpenError::UnsupportedAudio)
     ));
     assert!(matches!(
-        WavSource::open(&std::env::temp_dir()),
-        Err(EngineOpenError::UnavailableWav)
+        AudioSource::open(&std::env::temp_dir()),
+        Err(EngineOpenError::UnavailableAudio)
     ));
 }
 
@@ -141,7 +190,7 @@ fn seeks_past_an_odd_sized_metadata_chunk() {
     let fixture = Fixture::from_bytes(&bytes);
 
     assert_eq!(
-        WavSource::open(&fixture.0).unwrap().read_frame().unwrap(),
+        AudioSource::open(&fixture.0).unwrap().read_frame().unwrap(),
         [0.5, 0.5]
     );
 }
@@ -344,7 +393,7 @@ fn eq_only_tail_survives_eof_but_is_reset_when_replaying() {
     let mut render = Render::new(
         consumer,
         Arc::clone(&shared),
-        WavInfo {
+        AudioInfo {
             frames: 1,
             sample_rate: 8_000,
         },
@@ -382,7 +431,7 @@ fn eq_only_tail_survives_eof_but_is_reset_when_replaying() {
 #[test]
 fn decode_worker_keeps_streaming_and_seeks_after_eof() {
     let fixture = Fixture::from_bytes(&wav_fixture(MONO_I16, &[0i16, 8_192, 16_384]));
-    let wav = WavSource::open(&fixture.0).unwrap();
+    let wav = AudioSource::open(&fixture.0).unwrap();
     let shared = Arc::new(Shared::new());
     shared.playing.store(true, Ordering::Release);
     let (queue, mut reader) = RingBuffer::new(2);
@@ -511,7 +560,7 @@ fn setup(
     let render = Render::new(
         consumer,
         Arc::clone(&shared),
-        WavInfo {
+        AudioInfo {
             frames,
             sample_rate,
         },
