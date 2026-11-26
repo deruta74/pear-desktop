@@ -25,7 +25,7 @@ jobs:
           persist-credentials: false
       - name: Install stable Rust
         run: rustup toolchain install stable --profile minimal
-      - name: Capture the public demo in the owned Pear window
+      - name: Click Play and verify the public demo advances
         timeout-minutes: 16
         run: ./tools/windows-playback-visual.ps1
       - name: Upload the Pear client-area screenshot

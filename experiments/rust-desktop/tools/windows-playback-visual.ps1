@@ -33,18 +33,22 @@ $report = [ordered]@{
     queueReady = $false
     wrapperFinished = $false
     transportReady = $false
+    playGlyphVerified = $false
+    click = 'unavailable'
+    playback = 'inconclusive'
     settle = 'unavailable'
     clientWidth = 0
     clientHeight = 0
     capture = 'unavailable'
 }
 
-function Test-FixtureWebView([int] $parentId) {
+function Get-FixtureWebViewProcess([int] $parentId, [int] $session) {
     $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $parentId AND Name = 'msedgewebview2.exe'"
     foreach ($child in $children) {
-        if ($child.CommandLine -match $profilePattern) { return $true }
+        if ($child.SessionId -eq $session -and $child.CommandLine -match $profilePattern) {
+            [uint]$child.ProcessId
+        }
     }
-    return $false
 }
 
 function Update-Readiness {
@@ -52,6 +56,56 @@ function Update-Readiness {
     $report.queueReady = $markers -ccontains 'PEAR_QUEUE_READY'
     $report.wrapperFinished = $markers -ccontains 'PEAR_WINDOWS_VISUAL_WRAPPER_FINISHED'
     $report.transportReady = $markers -ccontains 'PEAR_QUEUE_TRANSPORT_READY'
+}
+
+function Get-FixtureClientImage {
+    $bitmap = [Drawing.Bitmap]::new(
+        $bounds.Right, $bounds.Bottom, [Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    try {
+        $graphics = [Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.Clear([Drawing.Color]::Fuchsia)
+            $memoryDc = $graphics.GetHdc()
+            try {
+                if (![PearFixtureWindow]::CaptureClient($window, $preview.Id, $memoryDc, $bounds)) {
+                    throw 'print-window'
+                }
+            } finally {
+                $graphics.ReleaseHdc($memoryDc)
+            }
+        } finally {
+            $graphics.Dispose()
+        }
+
+        $palette = [Collections.Generic.HashSet[int]]::new()
+        $sentinel = [Drawing.Color]::Fuchsia.ToArgb()
+        for ($column = 1; $column -lt 16; $column++) {
+            for ($row = 1; $row -lt 12; $row++) {
+                $sample = $bitmap.GetPixel([int]($bounds.Right * $column / 16), [int]($bounds.Bottom * $row / 12)).ToArgb()
+                if ($sample -eq $sentinel) { throw 'unpainted-client' }
+                $null = $palette.Add($sample)
+            }
+        }
+        if ($palette.Count -lt 2) { throw 'uniform-client' }
+        return $bitmap
+    } catch {
+        $bitmap.Dispose()
+        throw
+    }
+}
+
+function Test-PlayGlyph([Drawing.Bitmap] $bitmap) {
+    $x = [PearFixtureWindow]::PlayX
+    $y = [PearFixtureWindow]::PlayY
+    foreach ($pixel in @($bitmap.GetPixel($x, $y), $bitmap.GetPixel($x - 4, $y - 4),
+            $bitmap.GetPixel($x - 4, $y + 4))) {
+        if ($pixel.R -lt 230 -or $pixel.G -lt 230 -or $pixel.B -lt 230) { return $false }
+    }
+    foreach ($pixel in @($bitmap.GetPixel($x - 16, $y), $bitmap.GetPixel($x + 19, $y),
+            $bitmap.GetPixel($x, $y - 19), $bitmap.GetPixel($x, $y + 19))) {
+        if ($pixel.R -lt 220 -or $pixel.G -gt 60 -or $pixel.B -gt 100) { return $false }
+    }
+    return $true
 }
 
 try {
@@ -119,59 +173,66 @@ try {
         elseif ($transportSeen) { 'after-transport' } else { 'bounded-wait' }
 
     $stage = 'proof'
-    if ($preview.HasExited -or $preview.SessionId -ne [Diagnostics.Process]::GetCurrentProcess().SessionId) {
+    $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    if ($preview.HasExited -or $preview.SessionId -ne $session) {
         throw 'process-unavailable'
     }
     $preview.Refresh()
     $window = $preview.MainWindowHandle
     $bounds = [PearFixtureWindow]::GetVerifiedClient($window, $preview.Id)
     $report.windowVerified = $bounds.Right -gt 0
-    $report.profileVerified = Test-FixtureWebView $preview.Id
-    if (!$report.windowVerified -or !$report.profileVerified -or !$report.wrapperFinished -or !$report.queueReady) {
+    $browserProcesses = @(Get-FixtureWebViewProcess $preview.Id $session)
+    $report.profileVerified = $browserProcesses.Count -eq 1
+    if (!$report.windowVerified -or !$report.profileVerified -or !$report.wrapperFinished -or
+        !$report.queueReady -or !$report.transportReady) {
         throw 'insufficient-fixture-evidence'
     }
     $report.clientWidth = $bounds.Right
     $report.clientHeight = $bounds.Bottom
 
-    $stage = 'capture'
-    $bitmap = [Drawing.Bitmap]::new(
-        $bounds.Right, $bounds.Bottom, [Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    $stage = 'play-glyph'
+    if ($bounds.Right -ne [PearFixtureWindow]::KnownClientWidth -or
+        $bounds.Bottom -ne [PearFixtureWindow]::KnownClientHeight) { throw 'unexpected-client-size' }
+    $bitmap = Get-FixtureClientImage
     try {
-        $graphics = [Drawing.Graphics]::FromImage($bitmap)
-        try {
-            $graphics.Clear([Drawing.Color]::Fuchsia)
-            $memoryDc = $graphics.GetHdc()
-            try {
-                $stage = 'print-window'
-                if (![PearFixtureWindow]::CaptureClient($window, $preview.Id, $memoryDc, $bounds)) {
-                    throw 'print-window'
-                }
-            } finally {
-                $graphics.ReleaseHdc($memoryDc)
-            }
-        } finally {
-            $graphics.Dispose()
-        }
+        $report.playGlyphVerified = Test-PlayGlyph $bitmap
+    } finally {
+        $bitmap.Dispose()
+    }
+    if (!$report.playGlyphVerified) { throw 'play-glyph-not-found' }
 
-        $stage = 'validate-pixels'
-        $palette = [Collections.Generic.HashSet[int]]::new()
-        $sentinel = [Drawing.Color]::Fuchsia.ToArgb()
-        for ($column = 1; $column -lt 16; $column++) {
-            for ($row = 1; $row -lt 12; $row++) {
-                $sample = $bitmap.GetPixel([int]($bounds.Right * $column / 16), [int]($bounds.Bottom * $row / 12)).ToArgb()
-                if ($sample -eq $sentinel) { throw 'unpainted-client' }
-                $null = $palette.Add($sample)
-            }
+    $stage = 'click'
+    $browser = $browserProcesses[0]
+    $browserProcesses = @(Get-FixtureWebViewProcess $preview.Id $session)
+    $report.profileVerified = $browserProcesses.Count -eq 1 -and $browserProcesses[0] -eq $browser
+    if ($preview.HasExited -or !$report.profileVerified) { throw 'fixture-click-profile-lost' }
+    $report.click = [PearFixtureWindow]::ClickFixturePlay($window, $preview.Id, $browser, $session)
+    if ($report.click -cne 'dispatched') { throw 'fixture-click-not-dispatched' }
+    $null = New-Item -ItemType File -Path (Join-Path $fixtureProfile 'visual-play-clicked')
+
+    $stage = 'playback-clock'
+    $clock.Restart()
+    while ($clock.Elapsed.TotalSeconds -lt 25 -and !$preview.HasExited) {
+        if ((Get-Content -LiteralPath $stdout -TotalCount 128) -ccontains 'PEAR_WINDOWS_VISUAL_PLAYBACK_ADVANCED') {
+            $report.playback = 'advanced'
+            break
         }
-        if ($palette.Count -lt 2) { throw 'uniform-client' }
+        Start-Sleep -Milliseconds 200
+    }
+    if ($report.playback -ne 'advanced') { throw 'playback-clock-not-verified' }
+
+    $stage = 'capture'
+    $bitmap = Get-FixtureClientImage
+    try {
         $bitmap.Save($stagedPng, [Drawing.Imaging.ImageFormat]::Png)
     } finally {
         $bitmap.Dispose()
     }
 
     $stage = 'confirm'
-    if ($preview.HasExited -or !(Test-FixtureWebView $preview.Id)) {
-        $report.profileVerified = $false
+    $browserProcesses = @(Get-FixtureWebViewProcess $preview.Id $session)
+    $report.profileVerified = $browserProcesses.Count -eq 1 -and $browserProcesses[0] -eq $browser
+    if ($preview.HasExited -or !$report.profileVerified) {
         throw 'profile-lost'
     }
     Move-Item -LiteralPath $stagedPng -Destination $artifact
@@ -179,7 +240,7 @@ try {
     $report.capture = 'client-only'
 } catch {
     $report.capture = "$stage-failed"
-    throw 'Windows visual diagnostic did not produce a verified client screenshot.'
+    throw 'Windows playback visual diagnostic did not complete.'
 } finally {
     try {
         if ($null -ne $preview) {

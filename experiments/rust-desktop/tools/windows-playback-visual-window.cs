@@ -4,6 +4,18 @@ using System.Text;
 
 public static class PearFixtureWindow
 {
+    public const int KnownClientWidth = 1028;
+    public const int KnownClientHeight = 680;
+    public const int PlayX = 321;
+    public const int PlayY = 340;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct ClientRect
     {
@@ -36,6 +48,26 @@ public static class PearFixtureWindow
 
     [DllImport("user32.dll")]
     private static extern bool PrintWindow(IntPtr window, IntPtr target, uint flags);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool ProcessIdToSessionId(uint processId, out uint sessionId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, StringBuilder name, int count);
+
+    [DllImport("user32.dll")]
+    private static extern bool ClientToScreen(IntPtr window, ref Point point);
+
+    [DllImport("user32.dll")]
+    private static extern bool ScreenToClient(IntPtr window, ref Point point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Point point);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageTimeout(
+        IntPtr window, uint message, UIntPtr buttons, IntPtr coordinates,
+        uint flags, uint timeoutMs, out UIntPtr result);
 
     public static ClientRect GetVerifiedClient(IntPtr window, uint expectedProcess)
     {
@@ -80,5 +112,61 @@ public static class PearFixtureWindow
 
         ClientRect after = GetVerifiedClient(window, expectedProcess);
         return after.Right == bounds.Right && after.Bottom == bounds.Bottom;
+    }
+
+    private static IntPtr HitPlay(
+        IntPtr window, uint expectedProcess, uint browserProcess, uint session, out IntPtr coordinates)
+    {
+        const uint getRoot = 2;
+        coordinates = IntPtr.Zero;
+        ClientRect bounds = GetVerifiedClient(window, expectedProcess);
+        var point = new Point { X = PlayX, Y = PlayY };
+        if (bounds.Right != KnownClientWidth || bounds.Bottom != KnownClientHeight ||
+            !ProcessIdToSessionId(expectedProcess, out uint ownerSession) || ownerSession != session ||
+            !ClientToScreen(window, ref point))
+        {
+            return IntPtr.Zero;
+        }
+
+        IntPtr target = WindowFromPoint(point);
+        var name = new StringBuilder(128);
+        if (target == IntPtr.Zero || target == window || GetAncestor(target, getRoot) != window ||
+            GetWindowThreadProcessId(target, out uint owner) == 0 || owner != browserProcess ||
+            !ProcessIdToSessionId(owner, out uint targetSession) || targetSession != session ||
+            GetClassName(target, name, name.Capacity) <= 0 || name.ToString() != "Chrome_RenderWidgetHostHWND" ||
+            !ScreenToClient(target, ref point) || !GetClientRect(target, out ClientRect client) ||
+            point.X < 0 || point.X >= client.Right || point.Y < 0 || point.Y >= client.Bottom)
+        {
+            return IntPtr.Zero;
+        }
+
+        coordinates = new IntPtr((point.Y << 16) | point.X);
+        return target;
+    }
+
+    public static string ClickFixturePlay(IntPtr window, uint expectedProcess, uint browserProcess, uint session)
+    {
+        const uint leftButtonDown = 0x0201;
+        const uint leftButtonUp = 0x0202;
+        const uint blockAbortAndErrorOnExit = 0x23;
+        IntPtr target = HitPlay(window, expectedProcess, browserProcess, session, out IntPtr coordinates);
+        if (target == IntPtr.Zero)
+        {
+            return "hit-test-inconclusive";
+        }
+        if (SendMessageTimeout(target, leftButtonDown, (UIntPtr)1, coordinates,
+                blockAbortAndErrorOnExit, 1000, out _) == IntPtr.Zero)
+        {
+            return "mouse-down-inconclusive";
+        }
+
+        // Recheck the actual hit before release. Never dispatch through the system pointer.
+        if (HitPlay(window, expectedProcess, browserProcess, session, out IntPtr release) != target ||
+            release != coordinates)
+        {
+            return "release-hit-test-inconclusive";
+        }
+        return SendMessageTimeout(target, leftButtonUp, UIntPtr.Zero, release,
+            blockAbortAndErrorOnExit, 1000, out _) != IntPtr.Zero ? "dispatched" : "mouse-up-inconclusive";
     }
 }

@@ -14,3 +14,92 @@
                          if matches!(event, PageLoadEvent::Started)
                              && iframe::Page::is_wrapper_url(&url)
                          {
+@@ -592,6 +599,26 @@
+         }
+     };
+     (catalog, lookup, key_problem)
++}
++
++#[cfg(all(target_os = "windows", feature = "benchmark"))]
++fn update_visual_playback_proof(
++    previous: &mut Option<(u32, u32, u32)>,
++    position: Option<u32>,
++) -> bool {
++    let Some(position) = position else {
++        *previous = None;
++        return false;
++    };
++    let (first, last, samples) = previous.get_or_insert((position, position, 1));
++    if (1..=2_500).contains(&position.saturating_sub(*last)) {
++        *samples += 1;
++    } else {
++        *first = position;
++        *samples = 1;
++    }
++    *last = position;
++    *samples >= 3 && position - *first >= 2_000
+ }
+
+ pub fn run(mode: LaunchMode) -> Result<()> {
+@@ -833,6 +860,14 @@
+         (None, None, None)
+     };
+     let mut transport = mode.iframe_player.then(transport::Transport::default);
++    #[cfg(all(target_os = "windows", feature = "benchmark"))]
++    let visual_click = data_dir.join("visual-play-clicked");
++    #[cfg(all(target_os = "windows", feature = "benchmark"))]
++    let mut visual_sequence = None;
++    #[cfg(all(target_os = "windows", feature = "benchmark"))]
++    let mut visual_positions = None;
++    #[cfg(all(target_os = "windows", feature = "benchmark"))]
++    let mut visual_playing = false;
+     #[cfg(target_os = "macos")]
+     let mut native_media = native_media::Session::new(event_loop.create_proxy());
+     let mut auto_advance = advance::Advance::default();
+@@ -1155,6 +1190,18 @@
+                     save_options = true;
+                 }
+                 let sample = transport.observed_at(now);
++                #[cfg(all(target_os = "windows", feature = "benchmark"))]
++                if visual_sequence.take_if(|request| *request == sequence).is_some() {
++                    let position = sample
++                        .filter(|state| {
++                            state.state == Some(1) && state.allows_playback_for("M7lc1UVf-VE")
++                        })
++                        .and_then(|state| state.position_ms);
++                    visual_playing = update_visual_playback_proof(&mut visual_positions, position);
++                    if visual_playing {
++                        println!("PEAR_WINDOWS_VISUAL_PLAYBACK_ADVANCED");
++                    }
++                }
+                 advance_resolution = auto_advance.resolve(library.state(), sample, now);
+                 let foreground_automatic = automatic
+                     && window.is_visible()
+@@ -1204,6 +1251,12 @@
+                 if let (Some(transport), Some(video)) = (&mut transport, &current_player)
+                     && let Some(sequence) = transport.begin(now)
+                 {
++                    #[cfg(all(target_os = "windows", feature = "benchmark"))]
++                    if mode.smoke && generation == 0 && !visual_playing && visual_click.is_file() {
++                        if visual_sequence.replace(sequence).is_some() {
++                            visual_positions = None;
++                        }
++                    }
+                     let results = results.clone();
+                     if let Err(reason) = iframe::Page::observe(video, move |snapshot| {
+                         let _ = results.send_event(PlayerEvent::TransportSample(generation, sequence, snapshot));
+--- a/experiments/rust-desktop/app/src/player/iframe.rs
++++ b/experiments/rust-desktop/app/src/player/iframe.rs
+@@ -349,7 +349,11 @@
+ }
+
+ impl Snapshot {
+-    #[cfg(any(target_os = "macos", test))]
++    #[cfg(any(
++        target_os = "macos",
++        all(target_os = "windows", feature = "benchmark"),
++        test
++    ))]
+     pub(super) fn allows_playback_for(&self, expected_id: &str) -> bool {
+         self.native_playback_confirmed
+             && self.ready
