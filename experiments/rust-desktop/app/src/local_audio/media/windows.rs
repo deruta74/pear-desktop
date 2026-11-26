@@ -21,6 +21,9 @@ use windows::{
 
 use super::{Command, Request, State, Status, windows_request};
 
+#[cfg(test)]
+mod tests;
+
 pub(in crate::local_audio) struct Backend {
     controls: SystemMediaTransportControls,
     display: SystemMediaTransportControlsDisplayUpdater,
@@ -35,19 +38,24 @@ impl Backend {
         window: &Window,
         dispatch: impl Fn(Request) + Send + Sync + 'static,
     ) -> Option<Self> {
+        Self::try_new(window, dispatch).ok()
+    }
+
+    fn try_new(
+        window: &Window,
+        dispatch: impl Fn(Request) + Send + Sync + 'static,
+    ) -> Result<Self> {
         // Tao and WebView2 use an STA on the window thread.
-        unsafe { RoInitialize(RO_INIT_SINGLETHREADED) }.ok()?;
+        unsafe { RoInitialize(RO_INIT_SINGLETHREADED) }?;
         let apartment = Apartment;
         let interop =
-            factory::<SystemMediaTransportControls, ISystemMediaTransportControlsInterop>().ok()?;
+            factory::<SystemMediaTransportControls, ISystemMediaTransportControlsInterop>()?;
         // The HWND belongs to the live Tao window on this thread.
         let controls: SystemMediaTransportControls =
-            unsafe { interop.GetForWindow(HWND(window.hwnd() as _)) }.ok()?;
-        controls.SetIsEnabled(false).ok()?;
-        controls
-            .SetPlaybackStatus(MediaPlaybackStatus::Closed)
-            .ok()?;
-        let display = controls.DisplayUpdater().ok()?;
+            unsafe { interop.GetForWindow(HWND(window.hwnd() as _)) }?;
+        controls.SetIsEnabled(false)?;
+        controls.SetPlaybackStatus(MediaPlaybackStatus::Closed)?;
+        let display = controls.DisplayUpdater()?;
 
         let state = Arc::new(Mutex::new(None));
         let callback_state = Arc::clone(&state);
@@ -75,8 +83,8 @@ impl Backend {
                     Ok(())
                 },
             );
-        let token = controls.ButtonPressed(&handler).ok()?;
-        Some(Self {
+        let token = controls.ButtonPressed(&handler)?;
+        Ok(Self {
             controls,
             display,
             state,
