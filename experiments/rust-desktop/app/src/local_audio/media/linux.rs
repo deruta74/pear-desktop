@@ -52,6 +52,7 @@ const INTERFACES: &str = r#"
       <arg name="Position" type="x" direction="in"/>
     </method>
     <method name="OpenUri"><arg name="Uri" type="s" direction="in"/></method>
+    <signal name="Seeked"><arg name="Position" type="x"/></signal>
     <property name="PlaybackStatus" type="s" access="read"/>
     <property name="Rate" type="d" access="read"/>
     <property name="Metadata" type="a{sv}" access="read"/>
@@ -186,7 +187,24 @@ impl Backend {
                 Some(&(PLAYER, changed, Vec::<&str>::new()).to_variant()),
             );
         }
+        if let Some(position) = seeked_position(previous.as_ref(), next.as_ref()) {
+            let _ = self.connection.emit_signal(
+                None,
+                PATH,
+                PLAYER,
+                "Seeked",
+                Some(&(position,).to_variant()),
+            );
+        }
     }
+}
+
+fn seeked_position(previous: Option<&State>, next: Option<&State>) -> Option<i64> {
+    let (previous, next) = (previous?, next?);
+    (previous.generation == next.generation
+        && previous.position_revision != next.position_revision
+        && previous.position_ms != next.position_ms)
+        .then(|| micros(next.position_ms))
 }
 
 fn changed_properties(
@@ -303,6 +321,7 @@ mod tests {
             title: "Track.wav".into(),
             duration_ms: 5500,
             position_ms: 1234,
+            position_revision: 0,
             speed: 1.1,
             volume: 0.5,
             status: Status::Playing,
@@ -352,6 +371,7 @@ mod tests {
             title: "Track.wav".into(),
             duration_ms: 5_500,
             position_ms: 1_234,
+            position_revision: 0,
             speed: 1.0,
             volume: 0.5,
             status: Status::Playing,
@@ -363,8 +383,15 @@ mod tests {
         for step in 1..=20 {
             tick.position_ms = original.position_ms + step;
             assert!(changed_properties(Some(&original), Some(&tick)).is_empty());
+            assert_eq!(seeked_position(Some(&original), Some(&tick)), None);
         }
+        tick.position_revision += 1;
+        assert_eq!(
+            seeked_position(Some(&original), Some(&tick)),
+            Some(1_254_000)
+        );
         tick.generation += 1;
+        assert_eq!(seeked_position(Some(&original), Some(&tick)), None);
         let changed = changed_properties(Some(&original), Some(&tick));
         assert_eq!(changed.len(), 1);
         assert!(changed.contains_key("Metadata"));

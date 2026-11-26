@@ -54,6 +54,7 @@ struct Anchor {
     generation: u64,
     duration_ms: u64,
     position_ms: u64,
+    position_revision: u32,
     speed: f64,
     status: Status,
     time: Instant,
@@ -65,6 +66,7 @@ impl Anchor {
             generation: state.generation,
             duration_ms: state.duration_ms,
             position_ms: state.position_ms,
+            position_revision: state.position_revision,
             speed: state.speed,
             status: state.status,
             time,
@@ -73,6 +75,7 @@ impl Anchor {
 
     fn needs_update(&self, state: &State, time: Instant) -> bool {
         if self.generation != state.generation
+            || self.position_revision != state.position_revision
             || self.duration_ms != state.duration_ms
             || self.speed != state.speed
             || self.status != state.status
@@ -259,6 +262,7 @@ mod tests {
             title: "Test tone".into(),
             duration_ms: 10_000,
             position_ms: 2_000,
+            position_revision: 0,
             speed: 1.0,
             volume: 0.5,
             status,
@@ -276,6 +280,9 @@ mod tests {
         let next = now + Duration::from_millis(250);
         playing.position_ms += 250;
         assert!(!anchor.needs_update(&playing, next));
+        playing.position_revision += 1;
+        assert!(anchor.needs_update(&playing, next));
+        playing.position_revision -= 1;
         playing.position_ms += 2_000;
         assert!(anchor.needs_update(&playing, next));
         playing.position_ms -= 2_000;

@@ -72,6 +72,8 @@ impl PreparedAudio {
 #[serde(rename_all = "camelCase")]
 pub(super) struct Snapshot {
     pub(super) position_ms: u64,
+    #[serde(skip)]
+    pub(super) position_revision: u32,
     pub(super) duration_ms: u64,
     pub(super) playing: bool,
     pub(super) error: Option<String>,
@@ -171,6 +173,7 @@ impl Engine {
             } else {
                 u64::from(frame) * 1000 / u64::from(self.input.sample_rate)
             },
+            position_revision: unpack(self.shared.request.load(Ordering::Relaxed)).0,
             duration_ms,
             playing: error.is_none() && active,
             finished: self

@@ -65,7 +65,7 @@ Pear streams mono or stereo integer PCM and IEEE float WAV, native FLAC with a k
 
 You can also pass `--local-audio` to the executable. Local playback runs offline in a separate window and uses its own session. Press **Space** outside an input or button to pause or resume. The embedded YouTube player has its own playback controls.
 
-Local Audio publishes the current track and available playback controls to macOS Now Playing and to MPRIS on Linux.
+Local Audio publishes the current track and available playback controls to macOS Now Playing, MPRIS on Linux, and Windows System Media Transport Controls.
 
 Expand **Equalizer** to choose the 8-, 14- or 20-band layout, or add up to 64 custom peaking bands. In **Custom**, click the graph to add a point and drag it to set frequency and gain. The fields below the graph accept exact frequency, gain and Q values. **Auto preamp** adjusts attenuation for the active EQ curve and the local volume. Named presets are saved in the local audio profile so they can be loaded after restarting Pear.
 

@@ -675,6 +675,7 @@ pub(crate) fn run() -> Result<()> {
                             title: track.name.clone(),
                             duration_ms: snapshot.duration_ms,
                             position_ms: snapshot.position_ms,
+                            position_revision: snapshot.position_revision,
                             speed,
                             volume,
                             status,

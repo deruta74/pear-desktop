@@ -45,6 +45,7 @@ pub(super) struct State {
     pub(super) title: String,
     pub(super) duration_ms: u64,
     pub(super) position_ms: u64,
+    pub(super) position_revision: u32,
     pub(super) speed: f64,
     pub(super) volume: f64,
     pub(super) status: Status,
