@@ -2209,6 +2209,42 @@ test('adds a YouTube search result by keyboard without clearing the queue draft'
   await expect(page.getByRole('status')).toBeEmpty();
 });
 
+test('opens a search result in Pear and handles a rejected selection in Search', async (t) => {
+  const page = await panel(t);
+  const catalog = searchState({ query: 'piano', results: [pianoResult] });
+  await state(page, [first], first, null, null, 1, { catalog });
+  await page.getByRole('button', { name: 'Search' }).press('Enter');
+  const query = page.getByRole('searchbox', { name: 'Search YouTube' });
+  await query.fill('unsubmitted draft');
+  const list = page.getByRole('list', { name: 'YouTube results' });
+  const action = list.getByRole('button', {
+    name: `Open ${pianoResult.title} in Pear`,
+  });
+
+  await action.press('Enter');
+  expect((await messages(page)).at(-1)).toEqual({
+    sequence: 2,
+    command: { type: 'select_search_result', id: second },
+  });
+  await expect(action).toBeDisabled();
+  const problem = 'Could not save the queue.';
+  await state(page, [first], first, problem, null, 2, { catalog });
+  await expect(page.getByText(problem, { exact: true })).toBeVisible();
+  await expect(action).toBeFocused();
+  await expect(action).toBeEnabled();
+
+  await action.press('Space');
+  await state(page, [first, second], second, null, null, 3, { catalog });
+  await expect(page.getByText(problem, { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Selected in the player.')).toBeVisible();
+  await expect(action).toBeFocused();
+  await expect(query).toHaveValue('unsubmitted draft');
+  await expect(page.getByRole('region', { name: 'Now playing' })).toContainText(
+    second,
+  );
+  expect(page.url()).toBe(`${origin}/`);
+});
+
 test('queues a search result to play next and keeps feedback and focus in Search', async (t) => {
   const page = await panel(t);
   await page.setViewportSize({ width: 384, height: 520 });

@@ -92,7 +92,7 @@ let catalogView = null;
 let catalogSearchError = '';
 let catalogPageError = '';
 let browserSearchError = '';
-let catalogAddFeedback = null;
+let catalogResultFeedback = null;
 let renderedLyrics = null;
 let lyricsSwitchingActive = false;
 let lyricsView = null;
@@ -156,7 +156,7 @@ function commandProblem(message, context) {
   if (context === 'browser-search') browserSearchError = message;
   else if (context === 'search') catalogSearchError = message;
   else if (context === 'playlist-page') catalogPageError = message;
-  else catalogAddFeedback = { message, error: true };
+  else catalogResultFeedback = { message, error: true };
   updateCatalog(renderedCatalog);
 }
 
@@ -182,6 +182,7 @@ function interruptsLyricsClock(command) {
     case 'next':
       return true;
     case 'select':
+    case 'select_search_result':
       return command.id !== renderedState?.current;
     case 'select_playlist_track':
       return command.video !== renderedState?.current;
@@ -225,8 +226,8 @@ function send(command, context = 'queue') {
   if (context === 'search') catalogSearchError = '';
   if (context === 'search' || context === 'playlist-page')
     catalogPageError = '';
-  if (context === 'search' || context === 'result-add')
-    catalogAddFeedback = null;
+  if (context === 'search' || context === 'result-action')
+    catalogResultFeedback = null;
   if (context === 'lyrics') lyricsError = '';
   if (context === 'library') libraryFeedback = null;
   if (context === 'account') accountFeedback = '';
@@ -895,7 +896,7 @@ function mountCatalog(query) {
   const feedback = searchForm.querySelector('#catalog-feedback');
   const loadMore = searchForm.querySelector('#catalog-load-more');
   const pageFeedback = searchForm.querySelector('#catalog-page-feedback');
-  const addFeedback = searchForm.querySelector('#catalog-add-feedback');
+  const resultFeedback = searchForm.querySelector('#catalog-result-feedback');
   input.value = query;
   searchForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -903,7 +904,7 @@ function mountCatalog(query) {
     const query = input.value.trim();
     const context = renderedBrowserSearch ? 'browser-search' : 'search';
     if (!query) {
-      catalogAddFeedback = null;
+      catalogResultFeedback = null;
       commandProblem('Enter a search term.', context);
       input.focus();
       return;
@@ -942,7 +943,7 @@ function mountCatalog(query) {
     feedback,
     loadMore,
     pageFeedback,
-    addFeedback,
+    resultFeedback,
     results,
     renderedResults: [],
     renderedAsPlaylist: false,
@@ -961,13 +962,21 @@ function removeView(form, results) {
 function createCatalogResult({ id, title, channel }, playlist) {
   const row = document.createElement('li');
   row.className = 'catalog-result';
-  const description = document.createElement('div');
-  const name = document.createElement('p');
+  const description = document.createElement(playlist ? 'div' : 'button');
+  if (!playlist) {
+    description.type = 'button';
+    description.className = 'catalog-open';
+    description.setAttribute('aria-label', `Open ${title} in Pear`);
+    description.addEventListener('click', () =>
+      send({ type: 'select_search_result', id }, 'result-action'),
+    );
+  }
+  const name = document.createElement('span');
   name.className = 'queue-title catalog-title';
   name.dir = 'auto';
   name.textContent = title;
   name.title = title;
-  const attribution = document.createElement('p');
+  const attribution = document.createElement('span');
   attribution.className = 'catalog-channel';
   attribution.textContent = channel ? `YouTube · ${channel}` : 'YouTube';
   attribution.title = attribution.textContent;
@@ -983,7 +992,7 @@ function createCatalogResult({ id, title, channel }, playlist) {
     const command = playlist
       ? { type: 'open_playlist_video', id }
       : { type: 'add', source: id };
-    send(command, 'result-add');
+    send(command, 'result-action');
   });
   const actions = document.createElement('div');
   actions.className = 'catalog-actions';
@@ -996,7 +1005,7 @@ function createCatalogResult({ id, title, channel }, playlist) {
     playNext.setAttribute('aria-label', `Play ${title} next`);
     playNext.addEventListener('click', () => {
       if (!playNextUnavailable(id))
-        send({ type: 'play_next', id }, 'result-add');
+        send({ type: 'play_next', id }, 'result-action');
     });
     actions.append(playNext);
   }
@@ -1006,7 +1015,7 @@ function createCatalogResult({ id, title, channel }, playlist) {
 
 function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   if (renderedCatalog?.playlist && !catalog?.playlist)
-    catalogAddFeedback = null;
+    catalogResultFeedback = null;
   if (renderedCatalog?.playlist?.revision !== catalog?.playlist?.revision)
     catalogPageError = '';
   renderedCatalog = catalog ?? null;
@@ -1014,7 +1023,7 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   if (!renderedBrowserSearch) browserSearchError = '';
   if (!catalog) {
     catalogSearchError = '';
-    catalogAddFeedback = null;
+    catalogResultFeedback = null;
   }
   if (!catalog && !renderedBrowserSearch) {
     if (catalogView) {
@@ -1154,13 +1163,13 @@ function updateCatalog(catalog, browserSearch = renderedBrowserSearch) {
   view.feedback.classList.toggle('error', error);
   if (view.feedback.textContent !== message)
     view.feedback.textContent = message;
-  const addMessage = catalogAddFeedback?.message ?? '';
-  view.addFeedback.classList.toggle(
+  const resultMessage = catalogResultFeedback?.message ?? '';
+  view.resultFeedback.classList.toggle(
     'error',
-    Boolean(catalogAddFeedback?.error),
+    Boolean(catalogResultFeedback?.error),
   );
-  if (view.addFeedback.textContent !== addMessage) {
-    view.addFeedback.textContent = addMessage;
+  if (view.resultFeedback.textContent !== resultMessage) {
+    view.resultFeedback.textContent = resultMessage;
   }
   return false;
 }
@@ -2051,6 +2060,12 @@ window.renderPearState = (
       confirmation = 'Added to the queue.';
     else if (nextId === command.id) confirmation = 'Queued to play next.';
   }
+  if (
+    !error &&
+    command?.type === 'select_search_result' &&
+    current === command.id
+  )
+    confirmation = 'Selected in the player.';
   if (!error && command?.type === 'remove' && !entries.includes(command.id)) {
     confirmation = 'Removed from the queue.';
   }
@@ -2095,8 +2110,8 @@ window.renderPearState = (
       command.revision === catalog?.playlist?.revision ? (error ?? '') : '';
   } else if (context === 'browser-search') {
     browserSearchError = error ?? '';
-  } else if (context === 'result-add') {
-    catalogAddFeedback = {
+  } else if (context === 'result-action') {
+    catalogResultFeedback = {
       message: error || confirmation,
       error: Boolean(error),
     };

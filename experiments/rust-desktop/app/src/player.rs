@@ -1407,11 +1407,21 @@ pub fn run(mode: LaunchMode) -> Result<()> {
                             }
                         }
                     }
+                    Command::SelectSearchResult { ref id }
+                        if !catalog.as_ref().is_some_and(|catalog|
+                            catalog.can_queue_video(id, Instant::now())
+                        ) =>
+                    {
+                        error = Some("That video is no longer available in Search.".into());
+                    }
                     command => {
-                        let select = matches!(&command, Command::Select { .. });
-                        let cancel_switch = auto_advance.pending()
-                            && matches!(&command, Command::Select { id }
-                                if library.state().current.as_ref() == Some(id));
+                        let selected = match &command {
+                            Command::Select { id } | Command::SelectSearchResult { id } => Some(id),
+                            _ => None,
+                        };
+                        let select = selected.is_some();
+                        let cancel_switch = auto_advance.pending() && selected.is_some()
+                            && selected == library.state().current.as_ref();
                         match library.apply(command) {
                             Ok(changed) => reload_player = queue_edit_requires_reload(
                                 &mut public_playlist, select, changed || cancel_switch,
@@ -1723,6 +1733,27 @@ mod tests {
             r#"{"type":"append_playlist","id":-1}"#,
         ] {
             assert!(command(invalid).is_none(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn accepts_only_the_search_result_id_from_local_controls() {
+        let command = |origin, payload: &str| {
+            let request = Request::builder()
+                .uri(origin)
+                .body(format!(r#"{{"sequence":1,"command":{payload}}}"#))
+                .unwrap();
+            controls_command(&request)
+        };
+        let selection = r#"{"type":"select_search_result","id":"M7lc1UVf-VE"}"#;
+        assert!(command(CONTROLS_URL, selection).is_some());
+        assert!(command("https://www.youtube.com/embed/M7lc1UVf-VE", selection).is_none());
+        for invalid in [
+            r#"{"type":"select_search_result","id":1}"#,
+            r#"{"type":"select_search_result","id":"M7lc1UVf-VE","title":"Injected"}"#,
+            r#"{"type":"select_search_result","url":"https://youtu.be/M7lc1UVf-VE"}"#,
+        ] {
+            assert!(command(CONTROLS_URL, invalid).is_none(), "{invalid}");
         }
     }
 

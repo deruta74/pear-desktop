@@ -30,6 +30,9 @@ pub enum Command {
     Select {
         id: String,
     },
+    SelectSearchResult {
+        id: String,
+    },
     Remove {
         id: String,
     },
@@ -194,6 +197,16 @@ impl Library {
             }
             Command::Select { id } => {
                 entry_index(&state.entries, &id)?;
+                state.current = Some(id);
+            }
+            Command::SelectSearchResult { id } => {
+                if !valid_id(&id) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Enter a valid YouTube video ID.",
+                    ));
+                }
+                state.append_ids([id.clone()])?;
                 state.current = Some(id);
             }
             Command::Remove { id } => {
@@ -742,6 +755,11 @@ mod tests {
         serde_json::from_value(serde_json::json!({"type": "play_next", "id": id})).unwrap()
     }
 
+    fn select_search_result(id: &str) -> Command {
+        serde_json::from_value(serde_json::json!({"type": "select_search_result", "id": id}))
+            .unwrap()
+    }
+
     fn remove(id: &str) -> Command {
         Command::Remove { id: id.into() }
     }
@@ -799,6 +817,57 @@ mod tests {
         assert!(!library.apply(select(SECOND)).unwrap());
         assert_eq!(library.state().entries, [FIRST, SECOND]);
         assert_eq!(library.state().current.as_deref(), Some(SECOND));
+    }
+
+    #[test]
+    fn selecting_a_search_result_persists_the_existing_queue_order() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let mut library = Library::load(path.clone()).unwrap();
+        library.apply(add(FIRST)).unwrap();
+        library.apply(add(SECOND)).unwrap();
+
+        assert!(library.apply(select_search_result(THIRD)).unwrap());
+        assert_eq!(library.state().entries, [FIRST, SECOND, THIRD]);
+        assert_eq!(library.state().current.as_deref(), Some(THIRD));
+        assert!(library.apply(select_search_result(SECOND)).unwrap());
+        assert!(!library.apply(select_search_result(SECOND)).unwrap());
+        assert_eq!(library.state().entries, [FIRST, SECOND, THIRD]);
+        assert_eq!(library.state().current.as_deref(), Some(SECOND));
+        assert!(Library::load(path).unwrap().state() == library.state());
+    }
+
+    #[test]
+    fn rejecting_search_result_selection_keeps_the_persisted_queue() {
+        let directory = TestDirectory::new();
+        let path = directory.queue_path();
+        let entries: Vec<String> = (0..MAX_ENTRIES).map(|i| format!("v{i:010}")).collect();
+        let state = QueueState {
+            current: entries.first().cloned(),
+            entries,
+            titles: BTreeMap::new(),
+        };
+        save_state(&path, &state).unwrap();
+        let mut library = Library::load(path.clone()).unwrap();
+        let saved = fs::read(&path).unwrap();
+
+        for rejected in ["invalid", SECOND] {
+            let error = library.apply(select_search_result(rejected)).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert!(library.state() == &state);
+            assert_eq!(fs::read(&path).unwrap(), saved);
+        }
+
+        assert!(
+            library
+                .apply(select_search_result(&state.entries[1]))
+                .unwrap()
+        );
+        assert_eq!(library.state().entries, state.entries);
+        assert_eq!(
+            library.state().current.as_ref(),
+            library.state().entries.get(1)
+        );
     }
 
     #[test]
@@ -1044,6 +1113,8 @@ mod tests {
                 .is_err()
         );
         assert!(library.apply(play_next(THIRD)).is_err());
+        assert!(library.apply(select_search_result(THIRD)).is_err());
+        assert!(library.apply(select_search_result(SECOND)).is_err());
         assert!(!library.apply(play_next(FIRST)).unwrap());
         assert!(!library.apply(play_next(SECOND)).unwrap());
         assert!(!library.apply(Command::MoveUp { id: FIRST.into() }).unwrap());

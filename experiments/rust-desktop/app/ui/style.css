@@ -785,6 +785,24 @@ button.play-toggle:enabled:active {
   font-size: 0.8125rem;
 }
 
+.catalog-open {
+  position: relative;
+  min-width: 0;
+  border: 0;
+  padding: 0.25rem 0.25rem 0.25rem 1.25rem;
+  background: transparent;
+  text-align: start;
+}
+
+.catalog-open::before {
+  position: absolute;
+  inset: 50% auto auto 0.25rem;
+  border-block: 5px solid transparent;
+  border-inline-start: 7px solid var(--accent);
+  transform: translateY(-50%);
+  content: '';
+}
+
 .catalog-title {
   font-size: 0.875rem;
   font-weight: 600;
@@ -792,6 +810,7 @@ button.play-toggle:enabled:active {
 }
 
 .catalog-channel {
+  display: block;
   overflow: hidden;
   color: var(--muted);
   font-size: 0.8125rem;
