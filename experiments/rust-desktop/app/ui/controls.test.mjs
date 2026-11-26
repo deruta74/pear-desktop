@@ -965,8 +965,8 @@ test('exposes experimental playback only after the video pane starts playing', a
     );
   expect(new Set(actions).size).toBe(1);
   const { y, height } = await timeline.boundingBox();
-  expect(y).toBeGreaterThan(actions[0]);
-  expect(y + height).toBeLessThan(520);
+  expect(y + height).toBeLessThanOrEqual(actions[0]);
+  await expect(timeline).toBeInViewport({ ratio: 1 });
   await pause.focus();
   await page.keyboard.press('Space');
   expect((await messages(page)).at(-1)).toEqual({
@@ -2347,6 +2347,44 @@ test('keeps the playback dock below the active view while its results scroll', a
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     800,
   );
+});
+
+test('keeps navigation and transport on single rows in a narrow panel', async (t) => {
+  const page = await panel(t);
+  await page.setViewportSize({ width: 320, height: 600 });
+  await state(page, [first, second], first, null, null, 1, {
+    metadata: {
+      title: 'A long track name with a featured artist',
+      channel: 'Artist',
+    },
+    catalog: searchState(),
+    lyrics: lyricsState(),
+    savedPlaylists: savedPlaylists(),
+  });
+  await transport(page, { ...readyTransport, volume: 42, muted: false });
+
+  const nav = page.getByRole('navigation');
+  const tabs = await nav.getByRole('button').all();
+  const tabBoxes = await Promise.all(tabs.map((tab) => tab.boundingBox()));
+  expect(tabs).toHaveLength(4);
+  expect(new Set(tabBoxes.map((box) => box.y)).size).toBe(1);
+
+  const dock = page.getByRole('region', { name: 'Now playing' });
+  const media = await dock
+    .getByText('A long track name with a featured artist')
+    .boundingBox();
+  const timeline = await dock
+    .getByRole('slider', { name: 'Playback position' })
+    .boundingBox();
+  const transportButtons = await dock.getByRole('button').all();
+  const transportBoxes = await Promise.all(
+    transportButtons.map((button) => button.boundingBox()),
+  );
+  expect(transportButtons).toHaveLength(5);
+  expect(new Set(transportBoxes.map((box) => box.y)).size).toBe(1);
+  expect(media.y + media.height).toBeLessThan(timeline.y);
+  expect(timeline.y + timeline.height).toBeLessThanOrEqual(transportBoxes[0].y);
+  await expect(dock).toBeInViewport({ ratio: 1 });
 });
 
 function lyricsState(overrides = {}) {

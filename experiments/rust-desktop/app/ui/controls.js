@@ -367,10 +367,6 @@ function updateAudioOutput() {
   audioToggle.hidden = !hasVolume && !hasMute;
   audioControls.hidden = audioToggle.hidden || !audioExpanded;
   audioToggle.parentElement.toggleAttribute('data-audio', !audioToggle.hidden);
-  audioControls.parentElement.toggleAttribute(
-    'data-paired',
-    !audioControls.hidden && !timeline.hidden,
-  );
   audioToggle.setAttribute('aria-expanded', String(!audioControls.hidden));
   volumeControl.hidden = !hasVolume;
   mute.hidden = !hasMute;

@@ -490,6 +490,18 @@
             ></p>
           </div>
         </div>
+        <div id="transport-timeline" class="transport-timeline" hidden>
+          <span id="elapsed" aria-hidden="true"></span>
+          <input
+            id="playback-position"
+            type="range"
+            min="0"
+            step="1"
+            aria-label="Playback position"
+            disabled
+          />
+          <span id="duration" aria-hidden="true"></span>
+        </div>
         <div
           class="playback-actions"
           role="group"
@@ -559,49 +571,35 @@
             <span class="volume-icon" aria-hidden="true"></span>
           </button>
         </div>
-        <div class="transport-details">
-          <div
-            id="audio-controls"
-            class="audio-controls"
-            role="group"
-            aria-label="Audio output"
-            hidden
-          >
-            <div id="volume-control" class="volume-control" hidden>
-              <label for="playback-volume">Volume</label>
-              <input
-                id="playback-volume"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                disabled
-              />
-              <span id="volume-value" aria-hidden="true"></span>
-            </div>
-            <button
-              id="playback-mute"
-              class="mute-toggle"
-              type="button"
-              aria-pressed="false"
-              hidden
-              disabled
-            >
-              Mute
-            </button>
-          </div>
-          <div id="transport-timeline" class="transport-timeline" hidden>
-            <span id="elapsed" aria-hidden="true"></span>
+        <div
+          id="audio-controls"
+          class="audio-controls"
+          role="group"
+          aria-label="Audio output"
+          hidden
+        >
+          <div id="volume-control" class="volume-control" hidden>
+            <label for="playback-volume">Volume</label>
             <input
-              id="playback-position"
+              id="playback-volume"
               type="range"
               min="0"
+              max="100"
               step="1"
-              aria-label="Playback position"
               disabled
             />
-            <span id="duration" aria-hidden="true"></span>
+            <span id="volume-value" aria-hidden="true"></span>
           </div>
+          <button
+            id="playback-mute"
+            class="mute-toggle"
+            type="button"
+            aria-pressed="false"
+            hidden
+            disabled
+          >
+            Mute
+          </button>
         </div>
         <p id="transport-hint" class="feedback" aria-live="polite"></p>
         <p id="audio-problem" class="feedback error" aria-live="polite"></p>
