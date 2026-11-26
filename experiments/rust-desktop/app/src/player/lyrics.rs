@@ -96,11 +96,22 @@ impl Client {
         if !(1..=MAX_DURATION_SECONDS).contains(&duration) {
             return Err(LookupError::InvalidQuery);
         }
+        lookup_with_video_label_fallback(&title, |name| {
+            self.lookup_recording(name, &artist, duration)
+        })
+    }
+
+    fn lookup_recording(
+        &self,
+        title: &str,
+        artist: &str,
+        duration: u32,
+    ) -> Result<Option<Document>, LookupError> {
         let mut response = self
             .agent
             .get(ENDPOINT)
-            .query("track_name", &title)
-            .query("artist_name", &artist)
+            .query("track_name", title)
+            .query("artist_name", artist)
             .query("duration", duration.to_string())
             .header(header::ACCEPT, "application/json")
             .header(header::USER_AGENT, USER_AGENT)
@@ -109,11 +120,45 @@ impl Client {
         interpret_response(
             response.status().as_u16(),
             response.body_mut(),
-            &title,
-            &artist,
+            title,
+            artist,
             duration,
         )
     }
+}
+
+fn lookup_with_video_label_fallback(
+    title: &str,
+    mut lookup: impl FnMut(&str) -> Result<Option<Document>, LookupError>,
+) -> Result<Option<Document>, LookupError> {
+    let exact = lookup(title)?;
+    if exact.is_some() {
+        return Ok(exact);
+    }
+    let Some(unadorned) = title_without_video_label(title) else {
+        return Ok(None);
+    };
+    lookup(unadorned)
+}
+
+fn title_without_video_label(title: &str) -> Option<&str> {
+    const VIDEO_LABELS: &[&str] = &[
+        "official music video",
+        "official video",
+        "official audio",
+        "official lyric video",
+        "lyric video",
+        "lyrics",
+    ];
+    let (name, label) = [('(', ')'), ('[', ']')]
+        .into_iter()
+        .find_map(|(open, close)| title.strip_suffix(close)?.rsplit_once(open))?;
+    let name = name.trim_end();
+    (!name.is_empty()
+        && VIDEO_LABELS
+            .iter()
+            .any(|format| label.trim().eq_ignore_ascii_case(format)))
+    .then_some(name)
 }
 
 pub(super) fn normalize_query(query: &str) -> Option<String> {
@@ -423,6 +468,37 @@ fn transport_error(error: ureq::Error) -> LookupError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retries_a_missing_video_title_without_its_format_label() {
+        let title = "Track (Live at Wembley) [Official Audio]";
+        let mut queried = Vec::new();
+        let result = lookup_with_video_label_fallback(title, |name| {
+            queried.push(name.to_owned());
+            Ok((name != title).then_some(Document::Instrumental))
+        });
+        assert_eq!(result, Ok(Some(Document::Instrumental)));
+        assert_eq!(queried, [title, "Track (Live at Wembley)"]);
+
+        assert_eq!(title_without_video_label("Track (remastered)"), None);
+        assert_eq!(title_without_video_label("(Official Audio)"), None);
+    }
+
+    #[test]
+    fn keeps_an_exact_recording_and_does_not_retry_service_errors() {
+        let title = "Track (Official Music Video)";
+        for first in [
+            Ok(Some(Document::Instrumental)),
+            Err(LookupError::Throttled),
+        ] {
+            let mut outcome = Some(first.clone());
+            let result = lookup_with_video_label_fallback(title, |name| {
+                assert_eq!(name, title);
+                outcome.take().expect("exact title sent once")
+            });
+            assert_eq!(result, first);
+        }
+    }
 
     fn response(
         status: u16,

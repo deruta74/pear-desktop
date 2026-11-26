@@ -63,7 +63,7 @@ Windows uses the same local wrapper and a native WebView2 frame navigation guard
 
 ### Synced lyrics
 
-With integrated playback controls enabled, start the video and open **Lyrics**. Check the track name and artist, then select **Find lyrics**. Pear sends those two fields and the video duration to LRCLIB when you submit. Synced lines follow playback and highlight individual words where LRCLIB supplies timing. The animated dots appear during the current timed rest, and reduced motion keeps them still. Lyrics stay in memory and clear when you change the video. [LRCLIB API](https://lrclib.net/docs)
+With integrated playback controls enabled, start the video and open **Lyrics**. Check the track name and artist, then select **Find lyrics**. Pear sends those two fields and the video duration to LRCLIB when you submit. If the full title has no match, Pear can retry without a trailing label such as “Official Music Video”. Synced lines follow playback and highlight individual words where LRCLIB supplies timing. The animated dots appear during the current timed rest, and reduced motion keeps them still. Lyrics stay in memory and clear when you change the video. [LRCLIB API](https://lrclib.net/docs)
 
 ### Local audio and Slowed + Reverb
 
