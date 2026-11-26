@@ -826,7 +826,7 @@ test('shows a supplied metadata problem independently of playback and queue feed
   const metadataProblem = 'YouTube video details are unavailable.';
   const problemText = page.getByText(metadataProblem, { exact: true });
   const playerAlert = page
-    .getByRole('region', { name: 'Current video' })
+    .getByRole('region', { name: 'Now playing' })
     .getByRole('alert');
   const queueStatus = page.getByRole('status');
 
@@ -1934,7 +1934,7 @@ test('updates the player alert independently from queue acknowledgements and val
   const playerProblem = 'The video player stopped. Use Reload Player.';
   const validation = 'Enter a valid YouTube link or video ID.';
   const playerAlert = page
-    .getByRole('region', { name: 'Current video' })
+    .getByRole('region', { name: 'Now playing' })
     .getByRole('alert');
   const queueError = page.locator('#queue-error');
   const input = page.getByRole('textbox', { name: 'YouTube link or video ID' });
