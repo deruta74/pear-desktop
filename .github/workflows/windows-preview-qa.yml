@@ -137,6 +137,13 @@ jobs:
               }
             }
           }
+      - name: Check playback in the native WebView2 player
+        if: >-
+          github.repository == 'deruta74/pear-desktop' &&
+          github.ref == 'refs/heads/experiment/rust-windows-qa' &&
+          contains(github.event.head_commit.message, '[webview2-playback]')
+        timeout-minutes: 3
+        run: ./tools/webview2-playback.ps1
       - name: Upload Windows QA logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
